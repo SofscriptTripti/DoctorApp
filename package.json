@@ -10,15 +10,27 @@
     "test": "jest"
   },
   "dependencies": {
-    "react": "19.1.1",
-    "react-native": "0.82.1",
+    "@react-native-community/slider": "^5.1.1",
     "@react-native/new-app-screen": "0.82.1",
-    "react-native-safe-area-context": "^5.5.2"
+    "@react-navigation/elements": "^2.8.3",
+    "@react-navigation/native": "^7.1.21",
+    "@react-navigation/native-stack": "^7.7.0",
+    "@terrylinla/react-native-sketch-canvas": "^0.8.0",
+    "deprecated-react-native-prop-types": "^5.0.0",
+    "react": "^19.1.1",
+    "react-native": "0.82.1",
+    "react-native-gesture-handler": "^2.29.1",
+    "react-native-linear-gradient": "^2.8.3",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-screens": "^4.18.0",
+    "react-native-svg": "^15.15.0",
+    "react-native-vector-icons": "^10.3.0",
+    "react-native-view-shot": "^4.0.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
-    "@babel/runtime": "^7.25.0",
+    "@babel/runtime": "^7.28.4",
     "@react-native-community/cli": "20.0.0",
     "@react-native-community/cli-platform-android": "20.0.0",
     "@react-native-community/cli-platform-ios": "20.0.0",
@@ -31,6 +43,7 @@
     "@types/react-test-renderer": "^19.1.0",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
+    "patch-package": "^8.0.1",
     "prettier": "2.8.8",
     "react-test-renderer": "19.1.1",
     "typescript": "^5.8.3"
