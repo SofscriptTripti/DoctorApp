@@ -1,6 +1,8 @@
+
 import React from 'react';
-import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Use the local uploaded image path as default imageUri when navigating.
 const LOCAL_IMAGE_URI = 'file:///mnt/data/49e6fed6-e019-4f53-a7ac-e0fc4066e7a4.png';
@@ -20,6 +22,7 @@ const FORMS = [
 
 export default function FormType() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity
@@ -32,7 +35,7 @@ export default function FormType() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Available Form Types</Text>
         <Text style={styles.headerSub}>Tap any form to view & edit</Text>
@@ -52,7 +55,8 @@ export default function FormType() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7FAFD' },
   header: {
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     backgroundColor: '#0EA5A4',
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,

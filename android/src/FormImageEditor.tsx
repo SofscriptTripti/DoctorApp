@@ -1,124 +1,120 @@
-// FormImageEditor.updated.tsx
-// Smooth drawing + absolute coords + shade strip (white -> color -> black)
-// Horizontal swatches row (scrollable) above thickness
-// Selected tool/action icons show colored circular background
-// Clear performs immediate clear (no Alert)
+// FormImageEditor.pages.tsx
+// Multi-page vertical editor — persistent strokes (saved to AsyncStorage when available).
+// Ready-to-draw on open (no need to reselect pen/color/width). Default color = blue.
 
 import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
-  SafeAreaView,
   StyleSheet,
   Dimensions,
   TouchableOpacity,
   Image,
-  PanResponder,
-  GestureResponderEvent,
-  LayoutChangeEvent,
-  findNodeHandle,
-  UIManager,
   ScrollView,
+  Alert,
+  Animated,
+  Easing,
+  PanResponder,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import LinearGradient from 'react-native-linear-gradient';
 import Slider from '@react-native-community/slider';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-let SketchCanvas: any;
+// AsyncStorage fallback
+let AsyncStorage: any = null;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-  const mod = require('@terrylinla/react-native-sketch-canvas');
-  SketchCanvas = mod?.default ?? mod;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch (e) {
-  SketchCanvas = undefined;
+  AsyncStorage = null;
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// local image uploaded in session (developer-provided)
-const IMAGE_URI = 'https://cdn.marketing123.123formbuilder.com/wp-content/uploads/2020/12/hospital-admission-form.png';
+const PAGE_HEIGHT = Math.round(SCREEN_H * 0.72);
+const STORAGE_KEY = 'DoctorApp:strokesByPage:v1';
+const STORAGE_UI_KEY = 'DoctorApp:editorUI:v1';
+
+// Replace with your actual local requires
+const IMAGES = [
+  require('./Images/first.jpeg'),
+  require('./Images/second.jpeg'),
+  require('./Images/Third.jpeg'),
+  require('./Images/forth.jpeg'),
+  require('./Images/fifth.jpeg'),
+  require('./Images/sixtg.jpeg'),
+  require('./Images/seventh.jpeg'),
+  require('./Images/Eighth.jpeg'),
+  require('./Images/Eleventh.jpeg'),
+  require('./Images/ninth.jpeg'),
+  require('./Images/Tenth.jpeg'),
+  require('./Images/Thirteen.jpeg'),
+  require('./Images/twelve.jpeg'),
+];
 
 type Point = { x: number; y: number; t?: number };
 type Stroke = { id: string; color: string; width: number; points: Point[] };
 
-export default function FormImageEditor() {
-  const route = useRoute();
+export default function FormImageEditorPages() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
-  const [color, setColor] = useState('#FF7A00');
-  const [strokeWidth, setStrokeWidth] = useState(12);
+  // DEFAULTS: set color to blue so editor is ready on open
+  const [color, setColor] = useState('#0EA5A4'); // <- default blue
+  const [strokeWidth, setStrokeWidth] = useState(8);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
-  const [saving, setSaving] = useState(false);
-  const [pathsCount, setPathsCount] = useState(0);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [colorPanelOpen, setColorPanelOpen] = useState(false);
 
-  const [useNative, setUseNative] = useState<boolean>(!!SketchCanvas);
-  const nativeAvailable = useNative && !!SketchCanvas;
-
-  const toolRef = useRef(tool);
+  // Refs to keep latest UI values accessible inside static pan handlers
   const colorRef = useRef(color);
   const widthRef = useRef(strokeWidth);
-
-  useEffect(() => { toolRef.current = tool; }, [tool]);
+  const toolRef = useRef(tool);
   useEffect(() => { colorRef.current = color; }, [color]);
   useEffect(() => { widthRef.current = strokeWidth; }, [strokeWidth]);
+  useEffect(() => { toolRef.current = tool; }, [tool]);
 
-  // visible preset swatches
-  const PRESET_COLORS = [ '#FF7A00', '#FF0000', '#00A86B', '#007AFF', '#8A2BE2', '#FFD700','#000000', '#444444', '#777777',];
+  // strokes state (per page)
+  const [strokesByPage, setStrokesByPage] = useState<Stroke[][]>(() => IMAGES.map(() => []));
+  const undoneByPage = useRef<Stroke[][]>(IMAGES.map(() => []));
 
-  const canvasRef = useRef<any>(null);
-  const canvasTopAbs = useRef(0);
-  const canvasLeftAbs = useRef(0);
-  const canvasHeightRef = useRef(Math.round(SCREEN_H * 0.72));
-  const canvasWidthRef = useRef(SCREEN_W);
-
-  const hueRef = useRef<any>(null);
-  const hueTopAbs = useRef(0);
-  const hueHeightAbs = useRef(Math.round(SCREEN_H * 0.5));
-
-  const measureCanvas = () => {
-    try {
-      const handle = findNodeHandle(canvasRef.current);
-      if (!handle) return;
-      UIManager.measure(handle, (x, y, w, h, px, py) => {
-        canvasLeftAbs.current = px;
-        canvasTopAbs.current = py;
-        canvasWidthRef.current = w;
-        canvasHeightRef.current = h;
-      });
-    } catch (e) { /* ignore */ }
-  };
-
-  const measureHue = () => {
-    try {
-      const handle = findNodeHandle(hueRef.current);
-      if (!handle) return;
-      UIManager.measure(handle, (x, y, w, h, px, py) => {
-        hueTopAbs.current = py;
-        hueHeightAbs.current = h;
-      });
-    } catch (e) { /* ignore */ }
-  };
-
-  useEffect(() => {
-    const t = setTimeout(() => { measureCanvas(); measureHue(); }, 250);
-    return () => clearTimeout(t);
-  }, [imageLoaded]);
-
-  useEffect(() => {
-    const onResize = () => { measureCanvas(); measureHue(); };
-    const sub: any = Dimensions.addEventListener ? Dimensions.addEventListener('change', onResize) : null;
-    return () => { if (sub && (sub as any).remove) (sub as any).remove(); };
-  }, []);
-
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  // drawing refs
   const currentStroke = useRef<Stroke | null>(null);
+  const isDrawing = useRef(false);
+  const lastPointTime = useRef<number>(0);
+  const drawingPageIndex = useRef<number | null>(null);
+  const panResponder = useRef<any>(null);
 
-  // smoothing helpers
-  const dist2 = (a: Point, b: Point) => { const dx = a.x - b.x; const dy = a.y - b.y; return dx * dx + dy * dy; };
+  // scroll + restore
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollY = useRef(0);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const lastSavedPage = useRef(0);
+  const scrollSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // animation for color panel
+  const panelAnim = useRef(new Animated.Value(0)).current;
+  const panelTranslateY = panelAnim.interpolate({ inputRange: [0, 1], outputRange: [220, 0] });
+
+  // persistence debounce
+  const saveTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // smoothing (tuned)
+  const MIN_DIST_SQ = 16; // ~4px squared
+  const MAX_FORCE_MS = 12;
+  const distSq = (a: Point, b: Point) => { const dx = a.x - b.x; const dy = a.y - b.y; return dx * dx + dy * dy; };
+  const shouldAddPoint = (last: Point, next: Point) => {
+    const now = Date.now();
+    const d2 = distSq(last, next);
+    if (d2 >= MIN_DIST_SQ) return true;
+    if (now - (lastPointTime.current || 0) >= MAX_FORCE_MS) return true;
+    return false;
+  };
+
+  // catmull->bezier path helper
   const catmullRom2bezier = (pts: Point[]) => {
     if (!pts || pts.length === 0) return '';
     if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
@@ -139,409 +135,423 @@ export default function FormImageEditor() {
     return d;
   };
 
-  const computePath = (pts?: Point[]) => {
-    if (!pts || pts.length === 0) return '';
-    return catmullRom2bezier(pts);
+  const PRESET_COLORS = [
+    '#E4572E', '#FF8A80', '#FFB6C1', '#FFC79C', '#FFEB7A', '#7EE07A',
+    '#3FE0D0', '#00B0FF', '#9CC6FF', '#C39CFF', '#BDBDBD', '#0c0c0cff',
+  ];
+
+  const toggleColorPanel = (open?: boolean) => {
+    const next = open === undefined ? !colorPanelOpen : open;
+    setColorPanelOpen(next);
+    Animated.timing(panelAnim, { toValue: next ? 1 : 0, duration: 200, useNativeDriver: true, easing: Easing.out(Easing.cubic) }).start();
   };
 
-  const onHueLayout = (ev: LayoutChangeEvent) => { measureHue(); };
-
-  // Shade helpers (white -> base -> black)
-  const hexToRgb = (hex: string) => {
-    const h = hex.replace('#', '');
-    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-    const num = parseInt(full, 16);
-    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  // persistence helpers
+  const persistStrokesNow = async (payload?: Stroke[][]) => {
+    const toSave = payload ?? strokesByPage;
+    if (!AsyncStorage) return;
+    try { await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toSave)); } catch (e) { /* ignore */ }
   };
-  const rgbToHex = (r: number, g: number, b: number) => {
-    const toHex = (v: number) => {
-      const h = Math.round(Math.max(0, Math.min(255, Math.round(v)))).toString(16);
-      return h.length === 1 ? '0' + h : h;
-    };
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
-  };
-  const mixRgb = (a: {r:number,g:number,b:number}, b: {r:number,g:number,b:number}, t: number) => ({
-    r: a.r + (b.r - a.r) * t,
-    g: a.g + (b.g - a.g) * t,
-    b: a.b + (b.b - a.b) * t,
-  });
-
-  const onPickShadeByPageY = (pageY: number) => {
-    const top = hueTopAbs.current || 0;
-    const h = hueHeightAbs.current || Math.round(SCREEN_H * 0.5);
-    const rel = Math.max(0, Math.min(h, pageY - top));
-    const ratio = rel / h; // 0..1 (0=top)
-
-    const baseHex = colorRef.current || color;
-    const baseRgb = hexToRgb(baseHex);
-    const white = { r: 255, g: 255, b: 255 };
-    const black = { r: 0, g: 0, b: 0 };
-
-    let mixedRgb;
-    if (ratio <= 0.5) {
-      const t = ratio / 0.5;
-      mixedRgb = mixRgb(white, baseRgb, t);
-    } else {
-      const t = (ratio - 0.5) / 0.5;
-      mixedRgb = mixRgb(baseRgb, black, t);
-    }
-
-    const hex = rgbToHex(mixedRgb.r, mixedRgb.g, mixedRgb.b);
-    setColor(hex);
+  const persistUIStateNow = async (ui?: any) => {
+    if (!AsyncStorage) return;
+    try { await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(ui ?? { color, strokeWidth, tool, colorPanelOpen, lastSavedPage: lastSavedPage.current })); } catch (e) { /* ignore */ }
   };
 
-  // Draw responder
-  const MIN_DIST2 = 0.5;
-  const FORCE_ADD_MS = 30;
-  const ERASER_MIN_MOVE = 10;
-
-  const rafPending = useRef(false);
-  const pendingReplace = useRef<Stroke | null>(null);
-  const lastPointTime = useRef<number>(0);
-  const eraserMoved = useRef(false);
-  const eraserStart = useRef<Point | null>(null);
-
-  // Improved flush: replace by id (safer if other updates happen)
-  const flushPending = () => {
-    if (!rafPending.current) return;
-    rafPending.current = false;
-    const p = pendingReplace.current;
-    if (!p) return;
-    setStrokes(prev => {
-      const idx = prev.findIndex(st => st.id === p.id);
-      if (idx !== -1) {
-        const copy = prev.slice();
-        copy[idx] = { ...p };
-        return copy;
-      }
-      // if not found, append (this can happen if updates raced)
-      return [...prev, { ...p }];
-    });
-    pendingReplace.current = null;
+  const schedulePersist = (payload?: Stroke[][]) => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    saveTimer.current = setTimeout(() => {
+      persistStrokesNow(payload);
+      saveTimer.current = null;
+    }, 350);
   };
 
+  // load saved strokes + UI
   useEffect(() => {
-    let rafId: number | null = null;
-    const loop = () => { if (rafPending.current) flushPending(); rafId = requestAnimationFrame(loop); };
-    rafId = requestAnimationFrame(loop);
-    return () => { if (rafId != null) cancelAnimationFrame(rafId); };
+    let mounted = true;
+    (async () => {
+      if (!AsyncStorage) return;
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (raw && mounted) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length === IMAGES.length) setStrokesByPage(parsed);
+        }
+      } catch (e) { /* ignore */ }
+
+      try {
+        const uiRaw = await AsyncStorage.getItem(STORAGE_UI_KEY);
+        if (uiRaw && mounted) {
+          const ui = JSON.parse(uiRaw);
+          if (ui) {
+            if (ui.color) { setColor(ui.color); colorRef.current = ui.color; }
+            if (typeof ui.strokeWidth === 'number') { setStrokeWidth(ui.strokeWidth); widthRef.current = ui.strokeWidth; }
+            if (ui.tool) { setTool(ui.tool); toolRef.current = ui.tool; }
+            if (ui.colorPanelOpen) { setColorPanelOpen(Boolean(ui.colorPanelOpen)); panelAnim.setValue(ui.colorPanelOpen ? 1 : 0); }
+            if (typeof ui.lastSavedPage === 'number') {
+              lastSavedPage.current = ui.lastSavedPage;
+              setTimeout(() => { if (scrollRef.current) scrollRef.current.scrollTo({ x: 0, y: lastSavedPage.current * PAGE_HEIGHT, animated: false }); }, 60);
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const shouldAddPoint = (last: Point, next: Point) => {
-    const now = Date.now();
-    const d2 = dist2(last, next);
-    if (d2 >= MIN_DIST2) return true;
-    if (now - (lastPointTime.current || 0) >= FORCE_ADD_MS) return true;
-    return false;
-  };
-
-  const pageToCanvas = (pageX: number, pageY: number) => ({ x: pageX - canvasLeftAbs.current, y: pageY - canvasTopAbs.current });
-
-  const jsDrawResponder = useRef(
-    PanResponder.create({
+  // Build panResponder once and use refs to read latest UI state
+  useEffect(() => {
+    panResponder.current = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt: GestureResponderEvent) => {
-        measureCanvas(); measureHue();
-        const pageX = evt.nativeEvent.pageX;
-        const pageY = evt.nativeEvent.pageY;
-        const loc = pageToCanvas(pageX, pageY);
-        const pt: Point = { x: loc.x, y: loc.y, t: Date.now() };
+      onMoveShouldSetPanResponderCapture: () => true,
 
-        if (toolRef.current === 'pen') {
-          const s: Stroke = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, color: colorRef.current, width: widthRef.current, points: [pt] };
-          currentStroke.current = s;
-          lastPointTime.current = pt.t || Date.now();
-          // append safely using functional update
-          setStrokes(prev => [...prev, s]);
-        } else {
-          eraserStart.current = pt; eraserMoved.current = false;
-        }
+      onPanResponderGrant: (evt) => {
+        setScrollEnabled(false);
+        const native = (evt as any).nativeEvent;
+        const x = native.locationX;
+        const y = native.locationY;
+        const pageIndex = Math.max(0, Math.min(IMAGES.length - 1, Math.round(scrollY.current / PAGE_HEIGHT)));
+        startStroke(pageIndex, { x, y, t: Date.now() });
       },
 
-      onPanResponderMove: (evt: GestureResponderEvent) => {
-        const pageX = evt.nativeEvent.pageX;
-        const pageY = evt.nativeEvent.pageY;
-        const loc = pageToCanvas(pageX, pageY);
-        const pt: Point = { x: loc.x, y: loc.y, t: Date.now() };
-
-        if (toolRef.current === 'pen') {
-          if (!currentStroke.current) return;
-          const last = currentStroke.current.points[currentStroke.current.points.length - 1];
-          if (!shouldAddPoint(last, pt)) return;
-
-          currentStroke.current.points.push(pt);
-          lastPointTime.current = pt.t || Date.now();
-          // create a shallow copy for pending replace
-          pendingReplace.current = { ...currentStroke.current, points: currentStroke.current.points.slice() };
-          rafPending.current = true;
-        } else {
-          if (eraserStart.current && !eraserMoved.current) {
-            const dx = eraserStart.current.x - pt.x; const dy = eraserStart.current.y - pt.y;
-            if (dx * dx + dy * dy >= ERASER_MIN_MOVE * ERASER_MIN_MOVE) eraserMoved.current = true; else return;
-          }
-          if (!eraserMoved.current) return;
-          const x = pt.x, y = pt.y;
-          // better eraser: remove strokes whose bounding box intersects eraser point
-          setStrokes(prev => prev.filter(st => {
-            if (!st.points || st.points.length === 0) return true;
-            let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY, minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
-            for (let p of st.points) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
-            const pad = Math.max(12, Math.round(st.width || 12));
-            const inside = x >= minX - pad && x <= maxX + pad && y >= minY - pad && y <= maxY + pad;
-            return !inside;
-          }));
-        }
+      onPanResponderMove: (evt) => {
+        const native = (evt as any).nativeEvent;
+        const x = native.locationX;
+        const y = native.locationY;
+        const pageIndex = drawingPageIndex.current ?? Math.max(0, Math.min(IMAGES.length - 1, Math.round(scrollY.current / PAGE_HEIGHT)));
+        moveStroke(pageIndex, { x, y, t: Date.now() });
       },
 
       onPanResponderRelease: () => {
-        // flush any pending replace one last time synchronously
-        if (pendingReplace.current) {
-          const p = pendingReplace.current;
-          setStrokes(prev => {
-            const idx = prev.findIndex(st => st.id === p.id);
-            if (idx !== -1) {
-              const copy = prev.slice();
-              copy[idx] = { ...p };
-              return copy;
-            }
-            return [...prev, { ...p }];
-          });
-          pendingReplace.current = null; rafPending.current = false;
-        }
-        eraserMoved.current = false; eraserStart.current = null; currentStroke.current = null; lastPointTime.current = 0;
+        const pageIndex = drawingPageIndex.current ?? Math.max(0, Math.min(IMAGES.length - 1, Math.round(scrollY.current / PAGE_HEIGHT)));
+        endStroke(pageIndex);
+        setScrollEnabled(true);
+      },
+
+      onPanResponderTerminate: () => {
+        const pageIndex = drawingPageIndex.current ?? Math.max(0, Math.min(IMAGES.length - 1, Math.round(scrollY.current / PAGE_HEIGHT)));
+        endStroke(pageIndex);
+        setScrollEnabled(true);
       },
 
       onPanResponderTerminationRequest: () => false,
-      onPanResponderTerminate: () => {},
-    })
-  ).current;
+    });
+    // create once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const jsUndo = () => setStrokes(prev => prev.slice(0, -1));
-  const jsClear = () => setStrokes([]);
-  const jsSave = async () => {
-    try {
-      setSaving(true);
-      const w = canvasWidthRef.current || SCREEN_W;
-      const h = canvasHeightRef.current || Math.round(SCREEN_H * 0.72);
-      const svgPaths = strokes.map(s => `<path d="${computePath(s.points)}" stroke="${s.color}" stroke-width="${s.width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
-      const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${svgPaths}</svg>`;
-      // keep behavior minimal - show small confirmation only for native save callback; here we just stop spinner
-    } catch (e) {
-      // ignore for fallback
-    } finally {
-      setSaving(false);
+  // stroke helpers (use refs when reading UI)
+  const startStroke = (pageIndex: number, pt: Point) => {
+    isDrawing.current = true;
+    drawingPageIndex.current = pageIndex;
+
+    if (toolRef.current === 'pen') {
+      const s: Stroke = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, color: colorRef.current, width: widthRef.current, points: [pt] };
+      currentStroke.current = s;
+      lastPointTime.current = pt.t || Date.now();
+
+      setStrokesByPage(prev => {
+        const copy = prev.map(arr => arr.slice());
+        copy[pageIndex] = (copy[pageIndex] || []).concat(s);
+        return copy;
+      });
+
+      undoneByPage.current[pageIndex] = [];
+    } else {
+      const pad = Math.max(8, Math.round(widthRef.current));
+      setStrokesByPage(prev => {
+        const copy = prev.map(arr => arr.slice());
+        copy[pageIndex] = (copy[pageIndex] || []).filter(st => {
+          if (!st.points || st.points.length === 0) return true;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const p of st.points) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+          const inside = pt.x >= minX - pad && pt.x <= maxX + pad && pt.y >= minY - pad && pt.y <= maxY + pad;
+          return !inside;
+        });
+        schedulePersist(copy);
+        return copy;
+      });
     }
   };
 
-  // UI "active" button state for short-lived actions (undo/clear/save) to show circle while pressed
-  const [activeBtn, setActiveBtn] = useState<string | null>(null);
+  const moveStroke = (pageIndex: number, pt: Point) => {
+    if (!isDrawing.current) return;
+    if (toolRef.current === 'pen') {
+      const cs = currentStroke.current;
+      if (!cs) return;
+      const last = cs.points[cs.points.length - 1];
+      if (!last || !shouldAddPoint(last, pt)) return;
+      cs.points.push(pt);
+      lastPointTime.current = pt.t || Date.now();
 
-  const onUndo = () => {
-    // show quick active state
-    setActiveBtn('undo');
-    setTimeout(() => setActiveBtn(null), 200);
-    if (nativeAvailable) {
-      try { canvasRef.current?.undo(); } catch (e) { console.warn(e); }
-    } else jsUndo();
+      setStrokesByPage(prev => {
+        const copy = prev.map(arr => arr.slice());
+        const arr = copy[pageIndex] || [];
+        if (!arr || arr.length === 0) arr.push({ ...cs });
+        else {
+          const idx = arr.findIndex(s => s.id === cs.id);
+          if (idx >= 0) arr[idx] = { ...cs };
+          else arr.push({ ...cs });
+        }
+        copy[pageIndex] = arr;
+        return copy;
+      });
+    } else {
+      const pad = Math.max(8, Math.round(widthRef.current));
+      setStrokesByPage(prev => {
+        const copy = prev.map(arr => arr.slice());
+        copy[pageIndex] = (copy[pageIndex] || []).filter(st => {
+          if (!st.points || st.points.length === 0) return true;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const p of st.points) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+          const inside = pt.x >= minX - pad && pt.x <= maxX + pad && pt.y >= minY - pad && pt.y <= maxY + pad;
+          return !inside;
+        });
+        schedulePersist(copy);
+        return copy;
+      });
+    }
   };
 
-  // Clear now performs immediately (no Alert)
-  const onClear = () => {
-    setActiveBtn('clear');
-    setTimeout(() => setActiveBtn(null), 200);
-    if (nativeAvailable) {
-      try { canvasRef.current?.clear(); } catch (e) { console.warn(e); }
-    } else jsClear();
+  const endStroke = (pageIndex: number) => {
+    if (!isDrawing.current) {
+      drawingPageIndex.current = null;
+      return;
+    }
+    if (toolRef.current === 'pen' && currentStroke.current) {
+      persistStrokesNow();
+    }
+    currentStroke.current = null;
+    isDrawing.current = false;
+    drawingPageIndex.current = null;
+    persistUIStateNow({ color, strokeWidth, tool, colorPanelOpen, lastSavedPage: lastSavedPage.current });
   };
 
-  const onSave = () => {
-    setActiveBtn('save');
-    setTimeout(() => setActiveBtn(null), 300);
-    if (nativeAvailable) {
-      setSaving(true);
-      try {
-        canvasRef.current?.save('png', false, 'RNPencil', String(Date.now()), false, false, false);
-      } catch (e) {
-        setSaving(false);
-        console.warn('Native save failed', e);
-      }
-    } else jsSave();
+  // undo/redo/clear
+  const undo = (pageIndex: number) => {
+    setStrokesByPage(prev => {
+      const copy = prev.map(arr => arr.slice());
+      const arr = copy[pageIndex] || [];
+      if (!arr || arr.length === 0) return prev;
+      const popped = arr.pop()!;
+      undoneByPage.current[pageIndex] = undoneByPage.current[pageIndex] ?? [];
+      undoneByPage.current[pageIndex].push(popped);
+      copy[pageIndex] = arr;
+      schedulePersist(copy);
+      return copy;
+    });
+  };
+  const redo = (pageIndex: number) => {
+    const stack = undoneByPage.current[pageIndex] ?? [];
+    if (!stack || stack.length === 0) return;
+    const redoStroke = stack.pop()!;
+    setStrokesByPage(prev => {
+      const copy = prev.map(arr => arr.slice());
+      copy[pageIndex] = (copy[pageIndex] || []).concat(redoStroke);
+      schedulePersist(copy);
+      return copy;
+    });
+  };
+  const clearPage = (pageIndex: number) => {
+    setStrokesByPage(prev => {
+      const copy = prev.map(arr => arr.slice());
+      const arr = copy[pageIndex] || [];
+      if (!arr || arr.length === 0) return prev;
+      undoneByPage.current[pageIndex] = (undoneByPage.current[pageIndex] ?? []).concat(arr.slice());
+      copy[pageIndex] = [];
+      schedulePersist(copy);
+      return copy;
+    });
   };
 
-  useEffect(() => { setPathsCount(strokes.length); }, [strokes]);
-
-  const onSelectPreset = (hex: string) => {
-    setColor(hex);
-    colorRef.current = hex;
+  const onSaveAll = async () => {
+    if (isDrawing.current && drawingPageIndex.current !== null) {
+      endStroke(drawingPageIndex.current);
+    }
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    await persistStrokesNow();
+    await persistUIStateNow({ color, strokeWidth, tool, colorPanelOpen, lastSavedPage: lastSavedPage.current });
+    Alert.alert('Saved', 'All pages saved.', [{ text: 'OK', onPress: () => navigation.goBack() }], { cancelable: false });
   };
 
-  const HueStrip = () => {
-    const stripHeight = Math.round(SCREEN_H * 0.5);
-    const pan = useRef(
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: evt => { onPickShadeByPageY(evt.nativeEvent.pageY); },
-        onPanResponderMove: evt => { onPickShadeByPageY(evt.nativeEvent.pageY); },
-        onPanResponderRelease: () => {},
-      })
-    ).current;
-
-    return (
-      <View ref={hueRef} onLayout={onHueLayout} style={styles.hueContainer} {...pan.panHandlers}>
-        <LinearGradient style={{ flex: 1 }} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} colors={[ '#FFFFFF', color, '#000000' ]} />
-      </View>
-    );
+  const renderPaths = (pageIndex: number) => {
+    const arr = strokesByPage[pageIndex] ?? [];
+    return arr.map(s => {
+      const d = catmullRom2bezier(s.points);
+      if (!d) return null;
+      return <Path key={s.id} d={d} stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" fill="none" />;
+    });
   };
 
+  const getCurrentPageIndex = () => Math.max(0, Math.min(IMAGES.length - 1, Math.round(scrollY.current / PAGE_HEIGHT)));
+
+  // nib preview
   const NibPreview = ({ size = 36 }: { size?: number }) => (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: Math.max(6, Math.round((strokeWidth / 40) * size)), height: Math.max(6, Math.round((strokeWidth / 40) * size)), borderRadius: 100, backgroundColor: '#fff', opacity: 0.95 }} />
+        <View style={{ width: Math.max(6, Math.round((strokeWidth / 60) * size)), height: Math.max(6, Math.round((strokeWidth / 60) * size)), borderRadius: 100, backgroundColor: '#fff', opacity: 0.95 }} />
       </View>
     </View>
   );
 
-  const incWidth = (delta = 1) => { const next = Math.min(60, Math.max(1, strokeWidth + delta)); setStrokeWidth(next); widthRef.current = next; };
-  const decWidth = (delta = 1) => { const next = Math.min(60, Math.max(1, strokeWidth - delta)); setStrokeWidth(next); widthRef.current = next; };
-
-  // helper to get button style for circular colored background when active/selected
-  const btnCircleStyle = (name: string, fallback?: boolean) => {
-    const isSelected = (name === 'pen' && tool === 'pen') || (name === 'eraser' && tool === 'eraser');
-    const isActive = activeBtn === name;
-    if (isSelected || isActive) {
-      return [styles.iconBtn, styles.iconSelected];
-    }
-    // default icon look
-    return [styles.iconBtn, { backgroundColor: fallback ? 'rgba(255,255,255,0.04)' : 'transparent' }];
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollY.current = e.nativeEvent.contentOffset.y;
+    if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current);
+    scrollSaveTimer.current = setTimeout(() => {
+      const idx = getCurrentPageIndex();
+      lastSavedPage.current = idx;
+      persistUIStateNow({ color, strokeWidth, tool, colorPanelOpen, lastSavedPage: idx });
+    }, 300);
   };
 
+  const topPadding = Math.max(8, insets.top + 6);
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.topBar}>
-        <TouchableOpacity style={btnCircleStyle('close', true)} onPress={() => navigation.goBack()}>
+    <SafeAreaView style={styles.root}>
+      <View style={[styles.topBar, { paddingTop: topPadding }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
           <Ionicons name="close" size={22} color="#fff" />
         </TouchableOpacity>
 
         <View style={{ flex: 1 }} />
 
-        <TouchableOpacity style={btnCircleStyle('pen')} onPress={() => { setTool('pen'); }}>
+        <TouchableOpacity onPress={() => setTool('pen')} style={[styles.iconBtn, tool === 'pen' ? styles.iconActive : undefined]}>
           <MaterialCommunityIcons name="pencil" size={20} color="#fff" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={btnCircleStyle('eraser')} onPress={() => { setTool('eraser'); }}>
+        <TouchableOpacity onPress={() => setTool('eraser')} style={[styles.iconBtn, tool === 'eraser' ? styles.iconActive : undefined]}>
           <MaterialCommunityIcons name="eraser" size={20} color="#fff" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={btnCircleStyle('undo')} onPress={onUndo}>
-          <Ionicons name="arrow-undo-outline" size={20} color="#fff" />
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => undo(getCurrentPageIndex())} style={styles.iconBtn}><Ionicons name="arrow-undo-outline" size={20} color="#fff" /></TouchableOpacity>
 
-        <TouchableOpacity style={btnCircleStyle('clear')} onPress={onClear}>
-          <MaterialCommunityIcons name="broom" size={20} color="#fff" />
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => redo(getCurrentPageIndex())} style={styles.iconBtn}><Ionicons name="arrow-redo-outline" size={20} color="#fff" /></TouchableOpacity>
 
-        <TouchableOpacity style={btnCircleStyle('save')} onPress={onSave}>
-          <Ionicons name={saving ? 'cloud-download' : 'save-outline'} size={18} color="#fff" />
+        <TouchableOpacity onPress={() => clearPage(getCurrentPageIndex())} style={styles.iconBtn}><MaterialCommunityIcons name="broom" size={20} color="#fff" /></TouchableOpacity>
+
+        <TouchableOpacity onPress={onSaveAll} style={[styles.iconBtn, { marginLeft: 8 }]}>
+          <Ionicons name="checkmark" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.canvasWrap} ref={canvasRef} onLayout={() => { measureCanvas(); }}>
-        <Image source={{ uri: IMAGE_URI }} style={styles.backgroundImage} resizeMode="contain" onLoad={() => { setImageLoaded(true); }} onError={() => setImageLoaded(true)} />
+      <View style={styles.controls}>
+        <TouchableOpacity
+          style={[styles.colorCircle, { backgroundColor: color }]}
+          onPress={() => toggleColorPanel(true)}
+          activeOpacity={0.9}
+        />
 
-        {nativeAvailable ? (
-          // @ts-ignore
-          <SketchCanvas
-            ref={canvasRef}
-            style={styles.canvas}
-            strokeColor={tool === 'eraser' ? '#FFFFFF' : color}
-            strokeWidth={strokeWidth}
-            onSketchSaved={(success: boolean, path: string) => {
-              setSaving(false);
-              // keep minimal feedback; logs will show saved path on successful native save
-            }}
-            onPathsChange={(cnt: number) => setPathsCount(cnt)}
-            user={'user'}
-          />
-        ) : (
-          <View style={styles.canvas} {...jsDrawResponder.panHandlers}>
-            <Svg width={canvasWidthRef.current} height={canvasHeightRef.current}>
-              {strokes.map(s => {
-                const d = computePath(s.points);
-                if (!d) return null;
-                return <Path key={s.id} d={d} stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" fill="none" />;
-              })}
-            </Svg>
-          </View>
-        )}
-      </View>
+        <View style={{ flex: 1, marginLeft: 12, marginRight: 12 }}>
+          <Slider minimumValue={1} maximumValue={60} value={strokeWidth} onValueChange={v => setStrokeWidth(Math.round(v))} />
+        </View>
 
-      {/* Right vertical shade strip */}
-      <View style={styles.rightStrip}>
-        <HueStrip />
-        <View style={{ height: 8 }} />
-        <TouchableOpacity style={[styles.quickColor, { backgroundColor: color }]} onPress={() => { setColor('#FFFFFF'); colorRef.current = '#FFFFFF'; }} />
-        <View style={{ height: 6 }} />
-        <TouchableOpacity style={[styles.iconBtn, { backgroundColor: 'rgba(255,255,255,0.06)' }]} onPress={() => setUseNative(v => !v)}><Text style={{ color: '#fff', fontSize: 11 }}>{useNative ? 'Native' : 'JS'}</Text></TouchableOpacity>
-      </View>
-
-      {/* Bottom: scrollable swatches row + thickness */}
-      <View style={styles.bottomBar}>
-        <View style={{ width: '100%' }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.swatchScroll}>
-            {PRESET_COLORS.map(c => {
-              const selected = c.toUpperCase() === (colorRef.current || color).toUpperCase();
-              return (
-                <TouchableOpacity
-                  key={c}
-                  onPress={() => { onSelectPreset(c); }}
-                  style={[
-                    styles.swatchWrap,
-                    selected ? { borderColor: '#0EA5A4', borderWidth: 2 } : { borderColor: '#ddd', borderWidth: 0.9 }
-                  ]}
-                >
-                  <View style={[styles.swatch, { backgroundColor: c }]} />
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.thicknessRow}>
-            <TouchableOpacity style={styles.thinBtn} onPress={() => decWidth(1)}><Ionicons name="remove-circle-outline" size={26} color="#333" /></TouchableOpacity>
-
-            <View style={{ flex: 1, marginHorizontal: 8 }}>
-              <Slider value={strokeWidth} minimumValue={1} maximumValue={60} step={1} onValueChange={(v) => { setStrokeWidth(Math.round(v)); widthRef.current = Math.round(v); }} thumbTintColor={color} />
-            </View>
-
-            <TouchableOpacity style={styles.thinBtn} onPress={() => incWidth(1)}><Ionicons name="add-circle-outline" size={26} color="#333" /></TouchableOpacity>
-
-            <View style={{ alignItems: 'center', width: 64 }}>
-              <NibPreview size={56} />
-              <Text style={{ fontSize: 12, color: '#333' }}>{strokeWidth}px</Text>
-            </View>
-          </View>
+        <View style={{ width: 72, alignItems: 'center' }}>
+          <NibPreview size={44} />
+          <Text style={{ fontSize: 12 }}>{strokeWidth}px</Text>
         </View>
       </View>
+
+      <ScrollView
+        ref={r => (scrollRef.current = r)}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ alignItems: 'center', paddingBottom: 240 }}
+        scrollEnabled={scrollEnabled}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+      >
+        {IMAGES.map((src, pageIndex) => (
+          <View key={`page-${pageIndex}`} style={styles.pageWrap}>
+            <View
+              style={styles.pageInner}
+              {...(panResponder.current ? panResponder.current.panHandlers : {})}
+            >
+              <Image source={src} style={styles.pageImage} resizeMode="contain" />
+              <Svg style={styles.svgOverlay} width={SCREEN_W} height={PAGE_HEIGHT}>
+                {renderPaths(pageIndex)}
+              </Svg>
+            </View>
+
+            <View style={styles.pageLabel}>
+              <Text style={{ color: '#333' }}>{`Page ${pageIndex + 1}`}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => undo(pageIndex)} style={styles.smallBtn}><Ionicons name="arrow-undo-outline" size={18} color="#333" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => redo(pageIndex)} style={styles.smallBtn}><Ionicons name="arrow-redo-outline" size={18} color="#333" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => clearPage(pageIndex)} style={styles.smallBtn}><MaterialCommunityIcons name="broom" size={18} color="#333" /></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+
+      <Animated.View pointerEvents="box-none" style={[styles.colorPanel, { transform: [{ translateY: panelTranslateY }] }]}>
+        <View style={styles.panelHandleRow}>
+          <View style={styles.panelHandle} />
+          <TouchableOpacity onPress={() => toggleColorPanel(false)} style={styles.panelCloseBtn}>
+            <Text style={{ color: '#777' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal contentContainerStyle={styles.swatchRow} showsHorizontalScrollIndicator={false}>
+          {PRESET_COLORS.map(c => {
+            const selected = c.toUpperCase() === color.toUpperCase();
+            return (
+              <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.swatchWrap, selected ? { borderColor: '#0EA5A4', borderWidth: 2 } : null]} activeOpacity={0.85}>
+                <View style={[styles.swatch, { backgroundColor: c }]} />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.panelBottomRow}>
+          <Slider style={{ flex: 1 }} minimumValue={1} maximumValue={60} value={strokeWidth} onValueChange={v => setStrokeWidth(Math.round(v))} />
+          <Text style={{ width: 36, textAlign: 'center' }}>{strokeWidth}</Text>
+        </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, backgroundColor: 'rgba(0,0,0,0.7)' },
-  iconBtn: { padding: 8, borderRadius: 24, marginHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
-  iconSelected: { backgroundColor: '#0EA5A4' },
-  canvasWrap: { flex: 1, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
-  backgroundImage: { position: 'absolute', width: SCREEN_W, height: Math.round(SCREEN_H * 0.72) },
-  canvas: { position: 'absolute', top: 0, left: 0, width: SCREEN_W, height: Math.round(SCREEN_H * 0.72) },
-  rightStrip: { position: 'absolute', right: 12, top: 80, alignItems: 'center' },
-  hueContainer: { width: 36, height: Math.round(SCREEN_H * 0.5), borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#111' },
-  bottomBar: { backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 12 },
-  swatchScroll: { alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6 },
-  swatchWrap: { padding: 2, borderRadius: 22, marginRight: 10, alignItems: 'center', justifyContent: 'center' },
-  swatch: { width: 30, height: 30, borderRadius: 18 },
-  quickColor: { width: 36, height: 36, borderRadius: 18, marginRight: 10, borderWidth: 0.5, borderColor: '#ddd' },
-  thicknessRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  thinBtn: { padding: 4, marginHorizontal: 4, justifyContent: 'center', alignItems: 'center' },
+  root: { flex: 1, backgroundColor: '#fff' },
+  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, backgroundColor: '#0EA5A4' },
+  iconBtn: { padding: 8, borderRadius: 24, marginHorizontal: 6 },
+  iconActive: { backgroundColor: 'rgba(255,255,255,0.12)' },
+
+  controls: { flexDirection: 'row', alignItems: 'center', padding: 8, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: '#fff' },
+  colorCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#ddd' },
+
+  pageWrap: { width: SCREEN_W, alignItems: 'center', marginVertical: 10 },
+  pageInner: { width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  pageImage: { width: SCREEN_W, height: PAGE_HEIGHT },
+  svgOverlay: { position: 'absolute', left: 0, top: 0 },
+
+  pageLabel: { width: SCREEN_W - 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+  smallBtn: { padding: 6, marginLeft: 8 },
+
+  colorPanel: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 10,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  panelHandleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  panelHandle: { width: 60, height: 6, borderRadius: 4, backgroundColor: '#eee', alignSelf: 'center', marginBottom: 8 },
+  panelCloseBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+
+  swatchRow: { flexDirection: 'row', alignItems: 'center', paddingRight: 8 },
+  swatchWrap: { padding: 6, borderRadius: 22, marginRight: 8, borderWidth: 0.8, borderColor: '#ddd' },
+  swatch: { width: 36, height: 36, borderRadius: 18 },
+
+  panelBottomRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
 });

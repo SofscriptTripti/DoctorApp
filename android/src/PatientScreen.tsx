@@ -1,7 +1,6 @@
 // src/PatientScreen.tsx
 import React from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   FlatList,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PATIENTS = [
   'Tripti Shukla',
@@ -24,10 +24,10 @@ const PATIENTS = [
 ];
 
 export default function PatientScreen() {
-  const navigation = useNavigation<any>(); // `any` to avoid tight typing; swap with proper types if desired
+  const navigation = useNavigation<any>(); // loosened typing for brevity
+  const insets = useSafeAreaInsets();
 
   const handlePress = (name: string) => {
-    // navigate to FormType and pass the selected patient name
     navigation.navigate('FormType', { patientName: name });
   };
 
@@ -42,7 +42,7 @@ export default function PatientScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Patients</Text>
         <Text style={styles.headerSub}>Tap a name to open form types</Text>
@@ -62,7 +62,8 @@ export default function PatientScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7FAFD' },
   header: {
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     backgroundColor: '#0EA5A4',
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,

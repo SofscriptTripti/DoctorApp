@@ -1,7 +1,6 @@
-// FormImageScreen.tsx
+// src/FormImageScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
@@ -11,38 +10,51 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
 const { width: W, height: H } = Dimensions.get('window');
+
+const resolveImages = (): any | null => {
+  try { return require('./Images').default ?? require('./Images'); } catch (_) {}
+  try { return require('../android/src/Images').default ?? require('../android/src/Images'); } catch (_) {}
+  try { return require('../src/Images').default ?? require('../src/Images'); } catch (_) {}
+  return null;
+};
+
+const Images = resolveImages();
+const REMOTE_TEST_IMAGE =
+  'https://cdn.marketing123.123formbuilder.com/wp-content/uploads/2020/12/hospital-admission-form.png';
 
 export function FormImageScreen() {
   const route = useRoute();
   const navigation = useNavigation<any>();
   const params = (route.params as any) || {};
 
-  // Use the passed uri, otherwise use a default jpg. Also provide a safe fallback test image.
-  const imageUri: string =
-    params.imageUri ||
-    'https://cdn.marketing123.123formbuilder.com/wp-content/uploads/2020/12/hospital-admission-form.png';
+  const passedUri: string | undefined = params.imageUri;
 
-  // A small known-to-work test image (use this to diagnose network/permission issues)
-  const testImage = 'https://cdn.marketing123.123formbuilder.com/wp-content/uploads/2020/12/hospital-admission-form.png';
+  const localFirstImage =
+    Images?.first ?? Images?.First ?? Images?.FIRST ?? Images?.firstJpeg ?? null;
+
+  const initialSource: any = passedUri ? { uri: passedUri } : localFirstImage ?? { uri: REMOTE_TEST_IMAGE };
+  const testImageSource: any = localFirstImage ?? { uri: REMOTE_TEST_IMAGE };
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [src, setSrc] = useState(imageUri);
+  const [src, setSrc] = useState<any>(initialSource);
+  const [isLocal, setIsLocal] = useState<boolean>(Boolean(localFirstImage) && !passedUri);
 
   useEffect(() => {
-    // If you want automatic fallback to a test image on first failure, you can implement here.
-    setSrc(imageUri);
+    const newSource = passedUri ? { uri: passedUri } : localFirstImage ?? { uri: REMOTE_TEST_IMAGE };
+    setSrc(newSource);
+    setIsLocal(Boolean(localFirstImage) && !passedUri);
     setLoading(true);
     setError(null);
-  }, [imageUri]);
+  }, [passedUri, localFirstImage]);
 
   const onLoad = () => {
     setLoading(false);
     setError(null);
-    console.log('[FormImageScreen] image loaded:', src);
   };
 
   const onError = (e: any) => {
@@ -50,14 +62,24 @@ export function FormImageScreen() {
     setLoading(false);
     setError('Failed to load image');
 
-    // Optionally try the tiny test image once to distinguish network/permission issues
-    if (src !== testImage) {
-      console.log('[FormImageScreen] trying fallback test image to diagnose...');
-      setSrc(testImage);
+    if (!isLocal && testImageSource) {
+      setSrc(testImageSource);
+      setIsLocal(Boolean(localFirstImage));
       setLoading(true);
       setError(null);
     }
   };
+
+  const retryOriginal = () => {
+    setError(null);
+    setLoading(true);
+    const original = passedUri ? { uri: passedUri } : localFirstImage ?? { uri: REMOTE_TEST_IMAGE };
+    setSrc(original);
+    setIsLocal(Boolean(localFirstImage) && !passedUri);
+  };
+
+  // Unique storage key per form (so saved strokes for one form don't overwrite another)
+  const storageKeyForThisForm = `DoctorApp:strokesByForm:${(params.formName as string) ?? 'unnamed'}:v1`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -73,34 +95,39 @@ export function FormImageScreen() {
           </View>
         )}
 
-        {/* show the image (resizeMode contain so it fits) */}
-        <Image
-          source={{ uri: src }}
-          style={styles.image}
-          resizeMode="contain"
-          onLoad={onLoad}
-          onError={onError}
-        />
+        {src ? (
+          <Image
+            source={src}
+            style={styles.image}
+            resizeMode="contain"
+            onLoad={onLoad}
+            onError={onError}
+          />
+        ) : (
+          <View style={[styles.image, styles.missingBox]}>
+            <Text style={styles.missingText}>No image available</Text>
+          </View>
+        )}
 
-        {/* show error state */}
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>Unable to load image.</Text>
-            <TouchableOpacity
-              style={styles.retryBtn}
-              onPress={() => {
-                setError(null);
-                setLoading(true);
-                setSrc(imageUri); // retry original image
-              }}
-            >
+
+            <TouchableOpacity style={styles.retryBtn} onPress={retryOriginal}>
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.retryBtn, { marginTop: 8 }]}
               onPress={() => {
-                // open editor anyway with whatever URI
-                navigation.navigate('FormImageEditor', { imageUri, formName: params.formName });
+                // continue to editor even if image load failed
+                navigation.navigate('FormImageEditor', {
+                  imageUri: passedUri ?? null,
+                  localImageModule: !passedUri && localFirstImage ? localFirstImage : null,
+                  formName: params.formName,
+                  singleImageMode: true,
+                  storageKey: storageKeyForThisForm,
+                });
               }}
             >
               <Text style={styles.retryText}>Open Editor (continue)</Text>
@@ -112,7 +139,15 @@ export function FormImageScreen() {
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.editBtn}
-          onPress={() => navigation.navigate('FormImageEditor', { imageUri, formName: params.formName })}
+          onPress={() =>
+            navigation.navigate('FormImageEditor', {
+              imageUri: passedUri ?? null,
+              localImageModule: !passedUri && localFirstImage ? localFirstImage : null,
+              formName: params.formName,
+              singleImageMode: true,
+              storageKey: storageKeyForThisForm,
+            })
+          }
         >
           <Text style={styles.editBtnText}>Open Editor</Text>
         </TouchableOpacity>
@@ -133,6 +168,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7FAFD',
   },
   image: { width: W - 24, height: H * 0.6, backgroundColor: '#fff' },
+  missingBox: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  missingText: { color: '#999' },
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: '#eee', backgroundColor: '#fff' },
   editBtn: { backgroundColor: '#0EA5A4', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   editBtnText: { color: '#fff', fontWeight: '700' },
