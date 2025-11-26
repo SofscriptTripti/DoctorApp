@@ -204,11 +204,11 @@ export function FormImageScreen() {
 
         <View style={styles.cardFooter}>
           <Text style={styles.cardTitle}>Page {idx + 1}</Text>
-          {saved ? (
+          {/* {saved ? (
             <View style={styles.savedBadge}>
               <Text style={styles.savedBadgeText}>Saved</Text>
             </View>
-          ) : null}
+          ) : null} */}
         </View>
       </TouchableOpacity>
     );
@@ -218,9 +218,9 @@ export function FormImageScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{(formName as string) || 'Form Images'}</Text>
-        <TouchableOpacity style={styles.refreshBtnSmall} onPress={checkSavedStrokes}>
+        {/* <TouchableOpacity style={styles.refreshBtnSmall} onPress={checkSavedStrokes}>
           <Text style={styles.refreshBtnText}>{checkingSaved ? '...' : 'Refresh'}</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={true}>
