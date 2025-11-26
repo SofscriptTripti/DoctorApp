@@ -12,7 +12,6 @@ import android.graphics.PorterDuffXfermode;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
 import android.view.View;
 
 import androidx.annotation.Nullable;
@@ -25,14 +24,13 @@ public class DrawingView extends View {
 
     private static final String TAG = "DrawingView";
 
-    // Background (from RN Image/Base64) and drawing layer
+    // Background (optional) and drawing layer
     private Bitmap bgBitmap;
     private Bitmap drawingBitmap;
     private Canvas drawingCanvas;
 
-    // Zoom
-    private float scaleFactor = 1f;
-    private ScaleGestureDetector scaleDetector;
+    // Page id for persistence (if you use it)
+    private String pageId = null;
 
     // Paint & path
     private Paint paint;
@@ -43,7 +41,7 @@ public class DrawingView extends View {
     private int currentColor = 0xFF0EA5A4;
     private boolean isEraser = false;
 
-    // Strokes history
+    // Strokes history (for undo/redo of current session)
     private final ArrayList<Stroke> strokes = new ArrayList<>();
     private final ArrayList<Stroke> redoStrokes = new ArrayList<>();
 
@@ -72,12 +70,42 @@ public class DrawingView extends View {
         paint.setStrokeJoin(Paint.Join.ROUND);
 
         currentPath = new Path();
-        scaleDetector = new ScaleGestureDetector(ctx, new ScaleListener());
 
         setFocusable(true);
         setFocusableInTouchMode(true);
-        // You can switch to SOFTWARE if CLEAR behaves weird with HW acceleration
-        // setLayerType(LAYER_TYPE_HARDWARE, null);
+    }
+
+    // ----------------------------------------------------
+    // Optional: Page ID + persistence helpers
+    // ----------------------------------------------------
+
+    public void setPageId(@Nullable String id) {
+        this.pageId = id;
+        Log.d(TAG, "setPageId: " + id);
+        loadSavedBitmapIfExists();
+    }
+
+    private void loadSavedBitmapIfExists() {
+        if (pageId == null || pageId.trim().isEmpty()) return;
+
+        try {
+            File dir = getContext().getFilesDir();
+            File file = new File(dir, pageId + ".png");
+            if (!file.exists()) {
+                Log.d(TAG, "No saved bitmap for pageId=" + pageId);
+                return;
+            }
+
+            Bitmap bmp = BitmapFactory.decodeFile(file.getAbsolutePath());
+            if (bmp != null) {
+                setSavedDrawingBitmap(bmp);
+                Log.d(TAG, "Loaded saved bitmap for pageId=" + pageId);
+            } else {
+                Log.w(TAG, "decodeFile returned null for " + file.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "loadSavedBitmapIfExists error", e);
+        }
     }
 
     // ----------------------------------------------------
@@ -98,7 +126,6 @@ public class DrawingView extends View {
         );
         Canvas newCanvas = new Canvas(newBitmap);
 
-        // If we already had drawing content, re-draw it
         if (drawingBitmap != null) {
             newCanvas.drawBitmap(drawingBitmap, 0, 0, null);
         }
@@ -109,24 +136,24 @@ public class DrawingView extends View {
         Log.d(TAG, "onSizeChanged: w=" + w + " h=" + h);
     }
 
-    public void setBackgroundBitmap(@Nullable Bitmap bmp) {
+    public void setBackgroundBitmap(Bitmap bmp) {
         bgBitmap = bmp;
         invalidate();
     }
 
-    /**
-     * NEW: set the drawing layer from a saved bitmap (PNG loaded from file).
-     * This is used when we reopen the editor and want previous strokes back.
-     */
-    public void setDrawingBitmap(@Nullable Bitmap bmp) {
-        if (bmp == null) {
-            drawingBitmap = null;
-            drawingCanvas = null;
-        } else {
-            // Ensure mutable bitmap
-            drawingBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
-            drawingCanvas = new Canvas(drawingBitmap);
+    public void setSavedDrawingBitmap(Bitmap bmp) {
+        if (bmp == null) return;
+
+        if (drawingBitmap != null && !drawingBitmap.isRecycled()) {
+            drawingBitmap.recycle();
         }
+
+        drawingBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
+        drawingCanvas = new Canvas(drawingBitmap);
+
+        strokes.clear();
+        redoStrokes.clear();
+
         invalidate();
     }
 
@@ -139,10 +166,11 @@ public class DrawingView extends View {
 
         if (canvas == null) return;
 
-        canvas.save();
-        canvas.scale(scaleFactor, scaleFactor);
+        // ❌ NO canvas.scale(...) here any more (no zoom)
+        // canvas.save();
+        // canvas.scale(scaleFactor, scaleFactor);
 
-        // Background image (from RN)
+        // Background image (if used)
         if (bgBitmap != null) {
             canvas.drawBitmap(bgBitmap, 0f, 0f, null);
         }
@@ -157,20 +185,16 @@ public class DrawingView extends View {
             canvas.drawPath(currentPath, paint);
         }
 
-        canvas.restore();
+        // canvas.restore();
     }
 
     // ----------------------------------------------------
-    // Touch handling (SINGLE POINTER, robust)
+    // Touch handling (NO SCALE)
     // ----------------------------------------------------
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
-        // Let ScaleGestureDetector handle pinch-zoom
-        scaleDetector.onTouchEvent(event);
-
         if (drawingCanvas == null) {
-            // Safety: lazily create drawing bitmap if it didn't get created yet
             if (getWidth() > 0 && getHeight() > 0) {
                 drawingBitmap = Bitmap.createBitmap(
                         getWidth(),
@@ -182,12 +206,12 @@ public class DrawingView extends View {
         }
 
         int action = event.getActionMasked();
-        float x = event.getX() / scaleFactor;
-        float y = event.getY() / scaleFactor;
+        // ❌ no divide by scaleFactor – just use raw view coords
+        float x = event.getX();
+        float y = event.getY();
 
         switch (action) {
             case MotionEvent.ACTION_DOWN: {
-                // Tell parent (ScrollView) not to intercept
                 if (getParent() != null) {
                     getParent().requestDisallowInterceptTouchEvent(true);
                 }
@@ -204,7 +228,6 @@ public class DrawingView extends View {
             }
 
             case MotionEvent.ACTION_MOVE: {
-                // Keep blocking parent during stroke
                 if (getParent() != null) {
                     getParent().requestDisallowInterceptTouchEvent(true);
                 }
@@ -219,7 +242,6 @@ public class DrawingView extends View {
             case MotionEvent.ACTION_CANCEL: {
 
                 if (drawingCanvas == null) {
-                    // If for some reason it's still null, just reset path and bail
                     currentPath.reset();
                     if (getParent() != null) {
                         getParent().requestDisallowInterceptTouchEvent(false);
@@ -229,7 +251,7 @@ public class DrawingView extends View {
                 }
 
                 if (!movedSinceDown) {
-                    // Treat as a dot: small filled circle
+                    // Dot
                     float r = Math.max(1f, brushSize / 2f);
                     Paint fill = new Paint(paint);
                     fill.setStyle(Paint.Style.FILL);
@@ -242,7 +264,7 @@ public class DrawingView extends View {
 
                     Log.d(TAG, "Added DOT stroke. strokesCount=" + strokes.size());
                 } else {
-                    // Finalize stroke onto bitmap
+                    // Stroke
                     currentPath.lineTo(x, y);
                     drawingCanvas.drawPath(currentPath, paint);
 
@@ -251,11 +273,9 @@ public class DrawingView extends View {
                     Log.d(TAG, "Added PATH stroke. strokesCount=" + strokes.size());
                 }
 
-                // Reset temp path and redo stack
                 currentPath.reset();
                 redoStrokes.clear();
 
-                // Allow parent to intercept again
                 if (getParent() != null) {
                     getParent().requestDisallowInterceptTouchEvent(false);
                 }
@@ -286,7 +306,7 @@ public class DrawingView extends View {
     }
 
     // ----------------------------------------------------
-    // Public API (called from RN manager)
+    // Public API (called from RN)
     // ----------------------------------------------------
     public void setColor(int color) {
         isEraser = false;
@@ -361,29 +381,22 @@ public class DrawingView extends View {
         invalidate();
     }
 
-    private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
-        @Override
-        public boolean onScale(ScaleGestureDetector detector) {
-            scaleFactor *= detector.getScaleFactor();
-            scaleFactor = Math.max(0.7f, Math.min(scaleFactor, 3f));
-            invalidate();
-            return true;
+    // saving helper if you use it with manager
+    public boolean saveCurrentToDisk() {
+        if (pageId == null || pageId.trim().isEmpty()) {
+            Log.w(TAG, "saveCurrentToDisk: pageId is null/empty");
+            return false;
         }
-    }
-
-    public boolean saveToFile(File file) {
         try {
             int w = getWidth();
             int h = getHeight();
             if (w <= 0 || h <= 0) return false;
 
-            // Ensure folder exists
-            File parent = file.getParentFile();
-            if (parent != null && !parent.exists()) {
-                parent.mkdirs();
-            }
-
-            Bitmap output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Bitmap output = Bitmap.createBitmap(
+                    w,
+                    h,
+                    Bitmap.Config.ARGB_8888
+            );
             Canvas canvas = new Canvas(output);
 
             if (bgBitmap != null) {
@@ -393,6 +406,9 @@ public class DrawingView extends View {
                 canvas.drawBitmap(drawingBitmap, 0, 0, null);
             }
 
+            File dir = getContext().getFilesDir();
+            File file = new File(dir, pageId + ".png");
+
             FileOutputStream fos = new FileOutputStream(file);
             output.compress(Bitmap.CompressFormat.PNG, 100, fos);
             fos.close();
@@ -400,12 +416,11 @@ public class DrawingView extends View {
             Log.d(TAG, "Saved drawing to: " + file.getAbsolutePath());
             return true;
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "saveCurrentToDisk error", e);
             return false;
         }
     }
 
-    // Stroke model
     static class Stroke {
         Path path;
         Paint paint;

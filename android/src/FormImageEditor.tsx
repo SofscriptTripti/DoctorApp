@@ -1,5 +1,6 @@
 // src/FormImageEditor.pages.tsx
-// Updated: stable refs, savedPath propagation, custom saving overlay UI instead of Alert.
+// Updated: stable refs, savedPath propagation, custom saving overlay UI,
+// AND pinch-to-zoom that scales IMAGE + DRAWING TOGETHER (aligned as one page).
 
 import React, {
   useRef,
@@ -254,11 +255,8 @@ export default function FormImageEditor() {
     CONTENT_BOTTOM_PADDING;
   const maxScrollY = Math.max(0, totalContentHeight - SCREEN_H);
 
-  // *** NEW: keep handle only in content area (below header) ***
-  // Header (top bar) + slider row ≈ topPadding + some fixed height.
-  // 130 is a safe offset that keeps the blue handle starting where pages are.
   const MIN_HANDLE_TOP =
-    (insets.top ?? 0) + 130; // adjust this value if you ever change header height
+    (insets.top ?? 0) + 130;
   const MAX_HANDLE_TOP =
     SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
 
@@ -366,7 +364,84 @@ export default function FormImageEditor() {
     }
   };
 
-  // load UI + saved meta (INCLUDING bitmapPath for each page)
+  // ---------------------------
+  // IMAGE + DRAWING PINCH ZOOM
+  // ---------------------------
+
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const lastScaleRef = useRef(1);
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    startScale: number;
+  } | null>(null);
+
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 3;
+
+  const pinchResponder = useRef(
+    PanResponder.create({
+      // Only respond to 2-finger gestures
+      onStartShouldSetPanResponder: (evt) =>
+        evt.nativeEvent.touches.length === 2,
+      onMoveShouldSetPanResponder: (evt) =>
+        evt.nativeEvent.touches.length === 2,
+
+      onPanResponderGrant: (evt) => {
+        if (saveStatus === 'saving') return;
+        if (evt.nativeEvent.touches.length === 2) {
+          const [t1, t2] = evt.nativeEvent.touches;
+          const dx = t1.pageX - t2.pageX;
+          const dy = t1.pageY - t2.pageY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          pinchStateRef.current = {
+            initialDistance: dist,
+            startScale: lastScaleRef.current,
+          };
+        }
+      },
+
+      onPanResponderMove: (evt) => {
+        if (saveStatus === 'saving') return;
+        if (
+          evt.nativeEvent.touches.length === 2 &&
+          pinchStateRef.current
+        ) {
+          const [t1, t2] = evt.nativeEvent.touches;
+          const dx = t1.pageX - t2.pageX;
+          const dy = t1.pageY - t2.pageY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+          const factor =
+            dist / Math.max(1, pinchStateRef.current.initialDistance);
+          let newScale = pinchStateRef.current.startScale * factor;
+          if (newScale < MIN_ZOOM) newScale = MIN_ZOOM;
+          if (newScale > MAX_ZOOM) newScale = MAX_ZOOM;
+
+          scaleAnim.setValue(newScale);
+        }
+      },
+
+      onPanResponderRelease: () => {
+        try {
+          const val = (scaleAnim as any).__getValue
+            ? (scaleAnim as any).__getValue()
+            : 1;
+          lastScaleRef.current = val;
+        } catch (e) {
+          lastScaleRef.current = 1;
+          scaleAnim.setValue(1);
+        }
+        pinchStateRef.current = null;
+      },
+
+      onPanResponderTerminationRequest: () => true,
+      onPanResponderTerminate: () => {
+        pinchStateRef.current = null;
+      },
+    })
+  ).current;
+
+  // load UI + saved meta
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -539,7 +614,9 @@ export default function FormImageEditor() {
         >
           <Ionicons name="arrow-back" size={20} color="#fff" />
         </TouchableOpacity>
+
         <View style={{ flex: 1 }} />
+
         <TouchableOpacity
           onPress={performUndo}
           style={styles.iconBtn}
@@ -624,55 +701,65 @@ export default function FormImageEditor() {
         />
       </View>
 
-      <ScrollView
-        ref={(r) => (scrollRef.current = r)}
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          alignItems: 'center',
-          // paddingTop: CONTENT_TOP_PADDING,
-          // paddingBottom: CONTENT_BOTTOM_PADDING,
-        }}
-        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-          scrollY.current = e.nativeEvent.contentOffset.y;
-          syncRightHandleToScroll(scrollY.current);
-        }}
-        scrollEventThrottle={16}
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
-        decelerationRate="fast"
-        overScrollMode="always"
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={scrollEnabled}
-      >
-        {IMAGES.map((src, pageIndex) => {
-          const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
-          return (
-            <View key={`page-${pageIndex}`} style={styles.pageWrap}>
-              <View style={styles.pageInner}>
-                <Image
-                  source={src}
-                  style={[
-                    styles.pageImage,
-                    { width: SCREEN_W, height: PAGE_HEIGHT },
-                  ]}
-                  resizeMode="contain"
-                />
+      {/* Wrapper that handles pinch zoom (2-fingers) */}
+      <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
+        <ScrollView
+          ref={(r) => (scrollRef.current = r)}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            alignItems: 'center',
+          }}
+          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            scrollY.current = e.nativeEvent.contentOffset.y;
+            syncRightHandleToScroll(scrollY.current);
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+          decelerationRate="fast"
+          overScrollMode="always"
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={scrollEnabled}
+        >
+          {IMAGES.map((src, pageIndex) => {
+            const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
+            return (
+              <View key={`page-${pageIndex}`} style={styles.pageWrap}>
+                <View style={styles.pageInner}>
+                  {/* ZOOMED GROUP: image + drawing view together */}
+                  <Animated.View
+                    style={[
+                      styles.zoomGroup,
+                      { transform: [{ scale: scaleAnim }] },
+                    ]}
+                  >
+                    {/* Image fills entire area */}
+                    <Image
+                      source={src}
+                      style={styles.pageImage}
+                      resizeMode="stretch"
+                    />
 
-                {/* Absolute overlay for drawing */}
-                <View style={styles.canvasContainer}>
-                  <DrawingCanvas
-                    index={pageIndex}
-                    savedPath={savedPath}
-                    ref={(r) => refSetters.current[pageIndex](r)}
-                  />
+                    {/* Drawing overlay fills exactly the same area */}
+                    <View
+                      style={styles.canvasContainer}
+                      pointerEvents="box-none"
+                    >
+                      <DrawingCanvas
+                        index={pageIndex}
+                        savedPath={savedPath}
+                        ref={(r) => refSetters.current[pageIndex](r)}
+                      />
+                    </View>
+                  </Animated.View>
                 </View>
-              </View>
 
-              <View style={styles.pageLabelCompact} />
-            </View>
-          );
-        })}
-      </ScrollView>
+                <View style={styles.pageLabelCompact} />
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <Animated.View
         style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]}
@@ -804,14 +891,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden', // important: clip zoom so next page doesn't overlap
   },
-  pageImage: { width: SCREEN_W, height: PAGE_HEIGHT },
+  zoomGroup: {
+    width: '100%',
+    height: '100%',
+  },
+  pageImage: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: '100%',
+    height: '100%',
+  },
   canvasContainer: {
     position: 'absolute',
     left: 0,
     top: 0,
-    width: SCREEN_W,
-    height: PAGE_HEIGHT,
+    width: '100%',
+    height: '100%',
   },
   canvasOverlay: {
     width: '100%',
