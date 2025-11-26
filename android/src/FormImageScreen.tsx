@@ -235,11 +235,11 @@ export function FormImageScreen() {
 
         <View style={styles.cardFooter}>
           <Text style={styles.cardTitle}>Page {idx + 1}</Text>
-          {isSaved ? (
+          {/* {isSaved ? (
             <View style={styles.savedBadge}>
               <Text style={styles.savedBadgeText}>Saved</Text>
             </View>
-          ) : null}
+          ) : null} */}
         </View>
       </TouchableOpacity>
     );
