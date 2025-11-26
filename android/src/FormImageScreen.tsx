@@ -80,12 +80,16 @@ export function FormImageScreen() {
   );
   const [checkingSaved, setCheckingSaved] = useState(false);
 
+  // 🔁 token used only to force React to remount overlay <Image> when data refreshes
+  const [reloadToken, setReloadToken] = useState(0);
+
   // Load saved bitmap paths from AsyncStorage (written by editor)
   const checkSavedPages = useCallback(async () => {
     if (!AsyncStorage) {
       setPageMeta(
         LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
       );
+      setReloadToken((t) => t + 1);
       return;
     }
 
@@ -96,6 +100,7 @@ export function FormImageScreen() {
         setPageMeta(
           LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
         );
+        setReloadToken((t) => t + 1);
         setCheckingSaved(false);
         return;
       }
@@ -115,25 +120,29 @@ export function FormImageScreen() {
           LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
         );
       }
+
+      // bump token so overlay Image gets a new key and reloads from disk
+      setReloadToken((t) => t + 1);
     } catch (e) {
       console.warn('[FormImageScreen] error reading saved pages:', e);
       setPageMeta(
         LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
       );
+      setReloadToken((t) => t + 1);
     } finally {
       setCheckingSaved(false);
     }
   }, [perFormStorageKey]);
 
   // When screen comes into focus (including after going back from editor),
-  // refresh immediately AND once more after a short delay, so we catch the
-  // latest AsyncStorage writes.
+  // refresh immediately AND once more after a short delay, so we catch
+  // the latest AsyncStorage writes.
   useFocusEffect(
     React.useCallback(() => {
       checkSavedPages();
       const timer = setTimeout(() => {
         checkSavedPages();
-      }, 500); // slight delay to ensure writes are flushed
+      }, 500);
       return () => clearTimeout(timer);
     }, [checkSavedPages])
   );
@@ -153,6 +162,8 @@ export function FormImageScreen() {
       storageKey: perFormStorageKey,
       uiStorageKey: undefined,
       pageIndex,
+      // so editor knows where to return if needed
+      returnScreen: 'FormImageScreen',
     });
   };
 
@@ -163,6 +174,7 @@ export function FormImageScreen() {
       storageKey: perFormStorageKey,
       uiStorageKey: undefined,
       formName,
+      returnScreen: 'FormImageScreen',
     });
   };
 
@@ -170,23 +182,30 @@ export function FormImageScreen() {
   const ThumbCard = ({
     idx,
     source,
+    reloadToken,
   }: {
     idx: number;
     source: any;
+    reloadToken: number;
   }) => {
     const meta = pageMeta[idx];
     const savedPath = meta?.bitmapPath || null;
     const isSaved = !!savedPath && savedPath.length > 0;
 
     // Prepare URI for overlay PNG if it exists
-    const overlaySource =
-      isSaved && savedPath
-        ? {
-            uri: savedPath.startsWith('file://')
-              ? savedPath
-              : `file://${savedPath}`,
-          }
-        : null;
+    let overlaySource: any = null;
+    if (isSaved && savedPath) {
+      const baseUri = savedPath.startsWith('file://')
+        ? savedPath
+        : `file://${savedPath}`;
+
+      // IMPORTANT: add reloadToken as query param to break cache
+      const stampedUri = `${baseUri}?t=${reloadToken}`;
+
+      overlaySource = {
+        uri: stampedUri,
+      };
+    }
 
     return (
       <TouchableOpacity
@@ -206,6 +225,7 @@ export function FormImageScreen() {
           {/* Overlay strokes PNG saved by editor */}
           {overlaySource && (
             <Image
+              key={`overlay-${idx}-${reloadToken}`}
               source={overlaySource}
               style={styles.cardOverlayImage}
               resizeMode="contain"
@@ -231,16 +251,6 @@ export function FormImageScreen() {
         <Text style={styles.title}>
           {(formName as string) || 'Form Images'}
         </Text>
-        {/* Optional manual refresh:
-        <TouchableOpacity
-          style={styles.refreshBtnSmall}
-          onPress={checkSavedPages}
-        >
-          <Text style={styles.refreshBtnText}>
-            {checkingSaved ? '...' : 'Refresh'}
-          </Text>
-        </TouchableOpacity>
-        */}
       </View>
 
       <ScrollView
@@ -248,7 +258,12 @@ export function FormImageScreen() {
         showsVerticalScrollIndicator={true}
       >
         {LOCAL_IMAGE_LIST.map((srcItem, i) => (
-          <ThumbCard key={`card-${i}`} idx={i} source={srcItem} />
+          <ThumbCard
+            key={`card-${i}`}
+            idx={i}
+            source={srcItem}
+            reloadToken={reloadToken}
+          />
         ))}
         <View style={{ height: 92 }} />
       </ScrollView>
@@ -282,13 +297,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  refreshBtnSmall: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 8,
-  },
-  refreshBtnText: { color: '#fff', fontWeight: '700' },
 
   listContainer: { padding: 12, alignItems: 'center' },
 

@@ -82,7 +82,7 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
     }
 
     /**
-     * NEW: path to previously saved PNG for this page.
+     * Path to previously saved PNG for this page.
      * When present, we load the file and set it as the drawing layer.
      */
     @ReactProp(name = "savedPath")
@@ -104,6 +104,7 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
             }
         } catch (Exception e) {
             e.printStackTrace();
+            view.setDrawingBitmap(null);
         }
     }
 
@@ -145,7 +146,12 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
                 if (args != null && args.size() > 0) {
                     String path = args.getString(0);
                     if (path != null && !path.trim().isEmpty()) {
-                        root.saveToFile(new File(path));
+                        try {
+                            File file = new File(path);
+                            root.saveToFile(file);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
                 break;

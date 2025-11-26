@@ -14,6 +14,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.io.File;
@@ -157,6 +158,24 @@ public class DrawingView extends View {
         invalidate();
     }
 
+    /**
+     * NEW: Allow manager/JS to directly set the drawing layer bitmap.
+     * Used by the `savedPath` React prop.
+     */
+    public void setDrawingBitmap(@Nullable Bitmap bmp) {
+        if (bmp == null) {
+            if (drawingBitmap != null) {
+                drawingBitmap.eraseColor(Color.TRANSPARENT);
+            }
+            strokes.clear();
+            redoStrokes.clear();
+            invalidate();
+            return;
+        }
+
+        setSavedDrawingBitmap(bmp);
+    }
+
     // ----------------------------------------------------
     // Drawing
     // ----------------------------------------------------
@@ -165,10 +184,6 @@ public class DrawingView extends View {
         super.onDraw(canvas);
 
         if (canvas == null) return;
-
-        // ❌ NO canvas.scale(...) here any more (no zoom)
-        // canvas.save();
-        // canvas.scale(scaleFactor, scaleFactor);
 
         // Background image (if used)
         if (bgBitmap != null) {
@@ -184,8 +199,6 @@ public class DrawingView extends View {
         if (currentPath != null) {
             canvas.drawPath(currentPath, paint);
         }
-
-        // canvas.restore();
     }
 
     // ----------------------------------------------------
@@ -206,7 +219,6 @@ public class DrawingView extends View {
         }
 
         int action = event.getActionMasked();
-        // ❌ no divide by scaleFactor – just use raw view coords
         float x = event.getX();
         float y = event.getY();
 
@@ -381,7 +393,56 @@ public class DrawingView extends View {
         invalidate();
     }
 
-    // saving helper if you use it with manager
+    /**
+     * NEW: Save the current drawing layer to a specific File.
+     * This is called by DrawingViewManager's "saveToFile" command,
+     * which matches the JS path (e.g. /data/data/com.doctor/files/drawing_page_1.png).
+     */
+    public boolean saveToFile(@NonNull File outFile) {
+        try {
+            if (drawingBitmap == null) {
+                Log.w(TAG, "saveToFile: drawingBitmap is null");
+                return false;
+            }
+
+            int w = drawingBitmap.getWidth();
+            int h = drawingBitmap.getHeight();
+            if (w <= 0 || h <= 0) {
+                Log.w(TAG, "saveToFile: invalid bitmap size");
+                return false;
+            }
+
+            Bitmap output = Bitmap.createBitmap(
+                    w,
+                    h,
+                    Bitmap.Config.ARGB_8888
+            );
+            Canvas canvas = new Canvas(output);
+            // start fully transparent, then draw strokes
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            canvas.drawBitmap(drawingBitmap, 0, 0, null);
+
+            File parent = outFile.getParentFile();
+            if (parent != null && !parent.exists()) {
+                // Ensure dir exists
+                //noinspection ResultOfMethodCallIgnored
+                parent.mkdirs();
+            }
+
+            FileOutputStream fos = new FileOutputStream(outFile);
+            output.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            fos.flush();
+            fos.close();
+
+            Log.d(TAG, "saveToFile: saved to " + outFile.getAbsolutePath());
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "saveToFile error", e);
+            return false;
+        }
+    }
+
+    // Existing helper if you still use pageId-based saving somewhere
     public boolean saveCurrentToDisk() {
         if (pageId == null || pageId.trim().isEmpty()) {
             Log.w(TAG, "saveCurrentToDisk: pageId is null/empty");
