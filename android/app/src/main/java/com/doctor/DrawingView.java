@@ -109,8 +109,24 @@ public class DrawingView extends View {
         Log.d(TAG, "onSizeChanged: w=" + w + " h=" + h);
     }
 
-    public void setBackgroundBitmap(Bitmap bmp) {
+    public void setBackgroundBitmap(@Nullable Bitmap bmp) {
         bgBitmap = bmp;
+        invalidate();
+    }
+
+    /**
+     * NEW: set the drawing layer from a saved bitmap (PNG loaded from file).
+     * This is used when we reopen the editor and want previous strokes back.
+     */
+    public void setDrawingBitmap(@Nullable Bitmap bmp) {
+        if (bmp == null) {
+            drawingBitmap = null;
+            drawingCanvas = null;
+        } else {
+            // Ensure mutable bitmap
+            drawingBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
+            drawingCanvas = new Canvas(drawingBitmap);
+        }
         invalidate();
     }
 
@@ -360,6 +376,12 @@ public class DrawingView extends View {
             int w = getWidth();
             int h = getHeight();
             if (w <= 0 || h <= 0) return false;
+
+            // Ensure folder exists
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
 
             Bitmap output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(output);

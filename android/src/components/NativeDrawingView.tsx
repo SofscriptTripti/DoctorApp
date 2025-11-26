@@ -19,6 +19,8 @@ type NativeProps = {
   strokeColor?: string | number;
   strokeWidth?: number;
   eraseMode?: boolean;
+  // NEW: path to previously saved PNG so native can reload it
+  savedPath?: string | null;
 };
 
 const COMPONENT_NAME = 'RNDrawingView';
@@ -77,7 +79,6 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
 
         setColor: (hex: string) => {
           if (!nativeRef.current) return;
-          // RN will convert hex string to native color int via @ReactProp(customType="Color")
           nativeRef.current.setNativeProps({
             strokeColor: hex,
           });
@@ -97,11 +98,6 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
           });
         },
 
-        /**
-         * Fire-and-forget save.
-         * Native side has no callback/event, so we just assume success
-         * if the command dispatch does not throw.
-         */
         saveToFile: (path: string) => {
           return new Promise<boolean>((resolve) => {
             try {
@@ -112,7 +108,6 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
               return;
             }
 
-            // Give native side a short time to write the file
             setTimeout(() => {
               resolve(true);
             }, 400);

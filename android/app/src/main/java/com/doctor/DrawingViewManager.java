@@ -81,6 +81,32 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
         }
     }
 
+    /**
+     * NEW: path to previously saved PNG for this page.
+     * When present, we load the file and set it as the drawing layer.
+     */
+    @ReactProp(name = "savedPath")
+    public void setSavedPath(DrawingView view, @Nullable String path) {
+        if (path == null || path.trim().isEmpty()) {
+            view.setDrawingBitmap(null);
+            return;
+        }
+
+        try {
+            File file = new File(path);
+            if (file.exists()) {
+                view.setDrawingBitmap(
+                    BitmapFactory.decodeFile(file.getAbsolutePath())
+                );
+            } else {
+                // If file not found, clear drawing so we don't show stale content
+                view.setDrawingBitmap(null);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     // ----------------------------------------------------
     // Commands from JS (undo/redo/clear/saveToFile)
     // ----------------------------------------------------

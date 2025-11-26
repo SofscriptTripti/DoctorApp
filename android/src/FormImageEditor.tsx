@@ -1,7 +1,13 @@
 // src/FormImageEditor.pages.tsx
-// Updated: stable refs for NativeDrawingView, no touch interception by wrappers.
+// Updated: stable refs, savedPath propagation, custom saving overlay UI instead of Alert.
 
-import React, { useRef, useState, useEffect, useMemo, forwardRef } from 'react';
+import React, {
+  useRef,
+  useState,
+  useEffect,
+  useMemo,
+  forwardRef,
+} from 'react';
 import {
   View,
   Text,
@@ -16,8 +22,7 @@ import {
   PanResponder,
   GestureResponderEvent,
   PanResponderGestureState,
-  Alert,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -58,25 +63,37 @@ const IMAGES = [
 
 type SavedMeta = { bitmapPath?: string | null };
 
+type DrawingCanvasProps = {
+  index: number;
+  savedPath?: string | null;
+};
+
 // --- stable memoized drawing canvas that forwards ref reliably
 const DrawingCanvas = React.memo(
   forwardRef(function DrawingCanvasInternal(
-    { index }: { index: number },
+    { index, savedPath }: DrawingCanvasProps,
     forwardedRef: React.Ref<DrawingRef | null>
   ) {
     useEffect(() => {
-      console.log(`[DrawingCanvas] mount index=${index}`);
-      return () => console.log(`[DrawingCanvas] unmount index=${index}`);
-    }, [index]);
+      console.log(
+        `[DrawingCanvas] mount index=${index} savedPath=${savedPath ?? 'null'}`
+      );
+      return () =>
+        console.log(
+          `[DrawingCanvas] unmount index=${index} savedPath=${savedPath ?? 'null'}`
+        );
+    }, [index, savedPath]);
 
     return (
       <NativeDrawingView
         ref={forwardedRef}
         style={styles.canvasOverlay}
+        savedPath={savedPath ?? undefined}
       />
     );
   }),
-  (prev, next) => prev.index === next.index
+  (prev, next) =>
+    prev.index === next.index && prev.savedPath === next.savedPath
 );
 
 // ----- main component
@@ -89,11 +106,18 @@ export default function FormImageEditor() {
   const uiKeyParam = route.params?.uiStorageKey as string | undefined;
   const STORAGE_KEY = storageKeyParam ?? DEFAULT_STORAGE_KEY;
   const STORAGE_UI_KEY = uiKeyParam ?? DEFAULT_UI_KEY;
+  const returnScreen = route.params?.returnScreen as string | undefined;
 
   const [color, setColor] = useState('#0EA5A4');
   const [strokeWidth, setStrokeWidth] = useState(4);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [colorPanelOpen, setColorPanelOpen] = useState(false);
+
+  // save status for overlay UI
+  const [saveStatus, setSaveStatus] = useState<
+    'idle' | 'saving' | 'success' | 'error'
+  >('idle');
+  const lastPayloadRef = useRef<any | null>(null);
 
   const colorRef = useRef(color);
   const widthRef = useRef(strokeWidth);
@@ -116,7 +140,7 @@ export default function FormImageEditor() {
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
     useMemo(
       () =>
-        IMAGES.map((_, i) => (r: DrawingRef | null) => {
+        IMAGES.map((_img, i) => (r: DrawingRef | null) => {
           canvasRefs.current[i] = r;
           console.log(
             `[FormImageEditor] native ref set for page ${i}: ${
@@ -216,7 +240,7 @@ export default function FormImageEditor() {
     </View>
   );
 
-  // RIGHT handle code unchanged (keeps scrolling via handle)
+  // RIGHT handle code (keeps scrolling via handle)
   const RIGHT_HANDLE_WIDTH = 36;
   const RIGHT_HANDLE_HEIGHT = 100;
   const rightTopAnim = useRef(
@@ -230,17 +254,23 @@ export default function FormImageEditor() {
     CONTENT_BOTTOM_PADDING;
   const maxScrollY = Math.max(0, totalContentHeight - SCREEN_H);
 
+  // *** NEW: keep handle only in content area (below header) ***
+  // Header (top bar) + slider row ≈ topPadding + some fixed height.
+  // 130 is a safe offset that keeps the blue handle starting where pages are.
+  const MIN_HANDLE_TOP =
+    (insets.top ?? 0) + 130; // adjust this value if you ever change header height
+  const MAX_HANDLE_TOP =
+    SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
+
   const clampRightTop = (val: number) => {
-    const minTop = (insets.top ?? 0) + 8;
-    const maxTop =
-      SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
+    const minTop = MIN_HANDLE_TOP;
+    const maxTop = MAX_HANDLE_TOP;
     return Math.max(minTop, Math.min(maxTop, val));
   };
 
   const rightTopToScroll = (top: number) => {
-    const minTop = (insets.top ?? 0) + 8;
-    const maxTop =
-      SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
+    const minTop = MIN_HANDLE_TOP;
+    const maxTop = MAX_HANDLE_TOP;
     const tRange = Math.max(1, maxTop - minTop);
     const sRange = Math.max(1, maxScrollY);
     const normalized = Math.max(minTop, Math.min(maxTop, top));
@@ -249,9 +279,8 @@ export default function FormImageEditor() {
   };
 
   const scrollToRightTop = (sY: number) => {
-    const minTop = (insets.top ?? 0) + 8;
-    const maxTop =
-      SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
+    const minTop = MIN_HANDLE_TOP;
+    const maxTop = MAX_HANDLE_TOP;
     const tRange = Math.max(1, maxTop - minTop);
     const sRange = Math.max(1, maxScrollY);
     const progress = Math.max(0, Math.min(sRange, sY)) / sRange;
@@ -259,7 +288,7 @@ export default function FormImageEditor() {
   };
 
   useEffect(() => {
-    const id = rightTopAnim.addListener(({ value }) => {});
+    const id = rightTopAnim.addListener(() => {});
     return () => {
       try {
         rightTopAnim.removeListener(id);
@@ -277,23 +306,16 @@ export default function FormImageEditor() {
         const x = evt.nativeEvent.pageX ?? 0;
         return x >= SCREEN_W - RIGHT_HANDLE_WIDTH - 8;
       },
-      onPanResponderGrant: (
-        evt: GestureResponderEvent,
-        _gs: PanResponderGestureState
-      ) => {
+      onPanResponderGrant: () => {
         try {
           rightStartTopRef.current = (rightTopAnim as any).__getValue
             ? (rightTopAnim as any).__getValue()
             : (SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2;
         } catch (e) {
-          rightStartTopRef.current =
-            (SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2;
+          rightStartTopRef.current = (SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2;
         }
       },
-      onPanResponderMove: (
-        evt: GestureResponderEvent,
-        gs: PanResponderGestureState
-      ) => {
+      onPanResponderMove: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
         const newTop = clampRightTop(rightStartTopRef.current + gs.dy);
         rightTopAnim.setValue(newTop);
         const newScroll = rightTopToScroll(newTop);
@@ -310,10 +332,7 @@ export default function FormImageEditor() {
           } catch (e) {}
         }
       },
-      onPanResponderRelease: (
-        _evt: GestureResponderEvent,
-        gs: PanResponderGestureState
-      ) => {
+      onPanResponderRelease: (_evt, gs) => {
         const finalTop = clampRightTop(
           rightStartTopRef.current + gs.dy
         );
@@ -347,7 +366,7 @@ export default function FormImageEditor() {
     }
   };
 
-  // load UI + saved meta
+  // load UI + saved meta (INCLUDING bitmapPath for each page)
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -357,8 +376,7 @@ export default function FormImageEditor() {
             const rawUI = await AsyncStorage.getItem(STORAGE_UI_KEY);
             if (rawUI) {
               const ui = JSON.parse(rawUI);
-              if (ui && typeof ui.color === 'string')
-                setColor(ui.color);
+              if (ui && typeof ui.color === 'string') setColor(ui.color);
               if (ui && typeof ui.strokeWidth === 'number')
                 setStrokeWidth(ui.strokeWidth);
             }
@@ -366,10 +384,7 @@ export default function FormImageEditor() {
             const raw = await AsyncStorage.getItem(STORAGE_KEY);
             if (raw) {
               const parsed = JSON.parse(raw);
-              if (
-                Array.isArray(parsed) &&
-                parsed.length === IMAGES.length
-              ) {
+              if (Array.isArray(parsed) && parsed.length === IMAGES.length) {
                 if (mounted)
                   setSavedMeta(
                     parsed.map((p: any) => ({
@@ -430,7 +445,13 @@ export default function FormImageEditor() {
   }, [tool]);
 
   const APP_FILES_DIR = '/data/data/com.doctor/files';
+
   const onSaveAll = async () => {
+    if (saveStatus === 'saving') return; // avoid double taps
+
+    // show overlay immediately
+    setSaveStatus('saving');
+
     const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
     for (let i = 0; i < IMAGES.length; i++) {
       const c = canvasRefs.current[i];
@@ -443,8 +464,7 @@ export default function FormImageEditor() {
       try {
         const ok = await c.saveToFile(path);
         if (ok) allMeta[i] = { bitmapPath: path };
-        else
-          allMeta[i] = savedMeta[i] || { bitmapPath: null };
+        else allMeta[i] = savedMeta[i] || { bitmapPath: null };
       } catch (e) {
         console.warn('saveToFile failed for page', i, e);
         allMeta[i] = savedMeta[i] || { bitmapPath: null };
@@ -458,53 +478,55 @@ export default function FormImageEditor() {
           STORAGE_UI_KEY,
           JSON.stringify(uiPayload)
         );
-        await AsyncStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(allMeta)
-        );
-      } else console.warn('AsyncStorage not available — session-only.');
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(allMeta));
+      } else {
+        console.warn('AsyncStorage not available — session-only.');
+      }
+
       setSavedMeta(allMeta);
 
-      const returnScreen =
-        (route.params &&
-          (route.params.returnScreen as string | undefined)) ||
-        undefined;
       const payload = {
         savedStrokes: allMeta,
         editorUI: uiPayload,
         editorSavedAt: Date.now(),
       };
-      try {
-        if (returnScreen && typeof navigation.navigate === 'function')
-          navigation.navigate(returnScreen as never, payload as never);
-        else if (
-          (navigation as any).canGoBack &&
-          (navigation as any).canGoBack()
-        )
-          navigation.navigate(
-            {
-              name: route.name as never,
-              params: payload as never,
-              merge: true,
-            } as never
-          );
-      } catch (e) {
-        console.warn('onSaveAll: navigation notify failed', e);
-      }
+      lastPayloadRef.current = payload;
 
-      Alert.alert(
-        'Saved',
-        'Changes saved successfully.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
-        { cancelable: false }
-      );
+      // done!
+      setSaveStatus('success');
     } catch (err) {
       console.error('Failed to save editor state:', err);
-      Alert.alert(
-        'Save failed',
-        'Could not save changes. Please try again.'
-      );
+      setSaveStatus('error');
     }
+  };
+
+  const handleSaveOk = () => {
+    const payload = lastPayloadRef.current;
+
+    setSaveStatus('idle');
+
+    try {
+      if (returnScreen && typeof navigation.navigate === 'function') {
+        navigation.navigate(returnScreen as never, payload as never);
+      } else if (
+        (navigation as any).canGoBack &&
+        (navigation as any).canGoBack()
+      ) {
+        navigation.goBack();
+      }
+    } catch (e) {
+      console.warn('handleSaveOk navigation failed', e);
+      if (
+        (navigation as any).canGoBack &&
+        (navigation as any).canGoBack()
+      ) {
+        navigation.goBack();
+      }
+    }
+  };
+
+  const handleSaveErrorOk = () => {
+    setSaveStatus('idle');
   };
 
   return (
@@ -513,6 +535,7 @@ export default function FormImageEditor() {
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.iconBtn}
+          disabled={saveStatus === 'saving'}
         >
           <Ionicons name="arrow-back" size={20} color="#fff" />
         </TouchableOpacity>
@@ -520,24 +543,23 @@ export default function FormImageEditor() {
         <TouchableOpacity
           onPress={performUndo}
           style={styles.iconBtn}
+          disabled={saveStatus === 'saving'}
         >
           <Ionicons name="arrow-undo" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={performRedo}
           style={styles.iconBtn}
+          disabled={saveStatus === 'saving'}
         >
           <Ionicons name="arrow-redo" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={performClear}
           style={styles.iconBtn}
+          disabled={saveStatus === 'saving'}
         >
-          <MaterialCommunityIcons
-            name="broom"
-            size={20}
-            color="#fff"
-          />
+          <MaterialCommunityIcons name="broom" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={activatePen}
@@ -545,12 +567,9 @@ export default function FormImageEditor() {
             styles.iconBtn,
             tool === 'pen' ? styles.iconActive : undefined,
           ]}
+          disabled={saveStatus === 'saving'}
         >
-          <MaterialCommunityIcons
-            name="pencil"
-            size={20}
-            color="#fff"
-          />
+          <MaterialCommunityIcons name="pencil" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={activateEraser}
@@ -558,16 +577,14 @@ export default function FormImageEditor() {
             styles.iconBtn,
             tool === 'eraser' ? styles.iconActive : undefined,
           ]}
+          disabled={saveStatus === 'saving'}
         >
-          <MaterialCommunityIcons
-            name="eraser"
-            size={20}
-            color="#fff"
-          />
+          <MaterialCommunityIcons name="eraser" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setColorPanelOpen((v) => !v)}
           style={[styles.iconBtn, { marginLeft: 6 }]}
+          disabled={saveStatus === 'saving'}
         >
           <View
             style={{
@@ -583,6 +600,7 @@ export default function FormImageEditor() {
         <TouchableOpacity
           onPress={onSaveAll}
           style={[styles.iconBtn, { marginLeft: 8 }]}
+          disabled={saveStatus === 'saving'}
         >
           <Ionicons name="checkmark" size={20} color="#fff" />
         </TouchableOpacity>
@@ -602,6 +620,7 @@ export default function FormImageEditor() {
             setStrokeWidth(Math.round(v));
             widthRef.current = Math.round(v);
           }}
+          disabled={saveStatus === 'saving'}
         />
       </View>
 
@@ -610,12 +629,10 @@ export default function FormImageEditor() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           alignItems: 'center',
-          paddingTop: CONTENT_TOP_PADDING,
-          paddingBottom: CONTENT_BOTTOM_PADDING,
+          // paddingTop: CONTENT_TOP_PADDING,
+          // paddingBottom: CONTENT_BOTTOM_PADDING,
         }}
-        onScroll={(
-          e: NativeSyntheticEvent<NativeScrollEvent>
-        ) => {
+        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
           scrollY.current = e.nativeEvent.contentOffset.y;
           syncRightHandleToScroll(scrollY.current);
         }}
@@ -627,33 +644,34 @@ export default function FormImageEditor() {
         showsVerticalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
       >
-        {IMAGES.map((src, pageIndex) => (
-          <View
-            key={`page-${pageIndex}`}
-            style={styles.pageWrap}
-          >
-            <View style={styles.pageInner}>
-              <Image
-                source={src}
-                style={[
-                  styles.pageImage,
-                  { width: SCREEN_W, height: PAGE_HEIGHT },
-                ]}
-                resizeMode="contain"
-              />
-
-              {/* Absolute overlay for drawing */}
-              <View style={styles.canvasContainer}>
-                <DrawingCanvas
-                  index={pageIndex}
-                  ref={(r) => refSetters.current[pageIndex](r)}
+        {IMAGES.map((src, pageIndex) => {
+          const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
+          return (
+            <View key={`page-${pageIndex}`} style={styles.pageWrap}>
+              <View style={styles.pageInner}>
+                <Image
+                  source={src}
+                  style={[
+                    styles.pageImage,
+                    { width: SCREEN_W, height: PAGE_HEIGHT },
+                  ]}
+                  resizeMode="contain"
                 />
-              </View>
-            </View>
 
-            <View style={styles.pageLabelCompact} />
-          </View>
-        ))}
+                {/* Absolute overlay for drawing */}
+                <View style={styles.canvasContainer}>
+                  <DrawingCanvas
+                    index={pageIndex}
+                    savedPath={savedPath}
+                    ref={(r) => refSetters.current[pageIndex](r)}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.pageLabelCompact} />
+            </View>
+          );
+        })}
       </ScrollView>
 
       <Animated.View
@@ -682,6 +700,7 @@ export default function FormImageEditor() {
                     ? styles.gridSwatchActive
                     : undefined,
                 ]}
+                disabled={saveStatus === 'saving'}
               >
                 <View
                   style={[styles.gridSwatch, { backgroundColor: c }]}
@@ -691,6 +710,65 @@ export default function FormImageEditor() {
           </View>
         </Animated.View>
       )}
+
+      {/* Saving / Saved overlay */}
+      {saveStatus !== 'idle' && (
+        <View style={styles.saveOverlay}>
+          <View style={styles.saveDialog}>
+            {saveStatus === 'saving' && (
+              <>
+                <ActivityIndicator size="large" />
+                <Text style={styles.saveTitle}>Saving...</Text>
+                <Text style={styles.saveMessage}>
+                  Please wait while we save your changes.
+                </Text>
+              </>
+            )}
+
+            {saveStatus === 'success' && (
+              <>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={52}
+                  color="#16a34a"
+                  style={{ marginBottom: 8 }}
+                />
+                <Text style={styles.saveTitle}>Changes saved</Text>
+                <Text style={styles.saveMessage}>
+                  Your changes have been saved successfully.
+                </Text>
+                <TouchableOpacity
+                  style={styles.saveOkButton}
+                  onPress={handleSaveOk}
+                >
+                  <Text style={styles.saveOkButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {saveStatus === 'error' && (
+              <>
+                <Ionicons
+                  name="alert-circle"
+                  size={52}
+                  color="#dc2626"
+                  style={{ marginBottom: 8 }}
+                />
+                <Text style={styles.saveTitle}>Save failed</Text>
+                <Text style={styles.saveMessage}>
+                  Could not save changes. Please try again.
+                </Text>
+                <TouchableOpacity
+                  style={styles.saveOkButton}
+                  onPress={handleSaveErrorOk}
+                >
+                  <Text style={styles.saveOkButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -698,7 +776,7 @@ export default function FormImageEditor() {
 export const FormImageScreen = FormImageEditor;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1, backgroundColor: '#0EA5A4' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -713,7 +791,7 @@ const styles = StyleSheet.create({
     padding: 8,
     borderBottomWidth: 1,
     borderColor: '#eee',
-    backgroundColor: '#fff',
+    backgroundColor: '#eee',
   },
   pageWrap: {
     width: SCREEN_W,
@@ -805,5 +883,58 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+
+  // Saving overlay styles
+  saveOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+  },
+  saveDialog: {
+    width: SCREEN_W * 0.78,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    alignItems: 'center',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  saveTitle: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  saveMessage: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#4b5563',
+    textAlign: 'center',
+  },
+  saveOkButton: {
+    marginTop: 20,
+    paddingHorizontal: 32,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#0EA5A4',
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  saveOkButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
