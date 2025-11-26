@@ -1,18 +1,30 @@
 // src/components/NativeDrawingView.tsx
-import React, { forwardRef, useImperativeHandle, useRef } from 'react';
+import React, {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+} from 'react';
 import {
   requireNativeComponent,
   UIManager,
   findNodeHandle,
   ViewStyle,
+  StyleProp,
+  Platform,
 } from 'react-native';
 
-type Props = {
-  style?: ViewStyle;
+type NativeProps = {
+  style?: StyleProp<ViewStyle>;
   backgroundBase64?: string;
+  strokeColor?: string | number;
+  strokeWidth?: number;
+  eraseMode?: boolean;
 };
 
-const RNDrawingView = requireNativeComponent<Props>('RNDrawingView') as any;
+const COMPONENT_NAME = 'RNDrawingView';
+
+const RNDrawingView =
+  requireNativeComponent<NativeProps>(COMPONENT_NAME);
 
 export type DrawingRef = {
   undo: () => void;
@@ -24,60 +36,94 @@ export type DrawingRef = {
   saveToFile: (path: string) => Promise<boolean>;
 };
 
-const NativeDrawingView = forwardRef<DrawingRef, Props>((props, ref) => {
-  const nativeRef = useRef<any>(null);
+const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
+  (props, ref) => {
+    const nativeRef = useRef<any>(null);
 
-  const sendCommand = (name: string, args: any[] = []) => {
-    const node = findNodeHandle(nativeRef.current);
-    if (!node) return;
-    const manager = UIManager.getViewManagerConfig('RNDrawingView');
-    const commands = manager?.Commands || {};
-    const commandId = commands[name];
-    if (typeof commandId === 'number') {
-      UIManager.dispatchViewManagerCommand(node, commandId, args);
-    } else {
-      UIManager.dispatchViewManagerCommand(node, name, args);
-    }
-  };
+    const sendCommand = (name: string, args: any[] = []) => {
+      if (Platform.OS !== 'android') {
+        return;
+      }
+      const node = findNodeHandle(nativeRef.current);
+      if (!node) return;
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      undo: () => sendCommand('undo'),
-      redo: () => sendCommand('redo'),
-      clear: () => sendCommand('clear'),
+      const config = UIManager.getViewManagerConfig(
+        COMPONENT_NAME
+      );
+      if (!config) return;
 
-      setColor: (hex: string) => {
-        if (!nativeRef.current) return;
-        nativeRef.current.setNativeProps({ strokeColor: hex });
-      },
+      const commands = config.Commands || {};
+      const commandId = commands[name];
 
-      setBrushSize: (size: number) => {
-        if (!nativeRef.current) return;
-        nativeRef.current.setNativeProps({ strokeWidth: size });
-      },
+      try {
+        if (typeof commandId === 'number') {
+          UIManager.dispatchViewManagerCommand(node, commandId, args);
+        } else {
+          // fallback for older RN where string is allowed
+          // @ts-ignore
+          UIManager.dispatchViewManagerCommand(node, name, args);
+        }
+      } catch (e) {
+        console.warn('RNDrawingView command error', name, e);
+      }
+    };
 
-      setEraser: (enable: boolean) => {
-        if (!nativeRef.current) return;
-        nativeRef.current.setNativeProps({ eraseMode: enable });
-      },
+    useImperativeHandle(
+      ref,
+      () => ({
+        undo: () => sendCommand('undo'),
+        redo: () => sendCommand('redo'),
+        clear: () => sendCommand('clear'),
 
-      saveToFile: (path: string) => {
-        return new Promise<boolean>((resolve) => {
-          try {
-            sendCommand('saveToFile', [path]);
-          } catch (e) {
-            resolve(false);
-            return;
-          }
-          setTimeout(() => resolve(true), 400);
-        });
-      },
-    }),
-    []
-  );
+        setColor: (hex: string) => {
+          if (!nativeRef.current) return;
+          // RN will convert hex string to native color int via @ReactProp(customType="Color")
+          nativeRef.current.setNativeProps({
+            strokeColor: hex,
+          });
+        },
 
-  return <RNDrawingView ref={nativeRef} {...props} />;
-});
+        setBrushSize: (size: number) => {
+          if (!nativeRef.current) return;
+          nativeRef.current.setNativeProps({
+            strokeWidth: size,
+          });
+        },
+
+        setEraser: (enable: boolean) => {
+          if (!nativeRef.current) return;
+          nativeRef.current.setNativeProps({
+            eraseMode: enable,
+          });
+        },
+
+        /**
+         * Fire-and-forget save.
+         * Native side has no callback/event, so we just assume success
+         * if the command dispatch does not throw.
+         */
+        saveToFile: (path: string) => {
+          return new Promise<boolean>((resolve) => {
+            try {
+              sendCommand('saveToFile', [path]);
+            } catch (e) {
+              console.warn('saveToFile command failed', e);
+              resolve(false);
+              return;
+            }
+
+            // Give native side a short time to write the file
+            setTimeout(() => {
+              resolve(true);
+            }, 400);
+          });
+        },
+      }),
+      []
+    );
+
+    return <RNDrawingView ref={nativeRef} {...props} />;
+  }
+);
 
 export default NativeDrawingView;

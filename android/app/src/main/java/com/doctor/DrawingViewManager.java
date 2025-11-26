@@ -2,6 +2,7 @@ package com.doctor;
 
 import android.graphics.BitmapFactory;
 import android.util.Base64;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -11,11 +12,14 @@ import com.facebook.react.uimanager.SimpleViewManager;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.annotations.ReactProp;
 
+import java.io.File;
 import java.util.Map;
 
 public class DrawingViewManager extends SimpleViewManager<DrawingView> {
+
     public static final String REACT_CLASS = "RNDrawingView";
 
+    // Command IDs (must match names used in JS getViewManagerConfig().Commands)
     public static final int CMD_UNDO = 1;
     public static final int CMD_REDO = 2;
     public static final int CMD_CLEAR = 3;
@@ -30,40 +34,56 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
     @NonNull
     @Override
     protected DrawingView createViewInstance(@NonNull ThemedReactContext reactContext) {
+        // We use the AttributeSet constructor, passing null here is fine
         return new DrawingView(reactContext, null);
     }
 
+    // ----------------------------------------------------
+    // Props from JS
+    // ----------------------------------------------------
+
     @ReactProp(name = "strokeColor", customType = "Color")
-    public void setColor(DrawingView view, Integer color) {
-        if (color != null) view.setColor(color);
+    public void setColor(DrawingView view, @Nullable Integer color) {
+        if (color != null) {
+            view.setColor(color);
+        }
     }
 
     @ReactProp(name = "strokeWidth")
-    public void setStrokeWidth(DrawingView view, float w) {
-        view.setBrushSize(w);
+    public void setStrokeWidth(DrawingView view, float width) {
+        view.setBrushSize(width);
     }
 
     @ReactProp(name = "eraseMode")
-    public void setErase(DrawingView view, boolean v) {
-        view.setEraser(v);
+    public void setEraseMode(DrawingView view, boolean enabled) {
+        view.setEraser(enabled);
     }
 
     @ReactProp(name = "backgroundBase64")
-    public void setBackgroundBase64(DrawingView view, String base64) {
-        if (base64 == null) {
+    public void setBackgroundBase64(DrawingView view, @Nullable String base64) {
+        if (base64 == null || base64.trim().isEmpty()) {
             view.setBackgroundBitmap(null);
             return;
         }
+
         try {
             String clean = base64;
             int idx = base64.indexOf("base64,");
-            if (idx >= 0) clean = base64.substring(idx + 7);
+            if (idx >= 0) {
+                clean = base64.substring(idx + 7);
+            }
             byte[] decoded = Base64.decode(clean, Base64.DEFAULT);
-            view.setBackgroundBitmap(BitmapFactory.decodeByteArray(decoded, 0, decoded.length));
+            view.setBackgroundBitmap(
+                BitmapFactory.decodeByteArray(decoded, 0, decoded.length)
+            );
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
+    // ----------------------------------------------------
+    // Commands from JS (undo/redo/clear/saveToFile)
+    // ----------------------------------------------------
 
     @Nullable
     @Override
@@ -77,22 +97,35 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
     }
 
     @Override
-    public void receiveCommand(@NonNull DrawingView root, int commandId, @Nullable ReadableArray args) {
+    public void receiveCommand(
+        @NonNull DrawingView root,
+        int commandId,
+        @Nullable ReadableArray args
+    ) {
         switch (commandId) {
             case CMD_UNDO:
                 root.undo();
                 break;
+
             case CMD_REDO:
                 root.redo();
                 break;
+
             case CMD_CLEAR:
                 root.clear();
                 break;
+
             case CMD_SAVE:
                 if (args != null && args.size() > 0) {
                     String path = args.getString(0);
-                    root.saveToFile(new java.io.File(path));
+                    if (path != null && !path.trim().isEmpty()) {
+                        root.saveToFile(new File(path));
+                    }
                 }
+                break;
+
+            default:
+                // no-op
                 break;
         }
     }

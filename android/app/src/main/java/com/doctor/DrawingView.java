@@ -15,48 +15,57 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 
+import androidx.annotation.Nullable;
+
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 
 public class DrawingView extends View {
+
     private static final String TAG = "DrawingView";
 
+    // Background (from RN Image/Base64) and drawing layer
     private Bitmap bgBitmap;
     private Bitmap drawingBitmap;
     private Canvas drawingCanvas;
 
+    // Zoom
     private float scaleFactor = 1f;
     private ScaleGestureDetector scaleDetector;
 
+    // Paint & path
     private Paint paint;
     private Path currentPath;
     private float brushSize = 8f;
+
+    // “real” pen color (default: #0EA5A4)
+    private int currentColor = 0xFF0EA5A4;
     private boolean isEraser = false;
 
-    // ✅ this is the “real” pen color, default sea green (#0EA5A4)
-    private int currentColor = 0xFF0EA5A4;
+    // Strokes history
+    private final ArrayList<Stroke> strokes = new ArrayList<>();
+    private final ArrayList<Stroke> redoStrokes = new ArrayList<>();
 
-    private ArrayList<Stroke> strokes = new ArrayList<>();
-    private ArrayList<Stroke> redoStrokes = new ArrayList<>();
-
-    // pointer details
-    private int activePointerId = -1;
+    // Touch helpers
     private float lastX = 0f, lastY = 0f;
-    private float touchStartX = 0f, touchStartY = 0f;
-
-    // gesture states
     private boolean movedSinceDown = false;
-    private boolean pointerIsStylus = false;
+    private static final float TOUCH_TOLERANCE = 2f;
 
-    // sensitivity
-    private static final float TOUCH_TOLERANCE = 2f; // smoother handwriting
-    private static final float SCROLL_THRESHOLD_DP = 10f;
+    public DrawingView(Context context) {
+        super(context);
+        init(context);
+    }
 
-    public DrawingView(Context ctx, AttributeSet attrs) {
-        super(ctx, attrs);
+    public DrawingView(Context context, @Nullable AttributeSet attrs) {
+        super(context, attrs);
+        init(context);
+    }
 
+    private void init(Context ctx) {
         paint = new Paint();
         paint.setStyle(Paint.Style.STROKE);
-        paint.setColor(currentColor);   // ✅ use sea green as default, not hard-coded blue
+        paint.setColor(currentColor);
         paint.setStrokeWidth(brushSize);
         paint.setAntiAlias(true);
         paint.setStrokeCap(Paint.Cap.ROUND);
@@ -67,23 +76,37 @@ public class DrawingView extends View {
 
         setFocusable(true);
         setFocusableInTouchMode(true);
+        // You can switch to SOFTWARE if CLEAR behaves weird with HW acceleration
+        // setLayerType(LAYER_TYPE_HARDWARE, null);
     }
 
     // ----------------------------------------------------
-    // Canvas + image
+    // Size / canvas setup
     // ----------------------------------------------------
-
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        Bitmap newBitmap = Bitmap.createBitmap(Math.max(1, w), Math.max(1, h), Bitmap.Config.ARGB_8888);
+        super.onSizeChanged(w, h, oldw, oldh);
+
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+
+        Bitmap newBitmap = Bitmap.createBitmap(
+                Math.max(1, w),
+                Math.max(1, h),
+                Bitmap.Config.ARGB_8888
+        );
         Canvas newCanvas = new Canvas(newBitmap);
 
+        // If we already had drawing content, re-draw it
         if (drawingBitmap != null) {
             newCanvas.drawBitmap(drawingBitmap, 0, 0, null);
         }
 
         drawingBitmap = newBitmap;
         drawingCanvas = newCanvas;
+
+        Log.d(TAG, "onSizeChanged: w=" + w + " h=" + h);
     }
 
     public void setBackgroundBitmap(Bitmap bmp) {
@@ -94,82 +117,84 @@ public class DrawingView extends View {
     // ----------------------------------------------------
     // Drawing
     // ----------------------------------------------------
-
     @Override
     protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+
+        if (canvas == null) return;
+
         canvas.save();
         canvas.scale(scaleFactor, scaleFactor);
 
-        if (bgBitmap != null) canvas.drawBitmap(bgBitmap, 0f, 0f, null);
-        if (drawingBitmap != null) canvas.drawBitmap(drawingBitmap, 0f, 0f, null);
-        if (currentPath != null) canvas.drawPath(currentPath, paint);
+        // Background image (from RN)
+        if (bgBitmap != null) {
+            canvas.drawBitmap(bgBitmap, 0f, 0f, null);
+        }
+
+        // Persisted strokes layer
+        if (drawingBitmap != null) {
+            canvas.drawBitmap(drawingBitmap, 0f, 0f, null);
+        }
+
+        // Live stroke preview
+        if (currentPath != null) {
+            canvas.drawPath(currentPath, paint);
+        }
 
         canvas.restore();
     }
 
     // ----------------------------------------------------
-    // TOUCH HANDLING
+    // Touch handling (SINGLE POINTER, robust)
     // ----------------------------------------------------
-
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
-        // allow pinch zoom detection
+        // Let ScaleGestureDetector handle pinch-zoom
         scaleDetector.onTouchEvent(event);
 
-        final int action = event.getActionMasked();
-        final int idx = event.getActionIndex();
-        final float density = getResources().getDisplayMetrics().density;
-        final float SCROLL_THRESHOLD_PX = SCROLL_THRESHOLD_DP * density;
+        if (drawingCanvas == null) {
+            // Safety: lazily create drawing bitmap if it didn't get created yet
+            if (getWidth() > 0 && getHeight() > 0) {
+                drawingBitmap = Bitmap.createBitmap(
+                        getWidth(),
+                        getHeight(),
+                        Bitmap.Config.ARGB_8888
+                );
+                drawingCanvas = new Canvas(drawingBitmap);
+            }
+        }
+
+        int action = event.getActionMasked();
+        float x = event.getX() / scaleFactor;
+        float y = event.getY() / scaleFactor;
 
         switch (action) {
-
             case MotionEvent.ACTION_DOWN: {
+                // Tell parent (ScrollView) not to intercept
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                }
 
-                activePointerId = event.getPointerId(0);
-                float x = event.getX(0) / scaleFactor;
-                float y = event.getY(0) / scaleFactor;
-
-                currentPath = new Path();
+                currentPath.reset();
                 currentPath.moveTo(x, y);
 
-                lastX = x; lastY = y;
-                touchStartX = x;
-                touchStartY = y;
-
+                lastX = x;
+                lastY = y;
                 movedSinceDown = false;
-                pointerIsStylus = isStylus(event, 0);
 
-                // always claim the touch while drawing
-                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
-
-                paint.setStrokeWidth(brushSize);
                 invalidate();
                 return true;
             }
 
             case MotionEvent.ACTION_MOVE: {
-
-                int pIndex = event.findPointerIndex(activePointerId);
-                if (pIndex < 0) break;
-
-                float x = event.getX(pIndex) / scaleFactor;
-                float y = event.getY(pIndex) / scaleFactor;
-
-                // IMPORTANT: do NOT hand the touch to parent mid-stroke.
-                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
-
-                // process historical points for smoother lines
-                int hist = event.getHistorySize();
-                for (int i = 0; i < hist; i++) {
-                    float hx = event.getHistoricalX(pIndex, i) / scaleFactor;
-                    float hy = event.getHistoricalY(pIndex, i) / scaleFactor;
-                    addSmoothPoint(hx, hy);
+                // Keep blocking parent during stroke
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
                 }
 
                 addSmoothPoint(x, y);
-                movedSinceDown |= Math.hypot(x - lastX, y - lastY) >= TOUCH_TOLERANCE;
-
+                movedSinceDown = true;
                 invalidate();
                 return true;
             }
@@ -177,18 +202,23 @@ public class DrawingView extends View {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
 
-                int pIndex = event.findPointerIndex(activePointerId);
-                float x = pIndex >= 0 ? event.getX(pIndex) / scaleFactor : lastX;
-                float y = pIndex >= 0 ? event.getY(pIndex) / scaleFactor : lastY;
+                if (drawingCanvas == null) {
+                    // If for some reason it's still null, just reset path and bail
+                    currentPath.reset();
+                    if (getParent() != null) {
+                        getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    invalidate();
+                    return true;
+                }
 
                 if (!movedSinceDown) {
-                    // dot: draw a filled circle and save as stroke
+                    // Treat as a dot: small filled circle
                     float r = Math.max(1f, brushSize / 2f);
                     Paint fill = new Paint(paint);
                     fill.setStyle(Paint.Style.FILL);
-                    if (drawingCanvas != null) {
-                        drawingCanvas.drawCircle(x, y, r, fill);
-                    }
+
+                    drawingCanvas.drawCircle(x, y, r, fill);
 
                     Path dot = new Path();
                     dot.addCircle(x, y, r, Path.Direction.CW);
@@ -196,58 +226,30 @@ public class DrawingView extends View {
 
                     Log.d(TAG, "Added DOT stroke. strokesCount=" + strokes.size());
                 } else {
-                    // finalize path into bitmap and save the stroke
+                    // Finalize stroke onto bitmap
                     currentPath.lineTo(x, y);
-                    if (drawingCanvas != null) {
-                        drawingCanvas.drawPath(currentPath, paint);
-                    }
+                    drawingCanvas.drawPath(currentPath, paint);
+
                     strokes.add(new Stroke(new Path(currentPath), new Paint(paint)));
 
                     Log.d(TAG, "Added PATH stroke. strokesCount=" + strokes.size());
                 }
 
-                // reset temporary path / redo buffer / active pointer
+                // Reset temp path and redo stack
                 currentPath.reset();
                 redoStrokes.clear();
-                activePointerId = -1;
 
-                // allow parent intercept again
-                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+                // Allow parent to intercept again
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
 
                 invalidate();
-                return true;
-            }
-
-            case MotionEvent.ACTION_POINTER_DOWN:
-                return true;
-
-            case MotionEvent.ACTION_POINTER_UP: {
-
-                int pid = event.getPointerId(idx);
-                if (pid == activePointerId) {
-                    int newIdx = (idx == 0) ? 1 : 0;
-                    if (event.getPointerCount() > 1) {
-                        activePointerId = event.getPointerId(newIdx);
-                        lastX = event.getX(newIdx) / scaleFactor;
-                        lastY = event.getY(newIdx) / scaleFactor;
-                    } else {
-                        activePointerId = -1;
-                    }
-                }
                 return true;
             }
         }
 
         return true;
-    }
-
-    private boolean isStylus(MotionEvent ev, int index) {
-        try {
-            int tool = ev.getToolType(index);
-            return tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER;
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private void addSmoothPoint(float x, float y) {
@@ -268,13 +270,12 @@ public class DrawingView extends View {
     }
 
     // ----------------------------------------------------
-    // Public API
+    // Public API (called from RN manager)
     // ----------------------------------------------------
-
-    // ✅ called from React via @ReactProp(strokeColor)
     public void setColor(int color) {
         isEraser = false;
-        currentColor = color;           // ✅ remember last selected color
+        currentColor = color;
+
         paint.setXfermode(null);
         paint.setColor(color);
         paint.setAlpha(255);
@@ -299,17 +300,14 @@ public class DrawingView extends View {
         }
     }
 
-    // ✅ called from React via @ReactProp(eraseMode)
     public void setEraser(boolean enable) {
         isEraser = enable;
         if (enable) {
-            // Eraser = clear pixels (transparent)
             paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
             paint.setStrokeWidth(40f);
         } else {
-            // Back to normal pen with last selected color
             paint.setXfermode(null);
-            paint.setColor(currentColor);   // ✅ no more hard-coded Color.BLUE
+            paint.setColor(currentColor);
             paint.setStrokeWidth(brushSize);
         }
     }
@@ -331,12 +329,15 @@ public class DrawingView extends View {
     public void clear() {
         strokes.clear();
         redoStrokes.clear();
-        if (drawingBitmap != null) drawingBitmap.eraseColor(Color.TRANSPARENT);
+        if (drawingBitmap != null) {
+            drawingBitmap.eraseColor(Color.TRANSPARENT);
+        }
         invalidate();
     }
 
     private void redrawStrokes() {
-        if (drawingBitmap == null) return;
+        if (drawingBitmap == null || drawingCanvas == null) return;
+
         drawingBitmap.eraseColor(Color.TRANSPARENT);
         for (Stroke s : strokes) {
             drawingCanvas.drawPath(s.path, s.paint);
@@ -354,15 +355,27 @@ public class DrawingView extends View {
         }
     }
 
-    public boolean saveToFile(java.io.File file) {
+    public boolean saveToFile(File file) {
         try {
-            Bitmap output = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+            int w = getWidth();
+            int h = getHeight();
+            if (w <= 0 || h <= 0) return false;
+
+            Bitmap output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(output);
-            if (bgBitmap != null) canvas.drawBitmap(bgBitmap, 0, 0, null);
-            if (drawingBitmap != null) canvas.drawBitmap(drawingBitmap, 0, 0, null);
-            java.io.FileOutputStream fos = new java.io.FileOutputStream(file);
+
+            if (bgBitmap != null) {
+                canvas.drawBitmap(bgBitmap, 0, 0, null);
+            }
+            if (drawingBitmap != null) {
+                canvas.drawBitmap(drawingBitmap, 0, 0, null);
+            }
+
+            FileOutputStream fos = new FileOutputStream(file);
             output.compress(Bitmap.CompressFormat.PNG, 100, fos);
             fos.close();
+
+            Log.d(TAG, "Saved drawing to: " + file.getAbsolutePath());
             return true;
         } catch (Exception e) {
             e.printStackTrace();
@@ -370,9 +383,14 @@ public class DrawingView extends View {
         }
     }
 
+    // Stroke model
     static class Stroke {
         Path path;
         Paint paint;
-        Stroke(Path p, Paint pa) { path = p; paint = pa; }
+
+        Stroke(Path p, Paint pa) {
+            path = p;
+            paint = pa;
+        }
     }
 }
