@@ -1,4 +1,6 @@
 // src/FormImageScreen.tsx
+// Session-only: uses navigation payload, not AsyncStorage, to show overlays.
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -9,6 +11,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -18,22 +21,6 @@ import {
 } from '@react-navigation/native';
 
 const { width: W, height: H } = Dimensions.get('window');
-
-// try to resolve a module that exports image requires (keeps compatibility)
-const resolveImages = (): any | null => {
-  try {
-    return require('./Images').default ?? require('./Images');
-  } catch (_) {}
-  try {
-    return require('../android/src/Images').default ?? require('../android/src/Images');
-  } catch (_) {}
-  try {
-    return require('../src/Images').default ?? require('../src/Images');
-  } catch (_) {}
-  return null;
-};
-
-const Images = resolveImages();
 
 const LOCAL_IMAGE_LIST = [
   require('./Images/first.jpeg'),
@@ -51,106 +38,64 @@ const LOCAL_IMAGE_LIST = [
   require('./Images/twelve.jpeg'),
 ];
 
-// AsyncStorage fallback loader
-let AsyncStorage: any = null;
-try {
-  AsyncStorage =
-    require('@react-native-async-storage/async-storage').default;
-} catch (e) {
-  AsyncStorage = null;
-}
-
-// Same structure that editor saves: { bitmapPath?: string | null }
 type PageMeta = { bitmapPath?: string | null };
 
 export function FormImageScreen() {
-  const route = useRoute();
+  const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const params = (route.params as any) || {};
   const formName: string | undefined = params.formName;
 
-  // IMPORTANT: same default key as editor: DoctorApp:pagesBitmaps:v1
   const perFormStorageKey =
     (params.storageKey as string | undefined) ??
     `DoctorApp:pagesBitmaps:v1`;
 
-  const [loading, setLoading] = useState(false);
-  const [pageMeta, setPageMeta] = useState<PageMeta[]>(() =>
-    LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
-  );
-  const [checkingSaved, setCheckingSaved] = useState(false);
+  // 🔥 Initial pageMeta from navigation (savedStrokes) if available
+  const [pageMeta, setPageMeta] = useState<PageMeta[]>(() => {
+    if (params.savedStrokes && Array.isArray(params.savedStrokes)) {
+      return LOCAL_IMAGE_LIST.map((_, idx) => {
+        const m = params.savedStrokes[idx];
+        return { bitmapPath: m?.bitmapPath ?? null };
+      });
+    }
+    return LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }));
+  });
 
-  // 🔁 token used only to force React to remount overlay <Image> when data refreshes
   const [reloadToken, setReloadToken] = useState(0);
+  const [loading] = useState(false);
 
-  // Load saved bitmap paths from AsyncStorage (written by editor)
-  const checkSavedPages = useCallback(async () => {
-    if (!AsyncStorage) {
-      setPageMeta(
-        LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
-      );
-      setReloadToken((t) => t + 1);
-      return;
-    }
-
-    setCheckingSaved(true);
-    try {
-      const raw = await AsyncStorage.getItem(perFormStorageKey);
-      if (!raw) {
-        setPageMeta(
-          LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
-        );
-        setReloadToken((t) => t + 1);
-        setCheckingSaved(false);
-        return;
-      }
-
-      const parsed = JSON.parse(raw);
-      if (
-        Array.isArray(parsed) &&
-        parsed.length === LOCAL_IMAGE_LIST.length
-      ) {
-        const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
-          const m = parsed[idx];
-          return { bitmapPath: m?.bitmapPath ?? null };
-        });
-        setPageMeta(metaArr);
-      } else {
-        setPageMeta(
-          LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
-        );
-      }
-
-      // bump token so overlay Image gets a new key and reloads from disk
-      setReloadToken((t) => t + 1);
-    } catch (e) {
-      console.warn('[FormImageScreen] error reading saved pages:', e);
-      setPageMeta(
-        LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }))
-      );
-      setReloadToken((t) => t + 1);
-    } finally {
-      setCheckingSaved(false);
-    }
-  }, [perFormStorageKey]);
-
-  // When screen comes into focus (including after going back from editor),
-  // refresh immediately AND once more after a short delay, so we catch
-  // the latest AsyncStorage writes.
+  // ✅ Handle Android hardware back to always go to FormTypeScreen
   useFocusEffect(
-    React.useCallback(() => {
-      checkSavedPages();
-      const timer = setTimeout(() => {
-        checkSavedPages();
-      }, 500);
-      return () => clearTimeout(timer);
-    }, [checkSavedPages])
+    useCallback(() => {
+      const onBackPress = () => {
+        navigation.navigate('FormType');
+        return true; // block default behaviour
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+
+      return () => {
+        subscription.remove();
+      };
+    }, [navigation]),
   );
 
-  // Initial mount
+  // 🔥 When editor comes back with new savedStrokes, apply them
   useEffect(() => {
-    checkSavedPages();
-  }, [checkSavedPages]);
+    const p = (route.params as any) || {};
+    if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
+      console.log('[FormImageScreen] got payload savedStrokes =', p.savedStrokes);
+      const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
+        const m = p.savedStrokes[idx];
+        return { bitmapPath: m?.bitmapPath ?? null };
+      });
+      setPageMeta(metaArr);
+      setReloadToken((t) => t + 1);
+    }
+  }, [route.params]);
 
   const openEditorForPage = (pageIndex: number) => {
     const localModule = LOCAL_IMAGE_LIST[pageIndex] ?? null;
@@ -162,12 +107,11 @@ export function FormImageScreen() {
       storageKey: perFormStorageKey,
       uiStorageKey: undefined,
       pageIndex,
-      // so editor knows where to return if needed
       returnScreen: 'FormImageScreen',
+      savedStrokes: pageMeta, // pass current session strokes
     });
   };
 
-  // Open the multi-page editor (full editor)
   const openFullEditor = () => {
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
@@ -175,10 +119,10 @@ export function FormImageScreen() {
       uiStorageKey: undefined,
       formName,
       returnScreen: 'FormImageScreen',
+      savedStrokes: pageMeta, // pass current session strokes
     });
   };
 
-  // Thumbnail / Card for vertical list — shows form image + drawing overlay + "Saved" badge
   const ThumbCard = ({
     idx,
     source,
@@ -192,19 +136,13 @@ export function FormImageScreen() {
     const savedPath = meta?.bitmapPath || null;
     const isSaved = !!savedPath && savedPath.length > 0;
 
-    // Prepare URI for overlay PNG if it exists
     let overlaySource: any = null;
     if (isSaved && savedPath) {
       const baseUri = savedPath.startsWith('file://')
         ? savedPath
         : `file://${savedPath}`;
-
-      // IMPORTANT: add reloadToken as query param to break cache
       const stampedUri = `${baseUri}?t=${reloadToken}`;
-
-      overlaySource = {
-        uri: stampedUri,
-      };
+      overlaySource = { uri: stampedUri };
     }
 
     return (
@@ -213,16 +151,13 @@ export function FormImageScreen() {
         onPress={() => openEditorForPage(idx)}
         style={styles.card}
       >
-        {/* Container so we can stack base image + overlay */}
         <View style={styles.cardImageContainer}>
-          {/* Base form image */}
           <Image
             source={source}
             style={styles.cardImage}
             resizeMode="contain"
           />
 
-          {/* Overlay strokes PNG saved by editor */}
           {overlaySource && (
             <Image
               key={`overlay-${idx}-${reloadToken}`}
@@ -235,11 +170,6 @@ export function FormImageScreen() {
 
         <View style={styles.cardFooter}>
           <Text style={styles.cardTitle}>Page {idx + 1}</Text>
-          {/* {isSaved ? (
-            <View style={styles.savedBadge}>
-              <Text style={styles.savedBadgeText}>Saved</Text>
-            </View>
-          ) : null} */}
         </View>
       </TouchableOpacity>
     );
@@ -249,7 +179,7 @@ export function FormImageScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>
-          {(formName as string) || 'Form Images'}
+          {formName || 'Form Images'}
         </Text>
       </View>
 
@@ -336,14 +266,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardTitle: { fontWeight: '700', fontSize: 14, color: '#333' },
-
-  savedBadge: {
-    backgroundColor: '#0EA5A4',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  savedBadgeText: { color: '#fff', fontWeight: '700' },
 
   centered: {
     position: 'absolute',

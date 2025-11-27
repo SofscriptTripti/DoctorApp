@@ -1,6 +1,5 @@
 // src/FormImageEditor.pages.tsx
-// Updated: stable refs, savedPath propagation, custom saving overlay UI,
-// AND pinch-to-zoom that scales IMAGE + DRAWING TOGETHER (aligned as one page).
+// Session-only version: uses navigation payload instead of AsyncStorage persistence.
 
 import React, {
   useRef,
@@ -33,9 +32,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import NativeDrawingView, { DrawingRef } from './components/NativeDrawingView';
 
+// We TRY AsyncStorage, but we don't depend on it.
 let AsyncStorage: any = null;
 try {
-  AsyncStorage = require('@react-native-async-storage/async-storage').default;
+  AsyncStorage =
+    require('@react-native-async-storage/async-storage').default;
 } catch (e) {
   AsyncStorage = null;
 }
@@ -109,6 +110,10 @@ export default function FormImageEditor() {
   const STORAGE_UI_KEY = uiKeyParam ?? DEFAULT_UI_KEY;
   const returnScreen = route.params?.returnScreen as string | undefined;
 
+  const initialStrokesFromParams = Array.isArray(route.params?.savedStrokes)
+    ? route.params.savedStrokes
+    : null;
+
   const [color, setColor] = useState('#0EA5A4');
   const [strokeWidth, setStrokeWidth] = useState(4);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
@@ -133,9 +138,19 @@ export default function FormImageEditor() {
   const canvasRefs = useRef<Array<DrawingRef | null>>(
     useMemo(() => IMAGES.map(() => null), [])
   );
-  const [savedMeta, setSavedMeta] = useState<Array<SavedMeta>>(() =>
-    IMAGES.map(() => ({ bitmapPath: null }))
-  );
+
+  // 🔥 Initial savedMeta comes from navigation params (session only)
+  const [savedMeta, setSavedMeta] = useState<Array<SavedMeta>>(() => {
+    if (
+      initialStrokesFromParams &&
+      initialStrokesFromParams.length === IMAGES.length
+    ) {
+      return initialStrokesFromParams.map((m: any) => ({
+        bitmapPath: m?.bitmapPath ?? null,
+      }));
+    }
+    return IMAGES.map(() => ({ bitmapPath: null }));
+  });
 
   // stable ref setter array (store refs directly for imperative calls)
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
@@ -255,8 +270,7 @@ export default function FormImageEditor() {
     CONTENT_BOTTOM_PADDING;
   const maxScrollY = Math.max(0, totalContentHeight - SCREEN_H);
 
-  const MIN_HANDLE_TOP =
-    (insets.top ?? 0) + 130;
+  const MIN_HANDLE_TOP = (insets.top ?? 0) + 130;
   const MAX_HANDLE_TOP =
     SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
 
@@ -331,9 +345,7 @@ export default function FormImageEditor() {
         }
       },
       onPanResponderRelease: (_evt, gs) => {
-        const finalTop = clampRightTop(
-          rightStartTopRef.current + gs.dy
-        );
+        const finalTop = clampRightTop(rightStartTopRef.current + gs.dy);
         Animated.spring(rightTopAnim, {
           toValue: finalTop,
           useNativeDriver: false,
@@ -441,112 +453,52 @@ export default function FormImageEditor() {
     })
   ).current;
 
-  // load UI + saved meta
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (AsyncStorage) {
-          try {
-            const rawUI = await AsyncStorage.getItem(STORAGE_UI_KEY);
-            if (rawUI) {
-              const ui = JSON.parse(rawUI);
-              if (ui && typeof ui.color === 'string') setColor(ui.color);
-              if (ui && typeof ui.strokeWidth === 'number')
-                setStrokeWidth(ui.strokeWidth);
-            }
-
-            const raw = await AsyncStorage.getItem(STORAGE_KEY);
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length === IMAGES.length) {
-                if (mounted)
-                  setSavedMeta(
-                    parsed.map((p: any) => ({
-                      bitmapPath: p?.bitmapPath ?? null,
-                    }))
-                  );
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to load storage', e);
-          }
-        }
-      } catch (e) {
-        console.warn('load saved strokes error', e);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [route.params]);
-
-  // imperative updates to canvases
-  useEffect(() => {
-    canvasRefs.current.forEach((c) => {
-      if (c && typeof c.setColor === 'function') {
-        try {
-          c.setColor(color);
-        } catch (err) {
-          console.warn('setColor err', err);
-        }
-      }
-    });
-  }, [color]);
-
-  useEffect(() => {
-    canvasRefs.current.forEach((c) => {
-      if (c && typeof c.setBrushSize === 'function') {
-        try {
-          c.setBrushSize(strokeWidth);
-        } catch (err) {
-          console.warn('setBrushSize err', err);
-        }
-      }
-    });
-  }, [strokeWidth]);
-
-  useEffect(() => {
-    const er = tool === 'eraser';
-    canvasRefs.current.forEach((c) => {
-      if (c && typeof c.setEraser === 'function') {
-        try {
-          c.setEraser(er);
-        } catch (err) {
-          console.warn('setEraser err', err);
-        }
-      }
-    });
-  }, [tool]);
+  // We DO NOT depend on AsyncStorage anymore for restoring strokes.
+  // (You can keep your old AsyncStorage loading if you want,
+  // but it's clearly not available in your logs.)
 
   const APP_FILES_DIR = '/data/data/com.doctor/files';
 
   const onSaveAll = async () => {
     if (saveStatus === 'saving') return; // avoid double taps
 
-    // show overlay immediately
+    console.log('[onSaveAll] START');
     setSaveStatus('saving');
 
     const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
+
     for (let i = 0; i < IMAGES.length; i++) {
       const c = canvasRefs.current[i];
       if (!c || typeof c.saveToFile !== 'function') {
+        console.log('[onSaveAll] page', i, 'no canvas ref or no saveToFile');
         allMeta[i] = savedMeta[i] || { bitmapPath: null };
         continue;
       }
+
       const filename = `drawing_page_${i + 1}.png`;
       const path = `${APP_FILES_DIR}/${filename}`;
+
       try {
-        const ok = await c.saveToFile(path);
-        if (ok) allMeta[i] = { bitmapPath: path };
-        else allMeta[i] = savedMeta[i] || { bitmapPath: null };
+        const result = await c.saveToFile(path);
+        console.log('[onSaveAll] page', i, 'saveToFile result =', result);
+
+        if (typeof result === 'string') {
+          allMeta[i] = { bitmapPath: result };
+        } else if (result === true) {
+          allMeta[i] = { bitmapPath: path };
+        } else {
+          allMeta[i] = savedMeta[i] || { bitmapPath: null };
+        }
       } catch (e) {
         console.warn('saveToFile failed for page', i, e);
         allMeta[i] = savedMeta[i] || { bitmapPath: null };
       }
     }
 
+    console.log('[onSaveAll] allMeta =', allMeta);
+
     const uiPayload = { color, strokeWidth };
+
     try {
       if (AsyncStorage) {
         await AsyncStorage.setItem(
@@ -554,20 +506,24 @@ export default function FormImageEditor() {
           JSON.stringify(uiPayload)
         );
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(allMeta));
+        console.log('[onSaveAll] wrote to AsyncStorage key =', STORAGE_KEY);
       } else {
-        console.warn('AsyncStorage not available — session-only.');
+        console.log('AsyncStorage not available — session-only.');
       }
 
+      // 🔥 Editor now knows the saved paths immediately
       setSavedMeta(allMeta);
 
       const payload = {
         savedStrokes: allMeta,
         editorUI: uiPayload,
         editorSavedAt: Date.now(),
+        storageKey: STORAGE_KEY,
+        formName: route.params?.formName,
       };
+      console.log('[onSaveAll] payload for navigation =', payload);
       lastPayloadRef.current = payload;
 
-      // done!
       setSaveStatus('success');
     } catch (err) {
       console.error('Failed to save editor state:', err);
@@ -576,27 +532,26 @@ export default function FormImageEditor() {
   };
 
   const handleSaveOk = () => {
-    const payload = lastPayloadRef.current;
+    const payload = lastPayloadRef.current || {
+      savedStrokes: savedMeta,
+      editorUI: { color, strokeWidth },
+      editorSavedAt: Date.now(),
+      storageKey: STORAGE_KEY,
+      formName: route.params?.formName,
+    };
+
+    console.log('[handleSaveOk] payload =', payload);
 
     setSaveStatus('idle');
 
     try {
       if (returnScreen && typeof navigation.navigate === 'function') {
         navigation.navigate(returnScreen as never, payload as never);
-      } else if (
-        (navigation as any).canGoBack &&
-        (navigation as any).canGoBack()
-      ) {
-        navigation.goBack();
+      } else {
+        navigation.navigate('FormImageScreen' as never, payload as never);
       }
     } catch (e) {
       console.warn('handleSaveOk navigation failed', e);
-      if (
-        (navigation as any).canGoBack &&
-        (navigation as any).canGoBack()
-      ) {
-        navigation.goBack();
-      }
     }
   };
 
@@ -859,8 +814,6 @@ export default function FormImageEditor() {
     </SafeAreaView>
   );
 }
-
-export const FormImageScreen = FormImageEditor;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0EA5A4' },
