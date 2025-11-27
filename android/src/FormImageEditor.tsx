@@ -83,6 +83,7 @@ type VoiceNote = {
   color: string;
   x: number;
   y: number;
+  scale: number; // 🔍 per-note scale
 };
 
 // --- stable memoized drawing canvas that forwards ref reliably
@@ -113,24 +114,31 @@ const DrawingCanvas = React.memo(
     prev.index === next.index && prev.savedPath === next.savedPath
 );
 
-// Draggable + pinch-zoom voice text component
+// Draggable + double-tap-to-edit + corner-resize voice text component
 function DraggableVoiceText({
   note,
+  isEditing,
+  onToggleEdit,
   onPositionChange,
+  onScaleChange,
+  onDelete,
 }: {
   note: VoiceNote;
+  isEditing: boolean;
+  onToggleEdit: (id: string) => void;
   onPositionChange: (id: string, x: number, y: number) => void;
+  onScaleChange: (id: string, scale: number) => void;
+  onDelete: (id: string) => void;
 }) {
   const pan = useRef(
     new Animated.ValueXY({ x: note.x, y: note.y })
   ).current;
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(note.scale ?? 1)).current;
+
   const startPosRef = useRef({ x: note.x, y: note.y });
-  const pinchStateRef = useRef<{
-    initialDistance: number;
-    startScale: number;
-  } | null>(null);
+  const scaleStartRef = useRef(1);
+  const lastTapRef = useRef(0);
 
   const MIN_TEXT_SCALE = 0.6;
   const MAX_TEXT_SCALE = 2.8;
@@ -140,83 +148,112 @@ function DraggableVoiceText({
     pan.setValue({ x: note.x, y: note.y });
   }, [note.x, note.y, pan]);
 
-  const panResponder = useRef(
+  useEffect(() => {
+    scaleAnim.setValue(note.scale ?? 1);
+  }, [note.scale, scaleAnim]);
+
+  // Drag / tap handler (for moving + double-tap detection)
+  const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
-      onPanResponderGrant: (evt: GestureResponderEvent) => {
-        const touches = evt.nativeEvent.touches || [];
-        if (touches.length === 2) {
-          const [t1, t2] = touches;
-          const dx = t1.pageX - t2.pageX;
-          const dy = t1.pageY - t2.pageY;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-          let currentScale = 1;
-          try {
-            const v = (scaleAnim as any).__getValue?.();
-            if (typeof v === 'number') currentScale = v;
-          } catch (e) {}
-
-          pinchStateRef.current = {
-            initialDistance: dist,
-            startScale: currentScale,
-          };
-        } else {
-          pinchStateRef.current = null;
-          startPosRef.current = { x: note.x, y: note.y };
-        }
+      onPanResponderGrant: () => {
+        startPosRef.current = { x: note.x, y: note.y };
       },
 
-      onPanResponderMove: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-        const touches = evt.nativeEvent.touches || [];
-
-        // Two-finger pinch to resize text
-        if (touches.length === 2 && pinchStateRef.current) {
-          const [t1, t2] = touches;
-          const dx = t1.pageX - t2.pageX;
-          const dy = t1.pageY - t2.pageY;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-          const factor =
-            dist / Math.max(1, pinchStateRef.current.initialDistance);
-          let newScale = pinchStateRef.current.startScale * factor;
-          if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
-          if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
-
-          scaleAnim.setValue(newScale);
-          return;
-        }
-
-        // One-finger drag to move text
-        if (touches.length <= 1) {
-          const nx = startPosRef.current.x + gestureState.dx;
-          const ny = startPosRef.current.y + gestureState.dy;
-          pan.setValue({ x: nx, y: ny });
-        }
+      onPanResponderMove: (_evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        const nx = startPosRef.current.x + gestureState.dx;
+        const ny = startPosRef.current.y + gestureState.dy;
+        pan.setValue({ x: nx, y: ny });
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
-        // Commit final position after drag
-        const nx = startPosRef.current.x + gestureState.dx;
-        const ny = startPosRef.current.y + gestureState.dy;
+        const dx = gestureState.dx;
+        const dy = gestureState.dy;
+        const moveDist = Math.sqrt(dx * dx + dy * dy);
+
+        const now = Date.now();
+        const delta = now - lastTapRef.current;
+        lastTapRef.current = now;
+
+        const isTap =
+          moveDist < 5 &&
+          Math.abs(gestureState.vx) < 0.3 &&
+          Math.abs(gestureState.vy) < 0.3;
+
+        // Double tap => toggle edit mode, but don't move text
+        if (isTap && delta < 280) {
+          onToggleEdit(note.id);
+          // reset visual position back to model, so no accidental move
+          pan.setValue({ x: note.x, y: note.y });
+          return;
+        }
+
+        // Single tap (no move) => just reset position, do nothing
+        if (isTap) {
+          pan.setValue({ x: note.x, y: note.y });
+          return;
+        }
+
+        // Real drag => commit new position
+        const nx = startPosRef.current.x + dx;
+        const ny = startPosRef.current.y + dy;
         onPositionChange(note.id, nx, ny);
-        pinchStateRef.current = null;
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
         onPositionChange(note.id, nx, ny);
-        pinchStateRef.current = null;
+      },
+    })
+  ).current;
+
+  // Resize handles pan (shared by all 4 dots)
+  const resizePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: () => {
+        let current = 1;
+        try {
+          const v = (scaleAnim as any).__getValue?.();
+          if (typeof v === 'number') current = v;
+        } catch (e) {}
+        scaleStartRef.current = current;
+      },
+
+      onPanResponderMove: (_evt, gestureState) => {
+        // Use dx + dy to change size (simple controlled factor)
+        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
+        let newScale = scaleStartRef.current * factor;
+        if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
+        if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
+        scaleAnim.setValue(newScale);
+      },
+
+      onPanResponderRelease: (_evt, gestureState) => {
+        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
+        let newScale = scaleStartRef.current * factor;
+        if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
+        if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
+        onScaleChange(note.id, newScale);
+      },
+
+      onPanResponderTerminate: (_evt, gestureState) => {
+        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
+        let newScale = scaleStartRef.current * factor;
+        if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
+        if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
+        onScaleChange(note.id, newScale);
       },
     })
   ).current;
 
   return (
     <Animated.View
-      {...panResponder.panHandlers}
       style={[
         styles.voiceTextDragWrapper,
         {
@@ -228,12 +265,67 @@ function DraggableVoiceText({
         },
       ]}
     >
-      {/* "Background but invisible" => padding + transparent bg */}
-      <View style={styles.voiceTextHitBox}>
+      {/* Delete cross (only when NOT editing) */}
+      {!isEditing && (
+        <TouchableOpacity
+          style={styles.voiceDeleteButton}
+          onPress={() => onDelete(note.id)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="close-circle" size={18} color={note.color} />
+        </TouchableOpacity>
+      )}
+
+      {/* Main touch area: drag / double tap */}
+      <View
+        {...dragPan.panHandlers}
+        style={[
+          styles.voiceTextHitBox,
+          isEditing && { borderColor: note.color, borderWidth: 1 },
+        ]}
+      >
         <Text style={[styles.voiceTextDrag, { color: note.color }]}>
           {note.text}
         </Text>
       </View>
+
+      {/* 4 corner resize handles: only visible in edit mode */}
+      {isEditing && (
+        <>
+          {/* top-left */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              { top: -8, left: -8, borderColor: note.color },
+            ]}
+            {...resizePan.panHandlers}
+          />
+          {/* top-right */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              { top: -8, right: -8, borderColor: note.color },
+            ]}
+            {...resizePan.panHandlers}
+          />
+          {/* bottom-left */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              { bottom: -8, left: -8, borderColor: note.color },
+            ]}
+            {...resizePan.panHandlers}
+          />
+          {/* bottom-right */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              { bottom: -8, right: -8, borderColor: note.color },
+            ]}
+            {...resizePan.panHandlers}
+          />
+        </>
+      )}
     </Animated.View>
   );
 }
@@ -294,6 +386,10 @@ export default function FormImageEditor() {
 
   // voice notes on pages
   const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>([]);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+
+  // simple redo stack for deleted notes per page
+  const voiceRedoStackRef = useRef<Record<number, VoiceNote[]>>({});
 
   // stable ref setter array (store refs directly for imperative calls)
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
@@ -392,9 +488,11 @@ export default function FormImageEditor() {
       color, // use current pen color
       x: SCREEN_W * 0.15, // initial relative position
       y: PAGE_HEIGHT * 0.15,
+      scale: 1,
     };
 
     setVoiceNotes((prev) => [...prev, newNote]);
+    // not entering edit mode automatically, only on double tap
   };
 
   // update note position after drag
@@ -402,6 +500,29 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, x, y } : n))
     );
+  };
+
+  // update note scale after resize
+  const handleVoiceNoteScaleChange = (id: string, scale: number) => {
+    setVoiceNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, scale } : n))
+    );
+  };
+
+  // delete note via small cross icon
+  const handleVoiceNoteDelete = (id: string) => {
+    setVoiceNotes((prev) => {
+      const note = prev.find((n) => n.id === id);
+      if (!note) return prev;
+
+      const pageIndex = note.pageIndex;
+      const stack = voiceRedoStackRef.current[pageIndex] ?? [];
+      voiceRedoStackRef.current[pageIndex] = [...stack, note];
+
+      return prev.filter((n) => n.id !== id);
+    });
+
+    setEditingNoteId((prev) => (prev === id ? null : prev));
   };
 
   const handleVoiceFabPress = async () => {
@@ -449,20 +570,76 @@ export default function FormImageEditor() {
     }
   };
 
+  // 🔧 sync brush + eraser with native drawing views
+  useEffect(() => {
+    canvasRefs.current.forEach((c) => {
+      if (!c) return;
+
+      if (tool === 'eraser') {
+        // enable native eraser
+        c.setEraser(true);
+      } else {
+        // back to pen with current color + width
+        c.setEraser(false);
+        c.setColor(color);
+        c.setBrushSize(strokeWidth);
+      }
+    });
+  }, [tool, color, strokeWidth]);
+
   const performUndo = () => {
     const idx = getCurrentPageIndex();
     const c = canvasRefs.current[idx];
     if (c && typeof c.undo === 'function') c.undo();
+
+    // also undo last text note on this page
+    let undoneNote: VoiceNote | null = null;
+
+    setVoiceNotes((prev) => {
+      const notesForPage = prev.filter((n) => n.pageIndex === idx);
+      if (notesForPage.length === 0) return prev;
+
+      undoneNote = notesForPage[notesForPage.length - 1];
+      return prev.filter((n) => n.id !== undoneNote!.id);
+    });
+
+    if (undoneNote) {
+      const stack = voiceRedoStackRef.current[idx] ?? [];
+      voiceRedoStackRef.current[idx] = [...stack, undoneNote];
+      if (editingNoteId === undoneNote.id) {
+        setEditingNoteId(null);
+      }
+    }
   };
+
   const performRedo = () => {
     const idx = getCurrentPageIndex();
     const c = canvasRefs.current[idx];
     if (c && typeof c.redo === 'function') c.redo();
+
+    // also redo last undone text note on this page
+    const stack = voiceRedoStackRef.current[idx] ?? [];
+    if (stack.length === 0) return;
+
+    const restored = stack[stack.length - 1];
+    voiceRedoStackRef.current[idx] = stack.slice(0, -1);
+
+    setVoiceNotes((prev) => [...prev, restored]);
   };
+
+  const clearNotesForPage = (pageIndex: number) => {
+    setVoiceNotes((prev) => prev.filter((n) => n.pageIndex !== pageIndex));
+    voiceRedoStackRef.current[pageIndex] = [];
+  };
+
   const performClear = () => {
     const idx = getCurrentPageIndex();
     const c = canvasRefs.current[idx];
     if (c && typeof c.clear === 'function') c.clear();
+
+    // also clear all text notes on this page
+    clearNotesForPage(idx);
+    setEditingNoteId(null);
   };
 
   const activatePen = () => setTool('pen');
@@ -956,10 +1133,10 @@ export default function FormImageEditor() {
                       resizeMode="stretch"
                     />
 
-                    {/* Drawing overlay */}
+                    {/* Drawing overlay - disable touches while editing text */}
                     <View
                       style={styles.canvasContainer}
-                      pointerEvents="box-none"
+                      pointerEvents={editingNoteId ? 'none' : 'box-none'}
                     >
                       <DrawingCanvas
                         index={pageIndex}
@@ -968,12 +1145,20 @@ export default function FormImageEditor() {
                       />
                     </View>
 
-                    {/* Voice notes (draggable + pinch-zoom text) */}
+                    {/* Voice notes (draggable + double-tap edit + corner resize) */}
                     {notesForPage.map((note) => (
                       <DraggableVoiceText
                         key={note.id}
                         note={note}
+                        isEditing={editingNoteId === note.id}
+                        onToggleEdit={(id) =>
+                          setEditingNoteId((prev) =>
+                            prev === id ? null : id
+                          )
+                        }
                         onPositionChange={handleVoiceNotePositionChange}
+                        onScaleChange={handleVoiceNoteScaleChange}
+                        onDelete={handleVoiceNoteDelete}
                       />
                     ))}
                   </Animated.View>
@@ -1236,7 +1421,7 @@ const styles = StyleSheet.create({
   },
   rightHandleInner: {
     flex: 1,
-    backgroundColor: '#0A97F2',
+    backgroundColor: '#266433ff',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1286,6 +1471,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     backgroundColor: 'transparent',
+  },
+  voiceResizeHandle: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+  },
+  voiceDeleteButton: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    zIndex: 5,
+    backgroundColor: '#ffffffee',
+    borderRadius: 10,
+    padding: 1,
   },
 
   // 🔊 voice overlay styles
@@ -1400,3 +1602,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+
+

@@ -76,6 +76,7 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
         undo: () => sendCommand('undo'),
         redo: () => sendCommand('redo'),
         clear: () => sendCommand('clear'),
+        
 
         setColor: (hex: string) => {
           if (!nativeRef.current) return;
