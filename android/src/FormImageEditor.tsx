@@ -92,16 +92,6 @@ const DrawingCanvas = React.memo(
     { index, savedPath }: DrawingCanvasProps,
     forwardedRef: React.Ref<DrawingRef | null>
   ) {
-    useEffect(() => {
-      console.log(
-        `[DrawingCanvas] mount index=${index} savedPath=${savedPath ?? 'null'}`
-      );
-      return () =>
-        console.log(
-          `[DrawingCanvas] unmount index=${index} savedPath=${savedPath ?? 'null'}`
-        );
-    }, [index, savedPath]);
-
     return (
       <NativeDrawingView
         ref={forwardedRef}
@@ -162,7 +152,10 @@ function DraggableVoiceText({
         startPosRef.current = { x: note.x, y: note.y };
       },
 
-      onPanResponderMove: (_evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+      onPanResponderMove: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
         pan.setValue({ x: nx, y: ny });
@@ -397,11 +390,6 @@ export default function FormImageEditor() {
       () =>
         IMAGES.map((_img, i) => (r: DrawingRef | null) => {
           canvasRefs.current[i] = r;
-          console.log(
-            `[FormImageEditor] native ref set for page ${i}: ${
-              r ? 'attached' : 'null'
-            }`
-          );
         }),
       []
     )
@@ -547,7 +535,6 @@ export default function FormImageEditor() {
       setVoiceVisible(true);
       await startListening();
     } catch (e: any) {
-      console.warn('[VoiceKit] startListening error', e);
       setVoiceError(
         e?.message || e?.toString() || 'Could not start listening.'
       );
@@ -559,7 +546,7 @@ export default function FormImageEditor() {
     try {
       await stopListening();
     } catch (e) {
-      console.warn('[VoiceKit] stopListening error', e);
+      // ignore
     } finally {
       // when user stops, create a note from latest text
       if (voiceText && voiceText.trim()) {
@@ -730,14 +717,14 @@ export default function FormImageEditor() {
     return progress * sRange;
   };
 
-  const scrollToRightTop = (sY: number) => {
-    const minTop = MIN_HANDLE_TOP;
-    const maxTop = MAX_HANDLE_TOP;
-    const tRange = Math.max(1, maxTop - minTop);
-    const sRange = Math.max(1, maxScrollY);
-    const progress = Math.max(0, Math.min(sRange, sY)) / sRange;
-    return progress * tRange + minTop;
-  };
+const scrollToRightTop = (sY: number) => {
+  const minTop = MIN_HANDLE_TOP;
+  const maxTop = MAX_HANDLE_TOP;
+  const tRange = Math.max(1, maxTop - minTop);
+  const sRange = Math.max(1, maxScrollY);
+  const progress = Math.max(0, Math.min(sY, sRange)) / sRange;
+  return progress * tRange + minTop;
+};
 
   useEffect(() => {
     const id = rightTopAnim.addListener(() => {});
@@ -767,7 +754,10 @@ export default function FormImageEditor() {
           rightStartTopRef.current = (SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2;
         }
       },
-      onPanResponderMove: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
+      onPanResponderMove: (
+        _evt: GestureResponderEvent,
+        gs: PanResponderGestureState
+      ) => {
         const newTop = clampRightTop(rightStartTopRef.current + gs.dy);
         rightTopAnim.setValue(newTop);
         const newScroll = rightTopToScroll(newTop);
@@ -898,7 +888,6 @@ export default function FormImageEditor() {
   const onSaveAll = async () => {
     if (saveStatus === 'saving') return; // avoid double taps
 
-    console.log('[onSaveAll] START');
     setSaveStatus('saving');
 
     const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
@@ -906,7 +895,6 @@ export default function FormImageEditor() {
     for (let i = 0; i < IMAGES.length; i++) {
       const c = canvasRefs.current[i];
       if (!c || typeof c.saveToFile !== 'function') {
-        console.log('[onSaveAll] page', i, 'no canvas ref or no saveToFile');
         allMeta[i] = savedMeta[i] || { bitmapPath: null };
         continue;
       }
@@ -916,22 +904,16 @@ export default function FormImageEditor() {
 
       try {
         const result = await c.saveToFile(path);
-        console.log('[onSaveAll] page', i, 'saveToFile result =', result);
 
-        if (typeof result === 'string') {
-          allMeta[i] = { bitmapPath: result };
-        } else if (result === true) {
+        if (result) {
           allMeta[i] = { bitmapPath: path };
         } else {
           allMeta[i] = savedMeta[i] || { bitmapPath: null };
         }
       } catch (e) {
-        console.warn('saveToFile failed for page', i, e);
         allMeta[i] = savedMeta[i] || { bitmapPath: null };
       }
     }
-
-    console.log('[onSaveAll] allMeta =', allMeta);
 
     const uiPayload = { color, strokeWidth };
 
@@ -942,9 +924,6 @@ export default function FormImageEditor() {
           JSON.stringify(uiPayload)
         );
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(allMeta));
-        console.log('[onSaveAll] wrote to AsyncStorage key =', STORAGE_KEY);
-      } else {
-        console.log('AsyncStorage not available — session-only.');
       }
 
       setSavedMeta(allMeta);
@@ -956,12 +935,10 @@ export default function FormImageEditor() {
         storageKey: STORAGE_KEY,
         formName: route.params?.formName,
       };
-      console.log('[onSaveAll] payload for navigation =', payload);
       lastPayloadRef.current = payload;
 
       setSaveStatus('success');
     } catch (err) {
-      console.error('Failed to save editor state:', err);
       setSaveStatus('error');
     }
   };
@@ -975,8 +952,6 @@ export default function FormImageEditor() {
       formName: route.params?.formName,
     };
 
-    console.log('[handleSaveOk] payload =', payload);
-
     setSaveStatus('idle');
 
     try {
@@ -986,7 +961,7 @@ export default function FormImageEditor() {
         navigation.navigate('FormImageScreen' as never, payload as never);
       }
     } catch (e) {
-      console.warn('handleSaveOk navigation failed', e);
+      // ignore
     }
   };
 
@@ -1602,6 +1577,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-
-

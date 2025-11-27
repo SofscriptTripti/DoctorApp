@@ -1,12 +1,13 @@
+// android/app/src/main/java/com/doctor/DrawingView.java
 package com.doctor;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PointF;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.util.AttributeSet;
@@ -25,155 +26,68 @@ public class DrawingView extends View {
 
     private static final String TAG = "DrawingView";
 
-    // Background (optional) and drawing layer
+    // Background form image (from backgroundBase64)
     private Bitmap bgBitmap;
-    private Bitmap drawingBitmap;
-    private Canvas drawingCanvas;
 
-    // Page id for persistence (if you use it)
-    private String pageId = null;
+    // Previous saved overlay loaded from file (savedPath)
+    private Bitmap savedOverlayBitmap;
 
-    // Paint & path
-    private Paint paint;
-    private Path currentPath;
-    private float brushSize = 8f;
+    // Base paint
+    private final Paint paint;
 
-    // “real” pen color (default: #0EA5A4)
-    private int currentColor = 0xFF0EA5A4;
-    private boolean isEraser = false;
+    // Current live stroke (while moving)
+    private Stroke currentStroke;
 
-    // Strokes history (for undo/redo of current session)
+    // All finished strokes in this session
     private final ArrayList<Stroke> strokes = new ArrayList<>();
-    private final ArrayList<Stroke> redoStrokes = new ArrayList<>();
+    private final ArrayList<Stroke> undoneStrokes = new ArrayList<>();
 
-    // Touch helpers
-    private float lastX = 0f, lastY = 0f;
-    private boolean movedSinceDown = false;
-    private static final float TOUCH_TOLERANCE = 2f;
+    // State flags
+    private boolean isEraser = false;
+    private boolean isHighlighter = false;
+
+    // Defaults
+    private float brushSize = 5f;
+    private int currentColor = Color.BLACK;
 
     public DrawingView(Context context) {
         super(context);
-        init(context);
+        paint = createBasePaint();
     }
 
     public DrawingView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
-        init(context);
+        paint = createBasePaint();
     }
 
-    private void init(Context ctx) {
-        paint = new Paint();
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setColor(currentColor);
-        paint.setStrokeWidth(brushSize);
-        paint.setAntiAlias(true);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeJoin(Paint.Join.ROUND);
-
-        currentPath = new Path();
-
-        setFocusable(true);
-        setFocusableInTouchMode(true);
+    private Paint createBasePaint() {
+        Paint p = new Paint();
+        p.setAntiAlias(true);
+        p.setStrokeWidth(brushSize);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeJoin(Paint.Join.ROUND);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        p.setColor(currentColor);
+        p.setAlpha(255);
+        return p;
     }
 
     // ----------------------------------------------------
-    // Optional: Page ID + persistence helpers
+    // Background + saved overlay
     // ----------------------------------------------------
 
-    public void setPageId(@Nullable String id) {
-        this.pageId = id;
-        Log.d(TAG, "setPageId: " + id);
-        loadSavedBitmapIfExists();
-    }
-
-    private void loadSavedBitmapIfExists() {
-        if (pageId == null || pageId.trim().isEmpty()) return;
-
-        try {
-            File dir = getContext().getFilesDir();
-            File file = new File(dir, pageId + ".png");
-            if (!file.exists()) {
-                Log.d(TAG, "No saved bitmap for pageId=" + pageId);
-                return;
-            }
-
-            Bitmap bmp = BitmapFactory.decodeFile(file.getAbsolutePath());
-            if (bmp != null) {
-                setSavedDrawingBitmap(bmp);
-                Log.d(TAG, "Loaded saved bitmap for pageId=" + pageId);
-            } else {
-                Log.w(TAG, "decodeFile returned null for " + file.getAbsolutePath());
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "loadSavedBitmapIfExists error", e);
-        }
-    }
-
-    // ----------------------------------------------------
-    // Size / canvas setup
-    // ----------------------------------------------------
-    @Override
-    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        super.onSizeChanged(w, h, oldw, oldh);
-
-        if (w <= 0 || h <= 0) {
-            return;
-        }
-
-        Bitmap newBitmap = Bitmap.createBitmap(
-                Math.max(1, w),
-                Math.max(1, h),
-                Bitmap.Config.ARGB_8888
-        );
-        Canvas newCanvas = new Canvas(newBitmap);
-
-        if (drawingBitmap != null) {
-            newCanvas.drawBitmap(drawingBitmap, 0, 0, null);
-        }
-
-        drawingBitmap = newBitmap;
-        drawingCanvas = newCanvas;
-
-        Log.d(TAG, "onSizeChanged: w=" + w + " h=" + h);
-    }
-
-    public void setBackgroundBitmap(Bitmap bmp) {
-        bgBitmap = bmp;
-        invalidate();
-    }
-
-    public void setSavedDrawingBitmap(Bitmap bmp) {
-        if (bmp == null) return;
-
-        if (drawingBitmap != null && !drawingBitmap.isRecycled()) {
-            drawingBitmap.recycle();
-        }
-
-        drawingBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true);
-        drawingCanvas = new Canvas(drawingBitmap);
-
-        strokes.clear();
-        redoStrokes.clear();
-
+    public void setBackgroundBitmap(@Nullable Bitmap bitmap) {
+        bgBitmap = bitmap;
         invalidate();
     }
 
     /**
-     * NEW: Allow manager/JS to directly set the drawing layer bitmap.
-     * Used by the `savedPath` React prop.
+     * Called from DrawingViewManager.savedPath.
+     * This is the previously saved PNG overlay.
      */
-    public void setDrawingBitmap(@Nullable Bitmap bmp) {
-        if (bmp == null) {
-            if (drawingBitmap != null) {
-                drawingBitmap.eraseColor(Color.TRANSPARENT);
-            }
-            strokes.clear();
-            redoStrokes.clear();
-            invalidate();
-            return;
-        }
-
-        setSavedDrawingBitmap(bmp);
+    public void setDrawingBitmap(@Nullable Bitmap bitmap) {
+        savedOverlayBitmap = bitmap;
+        invalidate();
     }
 
     // ----------------------------------------------------
@@ -183,248 +97,224 @@ public class DrawingView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        if (canvas == null) return;
-
-        // Background image (if used)
+        // 1) Background form
         if (bgBitmap != null) {
-            canvas.drawBitmap(bgBitmap, 0f, 0f, null);
+            canvas.drawBitmap(bgBitmap, 0, 0, null);
         }
 
-        // Persisted strokes layer
-        if (drawingBitmap != null) {
-            canvas.drawBitmap(drawingBitmap, 0f, 0f, null);
+        // 2) Previously saved overlay (from disk)
+        if (savedOverlayBitmap != null) {
+            canvas.drawBitmap(savedOverlayBitmap, 0, 0, null);
         }
 
-        // Live stroke preview
-        if (currentPath != null) {
-            canvas.drawPath(currentPath, paint);
+        // 3) Draw all finished strokes from this session
+        for (Stroke s : strokes) {
+            drawStroke(canvas, s);
+        }
+
+        // 4) Draw the live stroke being drawn
+        if (currentStroke != null && !currentStroke.points.isEmpty()) {
+            drawStroke(canvas, currentStroke);
         }
     }
 
+    private void drawStroke(Canvas canvas, @NonNull Stroke s) {
+        if (s.points.isEmpty()) return;
+
+        Path path = new Path();
+        path.moveTo(s.points.get(0).x, s.points.get(0).y);
+        for (int i = 1; i < s.points.size(); i++) {
+            PointF pt = s.points.get(i);
+            path.lineTo(pt.x, pt.y);
+        }
+
+        Paint p = new Paint(paint);
+        p.setStrokeWidth(s.brushSize);
+
+        if (s.isHighlighter) {
+            p.setColor(s.color);
+            p.setAlpha(100);
+            p.setXfermode(null);
+        } else if (s.isEraser) {
+            // On-screen eraser = draw white (like your pure Java version)
+            p.setColor(Color.WHITE);
+            p.setAlpha(255);
+            p.setXfermode(null);
+        } else {
+            p.setColor(s.color);
+            p.setAlpha(255);
+            p.setXfermode(null);
+        }
+
+        canvas.drawPath(path, p);
+    }
+
     // ----------------------------------------------------
-    // Touch handling (NO SCALE)
+    // Touch events
     // ----------------------------------------------------
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (!isEnabled()) return false;
 
-        if (drawingCanvas == null) {
-            if (getWidth() > 0 && getHeight() > 0) {
-                drawingBitmap = Bitmap.createBitmap(
-                        getWidth(),
-                        getHeight(),
-                        Bitmap.Config.ARGB_8888
-                );
-                drawingCanvas = new Canvas(drawingBitmap);
-            }
-        }
-
-        int action = event.getActionMasked();
         float x = event.getX();
         float y = event.getY();
 
-        switch (action) {
-            case MotionEvent.ACTION_DOWN: {
-                if (getParent() != null) {
-                    getParent().requestDisallowInterceptTouchEvent(true);
-                }
-
-                currentPath.reset();
-                currentPath.moveTo(x, y);
-
-                lastX = x;
-                lastY = y;
-                movedSinceDown = false;
-
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                getParent().requestDisallowInterceptTouchEvent(true);
+                startStroke(x, y);
                 invalidate();
                 return true;
-            }
 
-            case MotionEvent.ACTION_MOVE: {
-                if (getParent() != null) {
-                    getParent().requestDisallowInterceptTouchEvent(true);
+            case MotionEvent.ACTION_MOVE:
+                if (currentStroke != null) {
+                    currentStroke.points.add(new PointF(x, y));
+                    invalidate();
                 }
-
-                addSmoothPoint(x, y);
-                movedSinceDown = true;
-                invalidate();
                 return true;
-            }
 
             case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL: {
-
-                if (drawingCanvas == null) {
-                    currentPath.reset();
-                    if (getParent() != null) {
-                        getParent().requestDisallowInterceptTouchEvent(false);
-                    }
+            case MotionEvent.ACTION_CANCEL:
+                if (currentStroke != null) {
+                    strokes.add(currentStroke);
+                    currentStroke = null;
+                    undoneStrokes.clear();
                     invalidate();
-                    return true;
                 }
-
-                if (!movedSinceDown) {
-                    // Dot
-                    float r = Math.max(1f, brushSize / 2f);
-                    Paint fill = new Paint(paint);
-                    fill.setStyle(Paint.Style.FILL);
-
-                    drawingCanvas.drawCircle(x, y, r, fill);
-
-                    Path dot = new Path();
-                    dot.addCircle(x, y, r, Path.Direction.CW);
-                    strokes.add(new Stroke(dot, new Paint(fill)));
-
-                    Log.d(TAG, "Added DOT stroke. strokesCount=" + strokes.size());
-                } else {
-                    // Stroke
-                    currentPath.lineTo(x, y);
-                    drawingCanvas.drawPath(currentPath, paint);
-
-                    strokes.add(new Stroke(new Path(currentPath), new Paint(paint)));
-
-                    Log.d(TAG, "Added PATH stroke. strokesCount=" + strokes.size());
-                }
-
-                currentPath.reset();
-                redoStrokes.clear();
-
-                if (getParent() != null) {
-                    getParent().requestDisallowInterceptTouchEvent(false);
-                }
-
-                invalidate();
+                getParent().requestDisallowInterceptTouchEvent(false);
                 return true;
-            }
-        }
 
-        return true;
-    }
-
-    private void addSmoothPoint(float x, float y) {
-        float dx = Math.abs(x - lastX);
-        float dy = Math.abs(y - lastY);
-
-        if (dx >= TOUCH_TOLERANCE || dy >= TOUCH_TOLERANCE) {
-            float cx = (x + lastX) / 2f;
-            float cy = (y + lastY) / 2f;
-            currentPath.quadTo(lastX, lastY, cx, cy);
-            lastX = x;
-            lastY = y;
-        } else {
-            currentPath.lineTo(x, y);
-            lastX = x;
-            lastY = y;
+            default:
+                return super.onTouchEvent(event);
         }
     }
 
+    private void startStroke(float x, float y) {
+        currentStroke = new Stroke();
+        currentStroke.color = currentColor;
+        currentStroke.brushSize = brushSize;
+        currentStroke.isEraser = isEraser;
+        currentStroke.isHighlighter = isHighlighter;
+        currentStroke.points.add(new PointF(x, y));
+    }
+
     // ----------------------------------------------------
-    // Public API (called from RN)
+    // Public API used from RN
     // ----------------------------------------------------
+
     public void setColor(int color) {
-        isEraser = false;
         currentColor = color;
-
-        paint.setXfermode(null);
+        isEraser = false;
+        isHighlighter = false;
         paint.setColor(color);
         paint.setAlpha(255);
-        paint.setStrokeWidth(brushSize);
     }
 
     public void setBrushSize(float size) {
+        if (size <= 0) size = 1f;
         brushSize = size;
         paint.setStrokeWidth(size);
     }
 
-    public void setHighlighter(boolean enable) {
-        if (enable) {
-            paint.setXfermode(null);
-            paint.setColor(Color.YELLOW);
-            paint.setAlpha(120);
-            paint.setStrokeWidth(40f);
-        } else {
-            paint.setAlpha(255);
-            paint.setStrokeWidth(brushSize);
-            paint.setColor(currentColor);
+    public void setEraser(boolean eraser) {
+        isEraser = eraser;
+        if (eraser) {
+            isHighlighter = false;
         }
     }
 
-    public void setEraser(boolean enable) {
-        isEraser = enable;
-        if (enable) {
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
-            paint.setStrokeWidth(40f);
-        } else {
-            paint.setXfermode(null);
-            paint.setColor(currentColor);
-            paint.setStrokeWidth(brushSize);
+    public void setHighlighter(boolean highlight) {
+        isHighlighter = highlight;
+        if (highlight) {
+            isEraser = false;
         }
     }
 
     public void undo() {
         if (!strokes.isEmpty()) {
-            redoStrokes.add(strokes.remove(strokes.size() - 1));
-            redrawStrokes();
+            undoneStrokes.add(strokes.remove(strokes.size() - 1));
+            invalidate();
         }
     }
 
     public void redo() {
-        if (!redoStrokes.isEmpty()) {
-            strokes.add(redoStrokes.remove(redoStrokes.size() - 1));
-            redrawStrokes();
+        if (!undoneStrokes.isEmpty()) {
+            strokes.add(undoneStrokes.remove(undoneStrokes.size() - 1));
+            invalidate();
         }
     }
 
     public void clear() {
         strokes.clear();
-        redoStrokes.clear();
-        if (drawingBitmap != null) {
-            drawingBitmap.eraseColor(Color.TRANSPARENT);
-        }
-        invalidate();
-    }
-
-    private void redrawStrokes() {
-        if (drawingBitmap == null || drawingCanvas == null) return;
-
-        drawingBitmap.eraseColor(Color.TRANSPARENT);
-        for (Stroke s : strokes) {
-            drawingCanvas.drawPath(s.path, s.paint);
-        }
+        undoneStrokes.clear();
+        currentStroke = null;
         invalidate();
     }
 
     /**
-     * NEW: Save the current drawing layer to a specific File.
-     * This is called by DrawingViewManager's "saveToFile" command,
-     * which matches the JS path (e.g. /data/data/com.doctor/files/drawing_page_1.png).
+     * Called by DrawingViewManager "saveToFile" command.
+     * We create a transparent bitmap and draw this session's strokes + previous overlay.
      */
     public boolean saveToFile(@NonNull File outFile) {
         try {
-            if (drawingBitmap == null) {
-                Log.w(TAG, "saveToFile: drawingBitmap is null");
-                return false;
-            }
-
-            int w = drawingBitmap.getWidth();
-            int h = drawingBitmap.getHeight();
+            int w = getWidth();
+            int h = getHeight();
             if (w <= 0 || h <= 0) {
-                Log.w(TAG, "saveToFile: invalid bitmap size");
+                Log.w(TAG, "saveToFile: invalid size " + w + "x" + h);
                 return false;
             }
 
-            Bitmap output = Bitmap.createBitmap(
-                    w,
-                    h,
-                    Bitmap.Config.ARGB_8888
-            );
+            Bitmap output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(output);
-            // start fully transparent, then draw strokes
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-            canvas.drawBitmap(drawingBitmap, 0, 0, null);
 
+            // Start fully transparent
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+
+            // 1) Draw previously saved overlay (if any) as base
+            if (savedOverlayBitmap != null) {
+                canvas.drawBitmap(savedOverlayBitmap, 0, 0, null);
+            }
+
+            // 2) Draw all strokes in this session on top (with proper eraser transparency)
+            Paint p = new Paint(paint);
+            p.setAntiAlias(true);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeJoin(Paint.Join.ROUND);
+
+            for (Stroke s : strokes) {
+                if (s.points.isEmpty()) continue;
+
+                Path path = new Path();
+                path.moveTo(s.points.get(0).x, s.points.get(0).y);
+                for (int i = 1; i < s.points.size(); i++) {
+                    PointF pt = s.points.get(i);
+                    path.lineTo(pt.x, pt.y);
+                }
+
+                p.setStrokeWidth(s.brushSize);
+
+                if (s.isHighlighter) {
+                    p.setXfermode(null);
+                    p.setColor(s.color);
+                    p.setAlpha(100);
+                } else if (s.isEraser) {
+                    // In the PNG overlay, eraser = make those pixels transparent again
+                    p.setColor(Color.TRANSPARENT);
+                    p.setAlpha(0);
+                    p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+                } else {
+                    p.setXfermode(null);
+                    p.setColor(s.color);
+                    p.setAlpha(255);
+                }
+
+                canvas.drawPath(path, p);
+            }
+
+            // Write PNG
             File parent = outFile.getParentFile();
             if (parent != null && !parent.exists()) {
-                // Ensure dir exists
                 //noinspection ResultOfMethodCallIgnored
                 parent.mkdirs();
             }
@@ -442,53 +332,14 @@ public class DrawingView extends View {
         }
     }
 
-    // Existing helper if you still use pageId-based saving somewhere
-    public boolean saveCurrentToDisk() {
-        if (pageId == null || pageId.trim().isEmpty()) {
-            Log.w(TAG, "saveCurrentToDisk: pageId is null/empty");
-            return false;
-        }
-        try {
-            int w = getWidth();
-            int h = getHeight();
-            if (w <= 0 || h <= 0) return false;
-
-            Bitmap output = Bitmap.createBitmap(
-                    w,
-                    h,
-                    Bitmap.Config.ARGB_8888
-            );
-            Canvas canvas = new Canvas(output);
-
-            if (bgBitmap != null) {
-                canvas.drawBitmap(bgBitmap, 0, 0, null);
-            }
-            if (drawingBitmap != null) {
-                canvas.drawBitmap(drawingBitmap, 0, 0, null);
-            }
-
-            File dir = getContext().getFilesDir();
-            File file = new File(dir, pageId + ".png");
-
-            FileOutputStream fos = new FileOutputStream(file);
-            output.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            fos.close();
-
-            Log.d(TAG, "Saved drawing to: " + file.getAbsolutePath());
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "saveCurrentToDisk error", e);
-            return false;
-        }
-    }
-
-    static class Stroke {
-        Path path;
-        Paint paint;
-
-        Stroke(Path p, Paint pa) {
-            path = p;
-            paint = pa;
-        }
+    // ----------------------------------------------------
+    // Stroke model (same spirit as your pure version)
+    // ----------------------------------------------------
+    public static class Stroke {
+        public int color;
+        public float brushSize;
+        public boolean isEraser;
+        public boolean isHighlighter;
+        public final ArrayList<PointF> points = new ArrayList<>();
     }
 }

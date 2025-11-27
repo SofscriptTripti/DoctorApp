@@ -1,4 +1,5 @@
 // src/components/NativeDrawingView.tsx
+
 import React, {
   forwardRef,
   useImperativeHandle,
@@ -15,11 +16,9 @@ import {
 
 type NativeProps = {
   style?: StyleProp<ViewStyle>;
-  backgroundBase64?: string;
   strokeColor?: string | number;
   strokeWidth?: number;
   eraseMode?: boolean;
-  // NEW: path to previously saved PNG so native can reload it
   savedPath?: string | null;
 };
 
@@ -43,45 +42,34 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
     const nativeRef = useRef<any>(null);
 
     const sendCommand = (name: string, args: any[] = []) => {
-      if (Platform.OS !== 'android') {
-        return;
-      }
+      if (Platform.OS !== 'android') return;
+
       const node = findNodeHandle(nativeRef.current);
       if (!node) return;
 
-      const config = UIManager.getViewManagerConfig(
-        COMPONENT_NAME
-      );
-      if (!config) return;
+      const config = UIManager.getViewManagerConfig(COMPONENT_NAME);
+      if (!config || !config.Commands) return;
 
-      const commands = config.Commands || {};
-      const commandId = commands[name];
+      const commandId = config.Commands[name];
+      if (commandId == null) return;
 
-      try {
-        if (typeof commandId === 'number') {
-          UIManager.dispatchViewManagerCommand(node, commandId, args);
-        } else {
-          // fallback for older RN where string is allowed
-          // @ts-ignore
-          UIManager.dispatchViewManagerCommand(node, name, args);
-        }
-      } catch (e) {
-        console.warn('RNDrawingView command error', name, e);
-      }
+      UIManager.dispatchViewManagerCommand(node, commandId, args);
     };
 
     useImperativeHandle(
       ref,
       () => ({
         undo: () => sendCommand('undo'),
+
         redo: () => sendCommand('redo'),
+
         clear: () => sendCommand('clear'),
-        
 
         setColor: (hex: string) => {
           if (!nativeRef.current) return;
           nativeRef.current.setNativeProps({
             strokeColor: hex,
+            eraseMode: false,
           });
         },
 
@@ -103,15 +91,11 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
           return new Promise<boolean>((resolve) => {
             try {
               sendCommand('saveToFile', [path]);
+              resolve(true); // native already writes synchronously
             } catch (e) {
-              console.warn('saveToFile command failed', e);
+              console.warn('saveToFile failed', e);
               resolve(false);
-              return;
             }
-
-            setTimeout(() => {
-              resolve(true);
-            }, 400);
           });
         },
       }),
