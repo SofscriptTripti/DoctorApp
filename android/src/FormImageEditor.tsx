@@ -23,6 +23,8 @@ import {
   GestureResponderEvent,
   PanResponderGestureState,
   ActivityIndicator,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -31,6 +33,9 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import NativeDrawingView, { DrawingRef } from './components/NativeDrawingView';
+
+// 🔊 VoiceKit
+import { useVoice, VoiceMode } from 'react-native-voicekit';
 
 // We TRY AsyncStorage, but we don't depend on it.
 let AsyncStorage: any = null;
@@ -70,6 +75,16 @@ type DrawingCanvasProps = {
   savedPath?: string | null;
 };
 
+// Voice text note type
+type VoiceNote = {
+  id: string;
+  pageIndex: number;
+  text: string;
+  color: string;
+  x: number;
+  y: number;
+};
+
 // --- stable memoized drawing canvas that forwards ref reliably
 const DrawingCanvas = React.memo(
   forwardRef(function DrawingCanvasInternal(
@@ -97,6 +112,131 @@ const DrawingCanvas = React.memo(
   (prev, next) =>
     prev.index === next.index && prev.savedPath === next.savedPath
 );
+
+// Draggable + pinch-zoom voice text component
+function DraggableVoiceText({
+  note,
+  onPositionChange,
+}: {
+  note: VoiceNote;
+  onPositionChange: (id: string, x: number, y: number) => void;
+}) {
+  const pan = useRef(
+    new Animated.ValueXY({ x: note.x, y: note.y })
+  ).current;
+
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const startPosRef = useRef({ x: note.x, y: note.y });
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    startScale: number;
+  } | null>(null);
+
+  const MIN_TEXT_SCALE = 0.6;
+  const MAX_TEXT_SCALE = 2.8;
+
+  // sync external updates (if any)
+  useEffect(() => {
+    pan.setValue({ x: note.x, y: note.y });
+  }, [note.x, note.y, pan]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: (evt: GestureResponderEvent) => {
+        const touches = evt.nativeEvent.touches || [];
+        if (touches.length === 2) {
+          const [t1, t2] = touches;
+          const dx = t1.pageX - t2.pageX;
+          const dy = t1.pageY - t2.pageY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+          let currentScale = 1;
+          try {
+            const v = (scaleAnim as any).__getValue?.();
+            if (typeof v === 'number') currentScale = v;
+          } catch (e) {}
+
+          pinchStateRef.current = {
+            initialDistance: dist,
+            startScale: currentScale,
+          };
+        } else {
+          pinchStateRef.current = null;
+          startPosRef.current = { x: note.x, y: note.y };
+        }
+      },
+
+      onPanResponderMove: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        const touches = evt.nativeEvent.touches || [];
+
+        // Two-finger pinch to resize text
+        if (touches.length === 2 && pinchStateRef.current) {
+          const [t1, t2] = touches;
+          const dx = t1.pageX - t2.pageX;
+          const dy = t1.pageY - t2.pageY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+          const factor =
+            dist / Math.max(1, pinchStateRef.current.initialDistance);
+          let newScale = pinchStateRef.current.startScale * factor;
+          if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
+          if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
+
+          scaleAnim.setValue(newScale);
+          return;
+        }
+
+        // One-finger drag to move text
+        if (touches.length <= 1) {
+          const nx = startPosRef.current.x + gestureState.dx;
+          const ny = startPosRef.current.y + gestureState.dy;
+          pan.setValue({ x: nx, y: ny });
+        }
+      },
+
+      onPanResponderRelease: (_evt, gestureState) => {
+        // Commit final position after drag
+        const nx = startPosRef.current.x + gestureState.dx;
+        const ny = startPosRef.current.y + gestureState.dy;
+        onPositionChange(note.id, nx, ny);
+        pinchStateRef.current = null;
+      },
+
+      onPanResponderTerminate: (_evt, gestureState) => {
+        const nx = startPosRef.current.x + gestureState.dx;
+        const ny = startPosRef.current.y + gestureState.dy;
+        onPositionChange(note.id, nx, ny);
+        pinchStateRef.current = null;
+      },
+    })
+  ).current;
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.voiceTextDragWrapper,
+        {
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+            { scale: scaleAnim },
+          ],
+        },
+      ]}
+    >
+      {/* "Background but invisible" => padding + transparent bg */}
+      <View style={styles.voiceTextHitBox}>
+        <Text style={[styles.voiceTextDrag, { color: note.color }]}>
+          {note.text}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
 
 // ----- main component
 export default function FormImageEditor() {
@@ -152,6 +292,9 @@ export default function FormImageEditor() {
     return IMAGES.map(() => ({ bitmapPath: null }));
   });
 
+  // voice notes on pages
+  const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>([]);
+
   // stable ref setter array (store refs directly for imperative calls)
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
     useMemo(
@@ -174,6 +317,137 @@ export default function FormImageEditor() {
 
   // NO touch scrolling (only via right handle)
   const [scrollEnabled] = useState(false);
+
+  // -----------------------------
+  // VoiceKit: state + hook usage
+  // -----------------------------
+  const [voiceVisible, setVoiceVisible] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  const {
+    available: voiceAvailable,
+    listening: voiceListening,
+    transcript: voiceTranscript,
+    startListening,
+    stopListening,
+  } = useVoice({
+    locale: 'en-US',
+    mode: VoiceMode.Continuous,
+    enablePartialResults: true,
+  });
+
+  // Update local text whenever transcript changes
+  useEffect(() => {
+    if (voiceTranscript != null && voiceTranscript !== '') {
+      setVoiceText(voiceTranscript);
+    }
+  }, [voiceTranscript]);
+
+  // ask for mic permission on Android
+  const ensureMicPermission = async () => {
+    if (Platform.OS !== 'android') return true;
+
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      {
+        title: 'Microphone permission',
+        message: 'This app needs microphone access for voice input.',
+        buttonNeutral: 'Ask Me Later',
+        buttonNegative: 'Cancel',
+        buttonPositive: 'OK',
+      }
+    );
+
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  };
+
+  // current page index helper (uses scrollY)
+  function getCurrentPageIndex() {
+    const CONTENT_TOP_PADDING = Math.max(
+      24,
+      (insets.top ?? 0) + PAGE_SPACING + 8
+    );
+    const effective = Math.max(0, scrollY.current - CONTENT_TOP_PADDING);
+    return Math.max(
+      0,
+      Math.min(
+        IMAGES.length - 1,
+        Math.round(effective / (PAGE_HEIGHT + PAGE_SPACING))
+      )
+    );
+  }
+
+  // create a new voice note on current page
+  const addVoiceNote = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const pageIndex = getCurrentPageIndex();
+
+    const newNote: VoiceNote = {
+      id: `${Date.now()}-${Math.random()}`,
+      pageIndex,
+      text: trimmed,
+      color, // use current pen color
+      x: SCREEN_W * 0.15, // initial relative position
+      y: PAGE_HEIGHT * 0.15,
+    };
+
+    setVoiceNotes((prev) => [...prev, newNote]);
+  };
+
+  // update note position after drag
+  const handleVoiceNotePositionChange = (id: string, x: number, y: number) => {
+    setVoiceNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, x, y } : n))
+    );
+  };
+
+  const handleVoiceFabPress = async () => {
+    if (saveStatus === 'saving') return;
+
+    if (!voiceAvailable) {
+      setVoiceError('Speech recognition is not available on this device.');
+      setVoiceVisible(true);
+      return;
+    }
+
+    try {
+      const ok = await ensureMicPermission();
+      if (!ok) {
+        setVoiceError('Microphone permission denied.');
+        setVoiceVisible(true);
+        return;
+      }
+
+      setVoiceError(null);
+      setVoiceText('');
+      setVoiceVisible(true);
+      await startListening();
+    } catch (e: any) {
+      console.warn('[VoiceKit] startListening error', e);
+      setVoiceError(
+        e?.message || e?.toString() || 'Could not start listening.'
+      );
+      setVoiceVisible(true);
+    }
+  };
+
+  const handleVoiceStopPress = async () => {
+    try {
+      await stopListening();
+    } catch (e) {
+      console.warn('[VoiceKit] stopListening error', e);
+    } finally {
+      // when user stops, create a note from latest text
+      if (voiceText && voiceText.trim()) {
+        addVoiceNote(voiceText);
+      }
+      setVoiceVisible(false);
+      setVoiceText('');
+    }
+  };
 
   const performUndo = () => {
     const idx = getCurrentPageIndex();
@@ -202,17 +476,6 @@ export default function FormImageEditor() {
     160,
     SCREEN_H - PAGE_HEIGHT + PAGE_SPACING + 24
   );
-
-  function getCurrentPageIndex() {
-    const effective = Math.max(0, scrollY.current - CONTENT_TOP_PADDING);
-    return Math.max(
-      0,
-      Math.min(
-        IMAGES.length - 1,
-        Math.round(effective / (PAGE_HEIGHT + PAGE_SPACING))
-      )
-    );
-  }
 
   const PALETTE = [
     '#0EA5A4',
@@ -453,10 +716,6 @@ export default function FormImageEditor() {
     })
   ).current;
 
-  // We DO NOT depend on AsyncStorage anymore for restoring strokes.
-  // (You can keep your old AsyncStorage loading if you want,
-  // but it's clearly not available in your logs.)
-
   const APP_FILES_DIR = '/data/data/com.doctor/files';
 
   const onSaveAll = async () => {
@@ -511,7 +770,6 @@ export default function FormImageEditor() {
         console.log('AsyncStorage not available — session-only.');
       }
 
-      // 🔥 Editor now knows the saved paths immediately
       setSavedMeta(allMeta);
 
       const payload = {
@@ -678,10 +936,13 @@ export default function FormImageEditor() {
         >
           {IMAGES.map((src, pageIndex) => {
             const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
+            const notesForPage = voiceNotes.filter(
+              (n) => n.pageIndex === pageIndex
+            );
             return (
               <View key={`page-${pageIndex}`} style={styles.pageWrap}>
                 <View style={styles.pageInner}>
-                  {/* ZOOMED GROUP: image + drawing view together */}
+                  {/* ZOOMED GROUP: image + drawing + text together */}
                   <Animated.View
                     style={[
                       styles.zoomGroup,
@@ -695,7 +956,7 @@ export default function FormImageEditor() {
                       resizeMode="stretch"
                     />
 
-                    {/* Drawing overlay fills exactly the same area */}
+                    {/* Drawing overlay */}
                     <View
                       style={styles.canvasContainer}
                       pointerEvents="box-none"
@@ -706,6 +967,15 @@ export default function FormImageEditor() {
                         ref={(r) => refSetters.current[pageIndex](r)}
                       />
                     </View>
+
+                    {/* Voice notes (draggable + pinch-zoom text) */}
+                    {notesForPage.map((note) => (
+                      <DraggableVoiceText
+                        key={note.id}
+                        note={note}
+                        onPositionChange={handleVoiceNotePositionChange}
+                      />
+                    ))}
                   </Animated.View>
                 </View>
 
@@ -725,6 +995,19 @@ export default function FormImageEditor() {
           <View style={styles.rightGrip} />
         </View>
       </Animated.View>
+
+      {/* 🔊 floating mic FAB */}
+      <TouchableOpacity
+        style={[
+          styles.voiceFab,
+          { bottom: (insets.bottom ?? 0) + 24 },
+        ]}
+        activeOpacity={0.8}
+        onPress={handleVoiceFabPress}
+        disabled={saveStatus === 'saving'}
+      >
+        <Ionicons name="mic" size={24} color="#fff" />
+      </TouchableOpacity>
 
       {colorPanelOpen && (
         <Animated.View style={styles.colorPanel}>
@@ -751,6 +1034,41 @@ export default function FormImageEditor() {
             ))}
           </View>
         </Animated.View>
+      )}
+
+      {/* 🔊 voice popup overlay */}
+      {voiceVisible && (
+        <View style={styles.voiceOverlay}>
+          <View style={styles.voiceDialog}>
+            <Text style={styles.voiceTitle}>Google</Text>
+            <Text style={styles.voiceSubtitle}>
+              {voiceListening ? 'Listening…' : 'Processing…'}
+            </Text>
+
+            <View style={styles.voiceDotsRow}>
+              <View style={styles.voiceDot} />
+              <View style={styles.voiceDot} />
+              <View style={styles.voiceDot} />
+              <View style={styles.voiceDot} />
+            </View>
+
+            {voiceError ? (
+              <Text style={styles.voiceErrorText}>{voiceError}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={styles.voiceMicButton}
+              onPress={handleVoiceStopPress}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={voiceListening ? 'mic' : 'mic-off'}
+                size={32}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       {/* Saving / Saved overlay */}
@@ -934,6 +1252,99 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+
+  // 🔊 voice FAB
+  voiceFab: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#0EA5A4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    zIndex: 70,
+  },
+
+  // draggable voice text on page
+  voiceTextDragWrapper: {
+    position: 'absolute',
+  },
+  // Invisible background (hit area) wrapper
+  voiceTextHitBox: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    backgroundColor: 'transparent', // invisible background
+  },
+  voiceTextDrag: {
+    fontSize: 16,
+    fontWeight: '500',
+    backgroundColor: 'transparent',
+  },
+
+  // 🔊 voice overlay styles
+  voiceOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    zIndex: 90,
+  },
+  voiceDialog: {
+    width: SCREEN_W,
+    paddingTop: 26,
+    paddingBottom: 42,
+    backgroundColor: '#111827',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    alignItems: 'center',
+  },
+  voiceTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#f9fafb',
+  },
+  voiceSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  voiceDotsRow: {
+    flexDirection: 'row',
+    marginTop: 18,
+  },
+  voiceDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginHorizontal: 4,
+    backgroundColor: '#9ca3af',
+  },
+  voiceMicButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  voiceErrorText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#fecaca',
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
 
   // Saving overlay styles
