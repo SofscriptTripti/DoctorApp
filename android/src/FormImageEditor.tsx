@@ -340,9 +340,19 @@ export default function FormImageEditor() {
     : null;
 
   const [color, setColor] = useState('#0EA5A4');
-  const [strokeWidth, setStrokeWidth] = useState(4);
+  const [penWidth, setPenWidth] = useState(4);
+  const [eraserWidth, setEraserWidth] = useState(20); // default eraser thicker
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [colorPanelOpen, setColorPanelOpen] = useState(false);
+  // which tool's thickness panel is open: 'pen' | 'eraser' | null
+  const [thicknessTool, setThicknessTool] = useState<'pen' | 'eraser' | null>(
+    null
+  );
+  const thicknessPanelOpen = thicknessTool !== null;
+
+  // derived: current active stroke width (used for preview + syncing)
+  const activeStrokeWidth =
+    tool === 'eraser' ? eraserWidth : penWidth;
 
   // save status for overlay UI
   const [saveStatus, setSaveStatus] = useState<
@@ -351,13 +361,9 @@ export default function FormImageEditor() {
   const lastPayloadRef = useRef<any | null>(null);
 
   const colorRef = useRef(color);
-  const widthRef = useRef(strokeWidth);
   useEffect(() => {
     colorRef.current = color;
   }, [color]);
-  useEffect(() => {
-    widthRef.current = strokeWidth;
-  }, [strokeWidth]);
 
   // stable storage for canvas refs
   const canvasRefs = useRef<Array<DrawingRef | null>>(
@@ -480,11 +486,14 @@ export default function FormImageEditor() {
     };
 
     setVoiceNotes((prev) => [...prev, newNote]);
-    // not entering edit mode automatically, only on double tap
   };
 
   // update note position after drag
-  const handleVoiceNotePositionChange = (id: string, x: number, y: number) => {
+  const handleVoiceNotePositionChange = (
+    id: string,
+    x: number,
+    y: number
+  ) => {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, x, y } : n))
     );
@@ -559,20 +568,29 @@ export default function FormImageEditor() {
 
   // 🔧 sync brush + eraser with native drawing views
   useEffect(() => {
+    const activeWidth = tool === 'eraser' ? eraserWidth : penWidth;
+
     canvasRefs.current.forEach((c) => {
       if (!c) return;
 
+      if (typeof c.setBrushSize === 'function') {
+        c.setBrushSize(activeWidth);
+      }
+
       if (tool === 'eraser') {
-        // enable native eraser
-        c.setEraser(true);
+        if (typeof c.setEraser === 'function') {
+          c.setEraser(true);
+        }
       } else {
-        // back to pen with current color + width
-        c.setEraser(false);
-        c.setColor(color);
-        c.setBrushSize(strokeWidth);
+        if (typeof c.setEraser === 'function') {
+          c.setEraser(false);
+        }
+        if (typeof c.setColor === 'function') {
+          c.setColor(color);
+        }
       }
     });
-  }, [tool, color, strokeWidth]);
+  }, [tool, color, penWidth, eraserWidth]);
 
   const performUndo = () => {
     const idx = getCurrentPageIndex();
@@ -665,17 +683,25 @@ export default function FormImageEditor() {
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: color,
+          backgroundColor: tool === 'eraser' ? '#ffffff' : color,
+          borderWidth: tool === 'eraser' ? 1 : 0,
+          borderColor: '#d1d5db',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
         <View
           style={{
-            width: Math.max(4, Math.round((strokeWidth / 30) * size)),
-            height: Math.max(4, Math.round((strokeWidth / 30) * size)),
+            width: Math.max(
+              4,
+              Math.round((activeStrokeWidth / 30) * size)
+            ),
+            height: Math.max(
+              4,
+              Math.round((activeStrokeWidth / 30) * size)
+            ),
             borderRadius: 100,
-            backgroundColor: '#fff',
+            backgroundColor: tool === 'eraser' ? '#94a3b8' : '#ffffff',
             opacity: 0.95,
           }}
         />
@@ -915,7 +941,13 @@ const scrollToRightTop = (sY: number) => {
       }
     }
 
-    const uiPayload = { color, strokeWidth };
+    console.log('[onSaveAll] allMeta =', allMeta);
+
+    const uiPayload = {
+      color,
+      penWidth,
+      eraserWidth,
+    };
 
     try {
       if (AsyncStorage) {
@@ -923,7 +955,13 @@ const scrollToRightTop = (sY: number) => {
           STORAGE_UI_KEY,
           JSON.stringify(uiPayload)
         );
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(allMeta));
+        await AsyncStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(allMeta)
+        );
+        console.log('[onSaveAll] wrote to AsyncStorage key =', STORAGE_KEY);
+      } else {
+        console.log('AsyncStorage not available — session-only.');
       }
 
       setSavedMeta(allMeta);
@@ -943,10 +981,11 @@ const scrollToRightTop = (sY: number) => {
     }
   };
 
+  // ✅ IMPORTANT: update existing FormImageScreen instead of pushing new one
   const handleSaveOk = () => {
     const payload = lastPayloadRef.current || {
       savedStrokes: savedMeta,
-      editorUI: { color, strokeWidth },
+      editorUI: { color, penWidth, eraserWidth },
       editorSavedAt: Date.now(),
       storageKey: STORAGE_KEY,
       formName: route.params?.formName,
@@ -954,14 +993,23 @@ const scrollToRightTop = (sY: number) => {
 
     setSaveStatus('idle');
 
+    const targetName = (returnScreen as string) || 'FormImageScreen';
+
     try {
-      if (returnScreen && typeof navigation.navigate === 'function') {
-        navigation.navigate(returnScreen as never, payload as never);
-      } else {
-        navigation.navigate('FormImageScreen' as never, payload as never);
-      }
+      // Try to MERGE params into existing screen (so its useEffect sees new savedStrokes)
+      navigation.navigate({
+        name: targetName,
+        params: payload,
+        // merge: true ensures existing route is reused when possible
+        merge: true,
+      } as any);
     } catch (e) {
-      // ignore
+      console.warn('handleSaveOk navigation (merge) failed, fallback', e);
+      try {
+        navigation.navigate(targetName as never, payload as never);
+      } catch (e2) {
+        console.warn('handleSaveOk fallback navigation failed', e2);
+      }
     }
   };
 
@@ -971,7 +1019,9 @@ const scrollToRightTop = (sY: number) => {
 
   return (
     <SafeAreaView style={styles.root}>
+      {/* HEADER / TOOLBAR */}
       <View style={[styles.topBar, { paddingTop: topPadding }]}>
+        {/* Back */}
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.iconBtn}
@@ -982,57 +1032,127 @@ const scrollToRightTop = (sY: number) => {
 
         <View style={{ flex: 1 }} />
 
-        <TouchableOpacity
-          onPress={performUndo}
-          style={styles.iconBtn}
-          disabled={saveStatus === 'saving'}
-        >
-          <Ionicons name="arrow-undo" size={20} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={performRedo}
-          style={styles.iconBtn}
-          disabled={saveStatus === 'saving'}
-        >
-          <Ionicons name="arrow-redo" size={20} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={performClear}
-          style={styles.iconBtn}
-          disabled={saveStatus === 'saving'}
-        >
-          <MaterialCommunityIcons name="broom" size={20} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={activatePen}
-          style={[
-            styles.iconBtn,
-            tool === 'pen' ? styles.iconActive : undefined,
-          ]}
-          disabled={saveStatus === 'saving'}
-        >
-          <MaterialCommunityIcons name="pencil" size={20} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={activateEraser}
-          style={[
-            styles.iconBtn,
-            tool === 'eraser' ? styles.iconActive : undefined,
-          ]}
-          disabled={saveStatus === 'saving'}
-        >
-          <MaterialCommunityIcons name="eraser" size={20} color="#fff" />
-        </TouchableOpacity>
+        {/* Undo / Redo / Clear group */}
+        <View style={styles.historyGroup}>
+          <TouchableOpacity
+            onPress={performUndo}
+            style={styles.iconBtn}
+            disabled={saveStatus === 'saving'}
+          >
+            <Ionicons name="arrow-undo" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={performRedo}
+            style={styles.iconBtn}
+            disabled={saveStatus === 'saving'}
+          >
+            <Ionicons name="arrow-redo" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={performClear}
+            style={styles.iconBtn}
+            disabled={saveStatus === 'saving'}
+          >
+            <MaterialCommunityIcons
+              name="broom"
+              size={20}
+              color="#fff"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Pen / Eraser grouped nicely */}
+        <View style={styles.toolGroupRow}>
+          {/* Pen group */}
+          <View
+            style={[
+              styles.toolChip,
+              tool === 'pen' && styles.toolChipActive,
+            ]}
+          >
+            <TouchableOpacity
+              onPress={activatePen}
+              style={styles.toolChipIcon}
+              disabled={saveStatus === 'saving'}
+            >
+              <MaterialCommunityIcons
+                name="pencil"
+                size={18}
+                color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                setThicknessTool((prev) =>
+                  prev === 'pen' ? null : 'pen'
+                )
+              }
+              style={styles.toolChipIcon}
+              disabled={saveStatus === 'saving'}
+            >
+              <Ionicons
+                name={
+                  thicknessPanelOpen && thicknessTool === 'pen'
+                    ? 'chevron-up'
+                    : 'chevron-down'
+                }
+                size={16}
+                color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Eraser group */}
+          <View
+            style={[
+              styles.toolChip,
+              tool === 'eraser' && styles.toolChipActive,
+            ]}
+          >
+            <TouchableOpacity
+              onPress={activateEraser}
+              style={styles.toolChipIcon}
+              disabled={saveStatus === 'saving'}
+            >
+              <MaterialCommunityIcons
+                name="eraser"
+                size={18}
+                color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                setThicknessTool((prev) =>
+                  prev === 'eraser' ? null : 'eraser'
+                )
+              }
+              style={styles.toolChipIcon}
+              disabled={saveStatus === 'saving'}
+            >
+              <Ionicons
+                name={
+                  thicknessPanelOpen && thicknessTool === 'eraser'
+                    ? 'chevron-up'
+                    : 'chevron-down'
+                }
+                size={16}
+                color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Color + Save */}
         <TouchableOpacity
           onPress={() => setColorPanelOpen((v) => !v)}
-          style={[styles.iconBtn, { marginLeft: 6 }]}
+          style={[styles.iconBtn, { marginLeft: 4 }]}
           disabled={saveStatus === 'saving'}
         >
           <View
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 14,
+              width: 26,
+              height: 26,
+              borderRadius: 13,
               backgroundColor: color,
               borderWidth: 1,
               borderColor: '#eee',
@@ -1041,29 +1161,42 @@ const scrollToRightTop = (sY: number) => {
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onSaveAll}
-          style={[styles.iconBtn, { marginLeft: 8 }]}
+          style={[styles.iconBtn, { marginLeft: 4 }]}
           disabled={saveStatus === 'saving'}
         >
           <Ionicons name="checkmark" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
+      {/* Compact bar showing current tool + active thickness */}
       <View style={styles.controlsCompact}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ marginRight: 8 }}>{strokeWidth}px</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flex: 1,
+          }}
+        >
+          <View>
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>
+              {tool === 'eraser'
+                ? 'Eraser thickness'
+                : 'Pen thickness'}
+            </Text>
+            <Text
+              style={{
+                marginTop: 2,
+                fontSize: 16,
+                fontWeight: '600',
+                color: '#111827',
+              }}
+            >
+              {activeStrokeWidth}px
+            </Text>
+          </View>
           <NibPreview size={28} />
         </View>
-        <Slider
-          style={{ flex: 1, height: 36 }}
-          minimumValue={1}
-          maximumValue={30}
-          value={strokeWidth}
-          onValueChange={(v) => {
-            setStrokeWidth(Math.round(v));
-            widthRef.current = Math.round(v);
-          }}
-          disabled={saveStatus === 'saving'}
-        />
       </View>
 
       {/* Wrapper that handles pinch zoom (2-fingers) */}
@@ -1146,6 +1279,7 @@ const scrollToRightTop = (sY: number) => {
         </ScrollView>
       </View>
 
+      {/* Right scroll handle */}
       <Animated.View
         style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]}
         {...rightPanResponder.panHandlers}
@@ -1168,6 +1302,54 @@ const scrollToRightTop = (sY: number) => {
       >
         <Ionicons name="mic" size={24} color="#fff" />
       </TouchableOpacity>
+
+      {/* 🔽 Thickness dropdown panel (one tool at a time, HORIZONTAL slider) */}
+      {thicknessPanelOpen && thicknessTool && (
+        <View
+          style={[
+            styles.thicknessPanel,
+            { top: topPadding + 46 },
+          ]}
+        >
+          <View style={styles.thicknessHeaderRow}>
+            <Text style={styles.thicknessTitle}>
+              {thicknessTool === 'pen'
+                ? 'Pen thickness'
+                : 'Eraser thickness'}
+            </Text>
+            <TouchableOpacity onPress={() => setThicknessTool(null)}>
+              <Ionicons
+                name="chevron-up"
+                size={18}
+                color="#111827"
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.thicknessContentRow}>
+            <Text style={styles.thicknessBigValue}>
+              {thicknessTool === 'pen' ? penWidth : eraserWidth}px
+            </Text>
+
+            <Slider
+              style={styles.thicknessSlider}
+              minimumValue={thicknessTool === 'pen' ? 1 : 4}
+              maximumValue={thicknessTool === 'pen' ? 40 : 50}
+              step={1}
+              value={thicknessTool === 'pen' ? penWidth : eraserWidth}
+              onValueChange={(v) => {
+                const val = Math.round(v);
+                if (thicknessTool === 'pen') {
+                  setPenWidth(val);
+                } else {
+                  setEraserWidth(val);
+                }
+              }}
+              disabled={saveStatus === 'saving'}
+            />
+          </View>
+        </View>
+      )}
 
       {colorPanelOpen && (
         <Animated.View style={styles.colorPanel}>
@@ -1301,8 +1483,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     backgroundColor: '#0EA5A4',
   },
-  iconBtn: { padding: 8, borderRadius: 18, marginLeft: 8 },
-  iconActive: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  iconBtn: { padding: 6, borderRadius: 18, marginLeft: 6 },
   controlsCompact: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1311,6 +1492,37 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
     backgroundColor: '#eee',
   },
+
+  historyGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+
+  toolGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  toolChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    marginHorizontal: 2,
+  },
+  toolChipActive: {
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
+  },
+  toolChipIcon: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+
   pageWrap: {
     width: SCREEN_W,
     alignItems: 'center',
@@ -1322,7 +1534,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden', // important: clip zoom so next page doesn't overlap
+    overflow: 'hidden',
   },
   zoomGroup: {
     width: '100%',
@@ -1356,6 +1568,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
+
   colorPanel: {
     position: 'absolute',
     left: 12,
@@ -1386,6 +1599,49 @@ const styles = StyleSheet.create({
   },
   gridSwatchActive: { borderColor: '#0EA5A4', borderWidth: 2 },
   gridSwatch: { width: '100%', height: '100%', borderRadius: 8 },
+
+  // Thickness dropdown (horizontal slider)
+  thicknessPanel: {
+    position: 'absolute',
+    right: 12,
+    left: 70,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    zIndex: 80,
+  },
+  thicknessHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  thicknessTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  thicknessContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  thicknessBigValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginRight: 12,
+    minWidth: 64,
+  },
+  thicknessSlider: {
+    flex: 1,
+  },
+
   rightHandle: {
     position: 'absolute',
     width: 26,
@@ -1436,11 +1692,10 @@ const styles = StyleSheet.create({
   voiceTextDragWrapper: {
     position: 'absolute',
   },
-  // Invisible background (hit area) wrapper
   voiceTextHitBox: {
     paddingHorizontal: 6,
     paddingVertical: 4,
-    backgroundColor: 'transparent', // invisible background
+    backgroundColor: 'transparent',
   },
   voiceTextDrag: {
     fontSize: 16,

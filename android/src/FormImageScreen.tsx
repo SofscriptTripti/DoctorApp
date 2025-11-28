@@ -87,7 +87,10 @@ export function FormImageScreen() {
   useEffect(() => {
     const p = (route.params as any) || {};
     if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
-      console.log('[FormImageScreen] got payload savedStrokes =', p.savedStrokes);
+      console.log(
+        '[FormImageScreen] got payload savedStrokes =',
+        p.savedStrokes,
+      );
       const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
         const m = p.savedStrokes[idx];
         return { bitmapPath: m?.bitmapPath ?? null };
