@@ -10,6 +10,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import PatientScreen from './android/src/PatientScreen';
 import FormType from './android/src/FormType';
 import { FormImageScreen } from './android/src/FormImageScreen';
+import FormImageEditor from './android/src/FormImageEditor';
 // keep FormImageEditor lazy-required to avoid forcing native module load at app startup
 // import FormImageEditor from './android/src/FormImageEditor';
 
@@ -27,13 +28,13 @@ function App() {
 
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Patients" component={PatientScreen} />
+            <Stack.Screen name="PatientScreen" component={PatientScreen} />
             <Stack.Screen name="FormType" component={FormType} />
 
             {/* Lazy-load the editor so the native module isn't required until the screen is opened */}
             <Stack.Screen
               name="FormImageEditor"
-              getComponent={() => require('./android/src/FormImageEditor').default}
+              component={FormImageEditor}
             />
 
             <Stack.Screen name="FormImageScreen" component={FormImageScreen} />
