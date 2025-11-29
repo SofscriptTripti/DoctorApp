@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from 'react-native-vector-icons/Ionicons'; // ✅ back icon
 
 const FORM_TYPES = [
   'Admission Form',
@@ -19,7 +20,6 @@ const FORM_TYPES = [
 ];
 
 function makeStorageKey(patientName: string, formType: string) {
-  // normalize to safe key (no spaces, etc.)
   const safePatient = patientName.replace(/\s+/g, '_');
   const safeForm = formType.replace(/\s+/g, '_');
   return `DoctorApp:${safePatient}:${safeForm}:pagesBitmaps:v1`;
@@ -39,7 +39,7 @@ export default function FormTypeScreen() {
     navigation.navigate('FormImageScreen', {
       patientName,
       formName: formType,
-      storageKey, // 🔑 UNIQUE per patient + form type
+      storageKey,
     });
   };
 
@@ -67,13 +67,6 @@ export default function FormTypeScreen() {
           <Text style={styles.chevron}>{'›'}</Text>
         </View>
       </View>
-
-      {/* <View style={styles.chipRow}>
-        <View style={styles.chip}>
-          <View style={styles.chipDot} />
-          <Text style={styles.chipText}>Linked to image editor</Text>
-        </View>
-      </View> */}
     </TouchableOpacity>
   );
 
@@ -84,8 +77,16 @@ export default function FormTypeScreen() {
         { paddingTop: insets.top },
       ]}
     >
-      {/* Header */}
+      {/* ✅ Header with Back Icon */}
       <View style={styles.header}>
+        <TouchableOpacity
+          // onPress={() => navigation.goBack()}
+           onPress={() => navigation.navigate('PatientScreen')}
+          style={styles.backBtn}
+        >
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </TouchableOpacity>
+
         <View style={{ flex: 1 }}>
           <Text style={styles.headerLabel}>Selected patient</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -131,7 +132,7 @@ const styles = StyleSheet.create({
 
   header: {
     paddingVertical: 18,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     backgroundColor: '#0EA5A4',
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
@@ -143,23 +144,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+
+  backBtn: {
+    paddingRight: 10,
+    paddingVertical: 6,
+  },
+
   headerLabel: {
     fontSize: 12,
     color: '#CFFAFE',
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
+
   headerTitle: {
     color: '#ffffff',
     fontSize: 20,
     fontWeight: '700',
     marginTop: 4,
   },
+
   headerSub: {
     color: '#E0FFFC',
     fontSize: 13,
     marginTop: 2,
   },
+
   headerRightBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -167,6 +177,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.16)',
     marginLeft: 10,
   },
+
   headerRightText: {
     color: '#E0FFFC',
     fontSize: 12,
@@ -183,11 +194,13 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 4,
   },
+
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
   },
+
   sectionSub: {
     fontSize: 12,
     color: '#64748B',
@@ -218,6 +231,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+
   iconCircle: {
     width: 38,
     height: 38,
@@ -227,55 +241,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
+
   iconText: {
     fontSize: 17,
     fontWeight: '700',
     color: '#0EA5A4',
   },
+
   cardTextBlock: {
     flex: 1,
   },
+
   formName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#0F172A',
   },
+
   formSub: {
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
   },
+
   chevronWrap: {
     marginLeft: 8,
   },
+
   chevron: {
     fontSize: 22,
     color: '#94A3B8',
     fontWeight: '600',
-  },
-
-  chipRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  chipDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#F97316',
-    marginRight: 4,
-  },
-  chipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#C05621',
   },
 });

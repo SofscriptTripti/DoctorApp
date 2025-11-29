@@ -15,6 +15,7 @@ import Tenth from './Tenth.jpeg';
 import Third from './Third.jpeg';
 import Thirteen from './Thirteen.jpeg'; // verify capitalization ("Thirteen.jpeg")
 import twelve from './twelve.jpeg';
+import NameStick from './NameStick.jpeg';
 
 const Images = {
   Eighth,
@@ -30,6 +31,7 @@ const Images = {
   Third,
   Thirteen,
   twelve,
+  NameStick,
 } as const;
 
 type ImageKey = keyof typeof Images;

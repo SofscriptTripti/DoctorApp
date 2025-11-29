@@ -1,5 +1,5 @@
 // src/FormImageScreen.tsx
-// Session-only: uses navigation payload, not AsyncStorage, to show overlays.
+// Session-only: uses navigation payload + AsyncStorage to show drawings + voice text + stickers.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -19,8 +19,18 @@ import {
   useNavigation,
   useFocusEffect,
 } from '@react-navigation/native';
+import Ionicons from 'react-native-vector-icons/Ionicons'; // 🔙 back icon
+
+// 🔹 Import types from editor (no runtime code, only types)
+import type {
+  VoiceNote,
+  ImageSticker,
+} from './FormImageEditor';
 
 const { width: W, height: H } = Dimensions.get('window');
+
+// Same page height logic as editor (PAGE_HEIGHT = SCREEN_H * 0.72)
+const PAGE_HEIGHT = Math.round(H * 0.72);
 
 const LOCAL_IMAGE_LIST = [
   require('./Images/first.jpeg'),
@@ -39,6 +49,15 @@ const LOCAL_IMAGE_LIST = [
 ];
 
 type PageMeta = { bitmapPath?: string | null };
+
+// Try AsyncStorage if available (for persistence per patient+form)
+let AsyncStorage: any = null;
+try {
+  AsyncStorage =
+    require('@react-native-async-storage/async-storage').default;
+} catch (e) {
+  AsyncStorage = null;
+}
 
 export function FormImageScreen() {
   const route = useRoute<any>();
@@ -61,12 +80,26 @@ export function FormImageScreen() {
     return LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }));
   });
 
+  // 🔊 Voice notes + 🧩 stickers state (per page)
+  const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>(() =>
+    Array.isArray(params.voiceNotes) ? params.voiceNotes : []
+  );
+  const [imageStickers, setImageStickers] = useState<ImageSticker[]>(() =>
+    Array.isArray(params.imageStickers) ? params.imageStickers : []
+  );
+
   const [reloadToken, setReloadToken] = useState(0);
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // ✅ Handle Android hardware back to always go to FormTypeScreen
+  // ✅ Also bump reloadToken whenever this screen comes into focus,
+  //    so overlay images are forced to refresh.
   useFocusEffect(
     useCallback(() => {
+      // Every time we come back to this screen (from editor, etc.),
+      // bump reloadToken so Image URIs change (`?t=...`) and cache is busted.
+      setReloadToken((t) => t + 1);
+
       const onBackPress = () => {
         navigation.navigate('FormType');
         return true; // block default behaviour
@@ -83,9 +116,11 @@ export function FormImageScreen() {
     }, [navigation]),
   );
 
-  // 🔥 When editor comes back with new savedStrokes, apply them
+  // 🔥 When editor comes back with new savedStrokes / overlays, apply them
   useEffect(() => {
     const p = (route.params as any) || {};
+
+    // bitmaps
     if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
       console.log(
         '[FormImageScreen] got payload savedStrokes =',
@@ -98,8 +133,102 @@ export function FormImageScreen() {
       setPageMeta(metaArr);
       setReloadToken((t) => t + 1);
     }
+
+    // overlays: voice notes + stickers
+    if (Array.isArray(p.voiceNotes)) {
+      setVoiceNotes(p.voiceNotes);
+    }
+    if (Array.isArray(p.imageStickers)) {
+      setImageStickers(p.imageStickers);
+    }
   }, [route.params]);
 
+  // ✅ On fresh open (no savedStrokes in params), try to restore from AsyncStorage
+  useEffect(() => {
+    let isMounted = true;
+
+    const p = (route.params as any) || {};
+    // If we already have savedStrokes from editor, don't override them
+    if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
+      return;
+    }
+
+    if (!AsyncStorage) {
+      return;
+    }
+
+    const loadFromStorage = async () => {
+      try {
+        setLoading(true);
+        const json = await AsyncStorage.getItem(perFormStorageKey);
+        if (!isMounted) return;
+
+        if (json) {
+          try {
+            const parsed = JSON.parse(json);
+
+            // 🧩 Old structure: just an array of bitmaps
+            if (Array.isArray(parsed)) {
+              const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
+                const m = parsed[idx];
+                return { bitmapPath: m?.bitmapPath ?? null };
+              });
+              setPageMeta(metaArr);
+              setReloadToken((t) => t + 1);
+              console.log(
+                '[FormImageScreen] restored (legacy) from AsyncStorage key =',
+                perFormStorageKey,
+              );
+            } else if (parsed && typeof parsed === 'object') {
+              // 🧩 New structure: { bitmaps, voiceNotes, imageStickers }
+              if (Array.isArray(parsed.bitmaps)) {
+                const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
+                  const m = parsed.bitmaps[idx];
+                  return { bitmapPath: m?.bitmapPath ?? null };
+                });
+                setPageMeta(metaArr);
+                setReloadToken((t) => t + 1);
+                console.log(
+                  '[FormImageScreen] restored (full blob) from AsyncStorage key =',
+                  perFormStorageKey,
+                );
+              }
+
+              if (Array.isArray(parsed.voiceNotes)) {
+                setVoiceNotes(parsed.voiceNotes);
+              }
+
+              if (Array.isArray(parsed.imageStickers)) {
+                setImageStickers(parsed.imageStickers);
+              }
+            }
+          } catch (e) {
+            console.warn(
+              '[FormImageScreen] failed to parse stored data for key =',
+              perFormStorageKey,
+              e,
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          '[FormImageScreen] error reading AsyncStorage key =',
+          perFormStorageKey,
+          e,
+        );
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadFromStorage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [perFormStorageKey, route.params]);
+
+  // 🔗 Open editor for single page (still pass full overlays so they persist)
   const openEditorForPage = (pageIndex: number) => {
     const localModule = LOCAL_IMAGE_LIST[pageIndex] ?? null;
     navigation.navigate('FormImageEditor', {
@@ -111,10 +240,13 @@ export function FormImageScreen() {
       uiStorageKey: undefined,
       pageIndex,
       returnScreen: 'FormImageScreen',
-      savedStrokes: pageMeta, // pass current session strokes
+      savedStrokes: pageMeta, // pass current pen overlays
+      voiceNotes,
+      imageStickers,
     });
   };
 
+  // 🔗 Open full multi-page editor, with all overlays
   const openFullEditor = () => {
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
@@ -122,7 +254,9 @@ export function FormImageScreen() {
       uiStorageKey: undefined,
       formName,
       returnScreen: 'FormImageScreen',
-      savedStrokes: pageMeta, // pass current session strokes
+      savedStrokes: pageMeta, // pass current pen overlays
+      voiceNotes,
+      imageStickers,
     });
   };
 
@@ -148,6 +282,22 @@ export function FormImageScreen() {
       overlaySource = { uri: stampedUri };
     }
 
+    // 🔎 Overlays for this page
+    const notesForPage = voiceNotes.filter(
+      (n) => n.pageIndex === idx
+    );
+    const stickersForPage = imageStickers.filter(
+      (s) => s.pageIndex === idx
+    );
+
+    // 🔎 Scale factors: editor used SCREEN_W & PAGE_HEIGHT
+    // Card uses width = W - 24, height = H * 0.58
+    const cardWidth = W - 24;
+    const cardHeight = H * 0.58;
+    const scaleX = cardWidth / W;
+    const scaleY = cardHeight / PAGE_HEIGHT;
+    const uniformScale = Math.min(scaleX, scaleY);
+
     return (
       <TouchableOpacity
         activeOpacity={0.95}
@@ -155,12 +305,14 @@ export function FormImageScreen() {
         style={styles.card}
       >
         <View style={styles.cardImageContainer}>
+          {/* Base form image */}
           <Image
             source={source}
             style={styles.cardImage}
             resizeMode="contain"
           />
 
+          {/* Pen overlay PNG (from native drawing) */}
           {overlaySource && (
             <Image
               key={`overlay-${idx}-${reloadToken}`}
@@ -169,6 +321,61 @@ export function FormImageScreen() {
               resizeMode="contain"
             />
           )}
+
+          {/* Voice text + stickers overlayed on top (read-only) */}
+          <View style={StyleSheet.absoluteFill}>
+            {notesForPage.map((note) => (
+              <View
+                key={note.id}
+                style={{
+                  position: 'absolute',
+                  left: note.x * scaleX,
+                  top: note.y * scaleY,
+                  transform: [
+                    { scale: note.scale * uniformScale },
+                  ],
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: note.color,
+                    backgroundColor: 'transparent',
+                  }}
+                >
+                  {note.text}
+                </Text>
+              </View>
+            ))}
+
+            {stickersForPage.map((sticker) => (
+              <View
+                key={sticker.id}
+                style={{
+                  position: 'absolute',
+                  left: sticker.x * scaleX,
+                  top: sticker.y * scaleY,
+                  transform: [
+                    { scale: sticker.scale * uniformScale },
+                  ],
+                }}
+              >
+                {/* This is just a placeholder visual; FormImageEditor uses NameStick.jpeg. 
+                    On screen we only need to show that sticker is present. */}
+                <View
+                  style={{
+                    width: 140 * uniformScale,
+                    height: 90 * uniformScale,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: '#0EA5A4',
+                    backgroundColor: '#e0f2f1',
+                  }}
+                />
+              </View>
+            ))}
+          </View>
         </View>
 
         <View style={styles.cardFooter}>
@@ -180,10 +387,21 @@ export function FormImageScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 🔙 Header with back button + title */}
       <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('FormType')}
+          style={styles.backBtn}
+        >
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </TouchableOpacity>
+
         <Text style={styles.title}>
           {formName || 'Form Images'}
         </Text>
+
+        {/* Spacer to balance layout */}
+        <View style={{ width: 22 }} />
       </View>
 
       <ScrollView
@@ -221,6 +439,7 @@ export function FormImageScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -229,6 +448,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0EA5A4',
     justifyContent: 'space-between',
   },
+
+  backBtn: {
+    paddingRight: 10,
+    paddingVertical: 4,
+  },
+
   title: { color: '#fff', fontSize: 18, fontWeight: '700' },
 
   listContainer: { padding: 12, alignItems: 'center' },
@@ -251,10 +476,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   cardImage: {
     width: '100%',
     height: '100%',
   },
+
   cardOverlayImage: {
     position: 'absolute',
     width: '100%',
@@ -268,6 +495,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   cardTitle: { fontWeight: '700', fontSize: 14, color: '#333' },
 
   centered: {
@@ -285,6 +513,7 @@ const styles = StyleSheet.create({
     bottom: 16,
     alignItems: 'center',
   },
+
   openEditorBtn: {
     backgroundColor: '#0EA5A4',
     paddingVertical: 14,
@@ -294,6 +523,7 @@ const styles = StyleSheet.create({
     width: W - 48,
     alignItems: 'center',
   },
+
   openEditorBtnText: {
     color: '#fff',
     fontWeight: '800',
