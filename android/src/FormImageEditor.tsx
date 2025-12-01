@@ -1,5 +1,4 @@
-// src/FormImageEditor.pages.tsx
-// Uses navigation payload + AsyncStorage to persist drawings + voice text + stickers.
+
 
 import React, {
   useRef,
@@ -26,6 +25,7 @@ import {
   PermissionsAndroid,
   Platform,
   Modal,
+  TextInput,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -614,7 +614,7 @@ export default function FormImageEditor() {
     colorRef.current = color;
   }, [color]);
 
-  // 🔔 temporary "Editing mode Off" hint above mic / sticker
+  // 🔔 temporary "Editing mode Off" hint above mic / sticker / text
   const [editingOffHintVisible, setEditingOffHintVisible] = useState(false);
   const editingOffHintTimeoutRef = useRef<any>(null);
   useEffect(() => {
@@ -668,6 +668,10 @@ export default function FormImageEditor() {
 
   // sticker modal
   const [stickerModalVisible, setStickerModalVisible] = useState(false);
+
+  // text modal (for manual typed text)
+  const [textModalVisible, setTextModalVisible] = useState(false);
+  const [typedText, setTypedText] = useState('');
 
   // stable ref setter array (store refs directly for imperative calls)
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
@@ -859,23 +863,49 @@ export default function FormImageEditor() {
     setImageStickers((prev) => [...prev, newSticker]);
   };
 
+  const showEditingOffHint = () => {
+    setEditingOffHintVisible(true);
+    if (editingOffHintTimeoutRef.current) {
+      clearTimeout(editingOffHintTimeoutRef.current);
+    }
+    editingOffHintTimeoutRef.current = setTimeout(() => {
+      setEditingOffHintVisible(false);
+      editingOffHintTimeoutRef.current = null;
+    }, 2000);
+  };
+
   const handleAddStickerIconPress = () => {
     if (saveStatus === 'saving') return;
 
     // When writing is OFF, just show short hint "Editing mode Off"
     if (!writingEnabled) {
-      setEditingOffHintVisible(true);
-      if (editingOffHintTimeoutRef.current) {
-        clearTimeout(editingOffHintTimeoutRef.current);
-      }
-      editingOffHintTimeoutRef.current = setTimeout(() => {
-        setEditingOffHintVisible(false);
-        editingOffHintTimeoutRef.current = null;
-      }, 2000);
+      showEditingOffHint();
       return;
     }
 
     setStickerModalVisible(true);
+  };
+
+  const handleAddTextIconPress = () => {
+    if (saveStatus === 'saving') return;
+
+    // When writing is OFF, just show short hint "Editing mode Off"
+    if (!writingEnabled) {
+      showEditingOffHint();
+      return;
+    }
+
+    setTypedText('');
+    setTextModalVisible(true);
+  };
+
+  const handleTextModalAdd = () => {
+    const trimmed = typedText.trim();
+    if (trimmed) {
+      addVoiceNote(trimmed);
+    }
+    setTextModalVisible(false);
+    setTypedText('');
   };
 
   // update note position after drag
@@ -941,14 +971,7 @@ export default function FormImageEditor() {
 
     // When writing is OFF, just show short hint "Editing mode Off"
     if (!writingEnabled) {
-      setEditingOffHintVisible(true);
-      if (editingOffHintTimeoutRef.current) {
-        clearTimeout(editingOffHintTimeoutRef.current);
-      }
-      editingOffHintTimeoutRef.current = setTimeout(() => {
-        setEditingOffHintVisible(false);
-        editingOffHintTimeoutRef.current = null;
-      }, 2000);
+      showEditingOffHint();
       return;
     }
 
@@ -1641,7 +1664,6 @@ export default function FormImageEditor() {
     <SafeAreaView style={styles.root}>
       {/* TOP ROW: Back + DONE */}
       <View style={[styles.topBar, { paddingTop: topPadding }]}>
-
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.iconBtn}
@@ -1693,6 +1715,19 @@ export default function FormImageEditor() {
             disabled={saveStatus === 'saving'}
           >
             <Ionicons name="image" size={20} color="#ffffff" />
+          </TouchableOpacity>
+
+          {/* ➕ Add Text icon (typed text) */}
+          <TouchableOpacity
+            onPress={handleAddTextIconPress}
+            style={styles.iconBtn}
+            disabled={saveStatus === 'saving'}
+          >
+            <MaterialCommunityIcons
+              name="format-text"
+              size={20}
+              color="#ffffff"
+            />
           </TouchableOpacity>
 
           <View style={{ width: 8 }} />
@@ -1940,7 +1975,7 @@ export default function FormImageEditor() {
                       />
                     </View>
 
-                    {/* Voice notes (draggable + double-tap edit + corner resize) */}
+                    {/* Voice / typed notes (draggable + double-tap edit + corner resize) */}
                     {notesForPage.map((note) => (
                       <DraggableVoiceText
                         key={note.id}
@@ -2088,6 +2123,65 @@ export default function FormImageEditor() {
                   setStickerModalVisible(false);
                   addImageSticker();
                 }}
+              >
+                <Text
+                  style={[
+                    styles.stickerModalButtonText,
+                    { color: '#ffffff' },
+                  ]}
+                >
+                  Add
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 📝 Typed Text Modal */}
+      <Modal
+        visible={textModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTextModalVisible(false)}
+      >
+        <View style={styles.stickerModalBackdrop}>
+          <View style={styles.stickerModalContent}>
+            <Text style={styles.stickerModalTitle}>Add text</Text>
+            <TextInput
+              style={styles.textModalInput}
+              placeholder="Type text to add on image"
+              placeholderTextColor="#9ca3af"
+              multiline
+              value={typedText}
+              onChangeText={setTypedText}
+            />
+            <View style={styles.stickerModalButtonsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.stickerModalButton,
+                  { backgroundColor: '#e5e7eb' },
+                ]}
+                onPress={() => {
+                  setTextModalVisible(false);
+                  setTypedText('');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.stickerModalButtonText,
+                    { color: '#111827' },
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.stickerModalButton,
+                  { backgroundColor: '#0EA5A4' },
+                ]}
+                onPress={handleTextModalAdd}
               >
                 <Text
                   style={[
@@ -2625,6 +2719,20 @@ const styles = StyleSheet.create({
   stickerModalButtonText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+
+  // Typed text modal input
+  textModalInput: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 16,
+    color: '#111827',
+    textAlignVertical: 'top',
+    fontSize: 14,
   },
 
   voiceOverlay: {

@@ -1,5 +1,3 @@
-// src/FormImageScreen.tsx
-// Session-only: uses navigation payload + AsyncStorage to show drawings + voice text + stickers.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -19,7 +17,7 @@ import {
   useNavigation,
   useFocusEffect,
 } from '@react-navigation/native';
-import Ionicons from 'react-native-vector-icons/Ionicons'; // 🔙 back icon
+import Ionicons from 'react-native-vector-icons/Ionicons'; 
 
 // 🔹 Import types from editor (no runtime code, only types)
 import type {
