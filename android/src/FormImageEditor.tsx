@@ -132,6 +132,12 @@ function DraggableVoiceText({
   onScaleChange: (id: string, scale: number) => void;
   onDelete: (id: string) => void;
 }) {
+  // Internal source-of-truth for position to avoid jumping
+  const currentPosRef = useRef<{ x: number; y: number }>({
+    x: note.x,
+    y: note.y,
+  });
+
   const pan = useRef(
     new Animated.ValueXY({ x: note.x, y: note.y })
   ).current;
@@ -145,11 +151,7 @@ function DraggableVoiceText({
   const MIN_TEXT_SCALE = 0.6;
   const MAX_TEXT_SCALE = 2.8;
 
-  // sync external updates (if any)
-  useEffect(() => {
-    pan.setValue({ x: note.x, y: note.y });
-  }, [note.x, note.y, pan]);
-
+  // sync external scale if it changes (e.g. from undo/redo)
   useEffect(() => {
     scaleAnim.setValue(note.scale ?? 1);
   }, [note.scale, scaleAnim]);
@@ -161,7 +163,17 @@ function DraggableVoiceText({
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: () => {
-        startPosRef.current = { x: note.x, y: note.y };
+        // use current animated position as the start, not props
+        try {
+          const v = (pan as any).__getValue?.();
+          if (v && typeof v.x === 'number' && typeof v.y === 'number') {
+            startPosRef.current = { x: v.x, y: v.y };
+          } else {
+            startPosRef.current = { ...currentPosRef.current };
+          }
+        } catch (e) {
+          startPosRef.current = { ...currentPosRef.current };
+        }
       },
 
       onPanResponderMove: (
@@ -171,6 +183,8 @@ function DraggableVoiceText({
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
         pan.setValue({ x: nx, y: ny });
+        // live-update internal ref so we always know latest visual position
+        currentPosRef.current = { x: nx, y: ny };
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
@@ -187,26 +201,31 @@ function DraggableVoiceText({
           Math.abs(gestureState.vx) < 0.3 &&
           Math.abs(gestureState.vy) < 0.3;
 
-        // Double tap => toggle edit mode, DO NOT reset position
+        // final position from currentPosRef
+        const { x: finalX, y: finalY } = currentPosRef.current;
+
+        // Double tap => toggle edit mode, but DO NOT jump
         if (isTap && delta < 280) {
+          onPositionChange(note.id, finalX, finalY); // commit where it visually is
           onToggleEdit(note.id);
           return;
         }
 
-        // Single tap (no move) => just do nothing (no reset)
+        // Single tap (no move) => commit current pos but don't move
         if (isTap) {
+          onPositionChange(note.id, finalX, finalY);
           return;
         }
 
         // Real drag => commit new position
-        const nx = startPosRef.current.x + dx;
-        const ny = startPosRef.current.y + dy;
-        onPositionChange(note.id, nx, ny);
+        onPositionChange(note.id, finalX, finalY);
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
+        pan.setValue({ x: nx, y: ny });
+        currentPosRef.current = { x: nx, y: ny };
         onPositionChange(note.id, nx, ny);
       },
     })
@@ -350,6 +369,11 @@ function DraggableImageSticker({
   onScaleChange: (id: string, scale: number) => void;
   onDelete: (id: string) => void;
 }) {
+  const currentPosRef = useRef<{ x: number; y: number }>({
+    x: sticker.x,
+    y: sticker.y,
+  });
+
   const pan = useRef(
     new Animated.ValueXY({ x: sticker.x, y: sticker.y })
   ).current;
@@ -363,10 +387,7 @@ function DraggableImageSticker({
   const MIN_SCALE = 0.6;
   const MAX_SCALE = 3;
 
-  useEffect(() => {
-    pan.setValue({ x: sticker.x, y: sticker.y });
-  }, [sticker.x, sticker.y, pan]);
-
+  // keep external scale in sync
   useEffect(() => {
     scaleAnim.setValue(sticker.scale ?? 1);
   }, [sticker.scale, scaleAnim]);
@@ -377,7 +398,16 @@ function DraggableImageSticker({
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: () => {
-        startPosRef.current = { x: sticker.x, y: sticker.y };
+        try {
+          const v = (pan as any).__getValue?.();
+          if (v && typeof v.x === 'number' && typeof v.y === 'number') {
+            startPosRef.current = { x: v.x, y: v.y };
+          } else {
+            startPosRef.current = { ...currentPosRef.current };
+          }
+        } catch (e) {
+          startPosRef.current = { ...currentPosRef.current };
+        }
       },
 
       onPanResponderMove: (
@@ -387,6 +417,7 @@ function DraggableImageSticker({
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
         pan.setValue({ x: nx, y: ny });
+        currentPosRef.current = { x: nx, y: ny };
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
@@ -403,26 +434,30 @@ function DraggableImageSticker({
           Math.abs(gestureState.vx) < 0.3 &&
           Math.abs(gestureState.vy) < 0.3;
 
-        // Double tap => toggle edit mode, DO NOT reset position
+        const { x: finalX, y: finalY } = currentPosRef.current;
+
+        // Double tap => toggle edit mode, keep current position
         if (isTap && delta < 280) {
+          onPositionChange(sticker.id, finalX, finalY);
           onToggleEdit(sticker.id);
           return;
         }
 
-        // Single tap (no move) => just do nothing (no reset)
+        // Single tap => commit but don't move
         if (isTap) {
+          onPositionChange(sticker.id, finalX, finalY);
           return;
         }
 
         // Real drag
-        const nx = startPosRef.current.x + dx;
-        const ny = startPosRef.current.y + dy;
-        onPositionChange(sticker.id, nx, ny);
+        onPositionChange(sticker.id, finalX, finalY);
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
+        pan.setValue({ x: nx, y: ny });
+        currentPosRef.current = { x: nx, y: ny };
         onPositionChange(sticker.id, nx, ny);
       },
     })
@@ -901,7 +936,7 @@ export default function FormImageEditor() {
     setTypedText('');
   };
 
-  // update note position after drag
+  // update note position after drag / double-tap
   const handleVoiceNotePositionChange = (
     id: string,
     x: number,
@@ -935,7 +970,7 @@ export default function FormImageEditor() {
     setEditingNoteId((prev) => (prev === id ? null : prev));
   };
 
-  // update sticker position after drag
+  // update sticker position after drag / double-tap
   const handleStickerPositionChange = (
     id: string,
     x: number,
@@ -1869,37 +1904,6 @@ export default function FormImageEditor() {
         </ScrollView>
       </View>
 
-      {/* Compact bar showing current tool + active thickness */}
-      <View style={styles.controlsCompact}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flex: 1,
-          }}
-        >
-          <View>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>
-              {tool === 'eraser'
-                ? 'Eraser thickness'
-                : 'Pen thickness'}
-            </Text>
-            <Text
-              style={{
-                marginTop: 2,
-                fontSize: 16,
-                fontWeight: '600',
-                color: '#111827',
-              }}
-            >
-              {activeStrokeWidth}px
-            </Text>
-          </View>
-          <NibPreview size={28} />
-        </View>
-      </View>
-
       {/* Wrapper that handles pinch zoom / pan */}
       <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
         <ScrollView
@@ -1952,7 +1956,6 @@ export default function FormImageEditor() {
                       resizeMode="stretch"
                     />
 
-                    {/* Drawing overlay - disable touches while editing text/sticker OR writing off */}
                     <View
                       style={styles.canvasContainer}
                       pointerEvents={
@@ -2075,7 +2078,6 @@ export default function FormImageEditor() {
         </View>
       )}
 
-      {/* 🧩 Image Sticker Modal */}
       <Modal
         visible={stickerModalVisible}
         transparent
