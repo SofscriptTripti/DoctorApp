@@ -97,25 +97,31 @@ public class DrawingView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        // 1) Background form
+        // 1) Background form (drawn directly to main canvas)
         if (bgBitmap != null) {
             canvas.drawBitmap(bgBitmap, 0, 0, null);
         }
 
-        // 2) Previously saved overlay (from disk)
+        // 2) Draw overlay (saved overlay + strokes) on a separate layer
+        int saveCount = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
+
+        // 2a) Previously saved overlay (from disk)
         if (savedOverlayBitmap != null) {
             canvas.drawBitmap(savedOverlayBitmap, 0, 0, null);
         }
 
-        // 3) Draw all finished strokes from this session
+        // 2b) Draw all finished strokes from this session
         for (Stroke s : strokes) {
             drawStroke(canvas, s);
         }
 
-        // 4) Draw the live stroke being drawn
+        // 2c) Draw the live stroke being drawn
         if (currentStroke != null && !currentStroke.points.isEmpty()) {
             drawStroke(canvas, currentStroke);
         }
+
+        // 2d) Merge layer back onto main canvas
+        canvas.restoreToCount(saveCount);
     }
 
     private void drawStroke(Canvas canvas, @NonNull Stroke s) {
@@ -136,10 +142,10 @@ public class DrawingView extends View {
             p.setAlpha(100);
             p.setXfermode(null);
         } else if (s.isEraser) {
-            // On-screen eraser = draw white (like your pure Java version)
-            p.setColor(Color.WHITE);
-            p.setAlpha(255);
-            p.setXfermode(null);
+            // REAL ERASER on overlay layer: clear pixels instead of painting white
+            p.setColor(Color.TRANSPARENT);
+            p.setAlpha(0);
+            p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
         } else {
             p.setColor(s.color);
             p.setAlpha(255);
@@ -161,7 +167,9 @@ public class DrawingView extends View {
 
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                getParent().requestDisallowInterceptTouchEvent(true);
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                }
                 startStroke(x, y);
                 invalidate();
                 return true;
@@ -181,7 +189,9 @@ public class DrawingView extends View {
                     undoneStrokes.clear();
                     invalidate();
                 }
-                getParent().requestDisallowInterceptTouchEvent(false);
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
                 return true;
 
             default:
@@ -208,6 +218,7 @@ public class DrawingView extends View {
         isHighlighter = false;
         paint.setColor(color);
         paint.setAlpha(255);
+        paint.setXfermode(null);
     }
 
     public void setBrushSize(float size) {

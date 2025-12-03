@@ -86,7 +86,7 @@ export type VoiceNote = {
   color: string;
   x: number;
   y: number;
-  scale: number; // per-note scale
+  scale: number; // used as width factor
 };
 
 // Image sticker type
@@ -116,7 +116,7 @@ const DrawingCanvas = React.memo(
     prev.index === next.index && prev.savedPath === next.savedPath
 );
 
-// Draggable + double-tap-to-edit + corner-resize voice text component
+// Draggable + double-tap-to-edit + 8 handles + height controls
 function DraggableVoiceText({
   note,
   isEditing,
@@ -124,6 +124,7 @@ function DraggableVoiceText({
   onPositionChange,
   onScaleChange,
   onDelete,
+  onChangeText,
 }: {
   note: VoiceNote;
   isEditing: boolean;
@@ -131,8 +132,8 @@ function DraggableVoiceText({
   onPositionChange: (id: string, x: number, y: number) => void;
   onScaleChange: (id: string, scale: number) => void;
   onDelete: (id: string) => void;
+  onChangeText: (id: string, text: string) => void;
 }) {
-  // Internal source-of-truth for position to avoid jumping
   const currentPosRef = useRef<{ x: number; y: number }>({
     x: note.x,
     y: note.y,
@@ -142,16 +143,41 @@ function DraggableVoiceText({
     new Animated.ValueXY({ x: note.x, y: note.y })
   ).current;
 
+  // logical "scale" factor that we map to width
   const scaleAnim = useRef(new Animated.Value(note.scale ?? 1)).current;
 
   const startPosRef = useRef({ x: note.x, y: note.y });
   const scaleStartRef = useRef(1);
   const lastTapRef = useRef(0);
 
-  const MIN_TEXT_SCALE = 0.6;
+  // 👉 vertical scale for "max / min text height"
+  const [heightScale, setHeightScale] = useState(1);
+  const MIN_HEIGHT_SCALE = 0.6;
+  const MAX_HEIGHT_SCALE = 1.6;
+
+  // keep a ref for height so panResponder can read latest value
+  const heightScaleRef = useRef(1);
+  useEffect(() => {
+    heightScaleRef.current = heightScale;
+  }, [heightScale]);
+  const heightStartRef = useRef(1);
+
+  // we allow very small scale so you can almost go to single-word width
+  const MIN_TEXT_SCALE = 0.25;
   const MAX_TEXT_SCALE = 2.8;
 
-  // sync external scale if it changes (e.g. from undo/redo)
+  // base min & max width for the text box
+  const MIN_BOX_WIDTH = 40; // min width (when fully shrunk)
+  const MAX_BOX_WIDTH = SCREEN_W * 0.7; // max width (when fully expanded)
+
+  // width of the text box according to current scaleAnim
+  const boxWidth = scaleAnim.interpolate({
+    inputRange: [MIN_TEXT_SCALE, MAX_TEXT_SCALE],
+    outputRange: [MIN_BOX_WIDTH, MAX_BOX_WIDTH],
+    extrapolate: 'clamp',
+  });
+
+  // sync external scale if it changes (undo/redo, load, etc.)
   useEffect(() => {
     scaleAnim.setValue(note.scale ?? 1);
   }, [note.scale, scaleAnim]);
@@ -163,7 +189,6 @@ function DraggableVoiceText({
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: () => {
-        // use current animated position as the start, not props
         try {
           const v = (pan as any).__getValue?.();
           if (v && typeof v.x === 'number' && typeof v.y === 'number') {
@@ -183,7 +208,6 @@ function DraggableVoiceText({
         const nx = startPosRef.current.x + gestureState.dx;
         const ny = startPosRef.current.y + gestureState.dy;
         pan.setValue({ x: nx, y: ny });
-        // live-update internal ref so we always know latest visual position
         currentPosRef.current = { x: nx, y: ny };
       },
 
@@ -201,23 +225,22 @@ function DraggableVoiceText({
           Math.abs(gestureState.vx) < 0.3 &&
           Math.abs(gestureState.vy) < 0.3;
 
-        // final position from currentPosRef
         const { x: finalX, y: finalY } = currentPosRef.current;
 
-        // Double tap => toggle edit mode, but DO NOT jump
+        // Double tap => toggle edit mode
         if (isTap && delta < 280) {
-          onPositionChange(note.id, finalX, finalY); // commit where it visually is
+          onPositionChange(note.id, finalX, finalY);
           onToggleEdit(note.id);
           return;
         }
 
-        // Single tap (no move) => commit current pos but don't move
+        // Single tap => just commit position
         if (isTap) {
           onPositionChange(note.id, finalX, finalY);
           return;
         }
 
-        // Real drag => commit new position
+        // Drag => commit new position
         onPositionChange(note.id, finalX, finalY);
       },
 
@@ -231,7 +254,7 @@ function DraggableVoiceText({
     })
   ).current;
 
-  // Resize handles pan (shared by all 4 dots)
+  // Resize handles pan (shared by all 6 "dot" handles) – only width
   const resizePan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -247,16 +270,18 @@ function DraggableVoiceText({
       },
 
       onPanResponderMove: (_evt: GestureResponderEvent, gestureState) => {
-        // Use dx + dy to change size (simple controlled factor)
-        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
+        // only horizontal movement changes size
+        const axisDelta = gestureState.dx;
+        const factor = 1 + axisDelta / 220;
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
         if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
-        scaleAnim.setValue(newScale);
+        scaleAnim.setValue(newScale); // changes boxWidth, text reflows
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
-        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
+        const axisDelta = gestureState.dx;
+        const factor = 1 + axisDelta / 220;
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
         if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
@@ -264,12 +289,39 @@ function DraggableVoiceText({
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
-        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
+        const axisDelta = gestureState.dx;
+        const factor = 1 + axisDelta / 220;
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
         if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
         onScaleChange(note.id, newScale);
       },
+    })
+  ).current;
+
+  // 🔄 DRAGGABLE CIRCLE for vertical height
+  const heightPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: () => {
+        heightStartRef.current = heightScaleRef.current;
+      },
+
+      onPanResponderMove: (_evt, gestureState: PanResponderGestureState) => {
+        // drag up => smaller height; drag down => taller
+        const factor = gestureState.dy / 180; // adjust sensitivity
+        let next = heightStartRef.current - factor;
+
+        if (next < MIN_HEIGHT_SCALE) next = MIN_HEIGHT_SCALE;
+        if (next > MAX_HEIGHT_SCALE) next = MAX_HEIGHT_SCALE;
+
+        setHeightScale(parseFloat(next.toFixed(2)));
+      },
+
+      onPanResponderRelease: () => {},
+      onPanResponderTerminate: () => {},
     })
   ).current;
 
@@ -281,7 +333,7 @@ function DraggableVoiceText({
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
-            { scale: scaleAnim },
+            { scaleY: heightScale }, // 👈 vertical height control
           ],
         },
       ]}
@@ -298,19 +350,32 @@ function DraggableVoiceText({
       )}
 
       {/* Main touch area: drag / double tap */}
-      <View
+      <Animated.View
         {...dragPan.panHandlers}
         style={[
           styles.voiceTextHitBox,
           isEditing && { borderColor: note.color, borderWidth: 1 },
+          // 👉 When editing: controlled width (with min/max via scale)
+          //    When not editing: no width => box takes natural text size
+          isEditing ? { width: boxWidth } : undefined,
         ]}
       >
-        <Text style={[styles.voiceTextDrag, { color: note.color }]}>
-          {note.text}
-        </Text>
-      </View>
+        {isEditing ? (
+          <TextInput
+            style={[styles.voiceTextInput, { color: note.color }]}
+            multiline
+            value={note.text}
+            onChangeText={(t) => onChangeText(note.id, t)}
+            autoFocus
+          />
+        ) : (
+          <Text style={[styles.voiceTextDrag, { color: note.color }]}>
+            {note.text}
+          </Text>
+        )}
+      </Animated.View>
 
-      {/* 4 corner resize handles: only visible in edit mode */}
+      {/* Resize handles: 8 positions + draggable height circle */}
       {isEditing && (
         <>
           {/* top-left */}
@@ -329,6 +394,7 @@ function DraggableVoiceText({
             ]}
             {...resizePan.panHandlers}
           />
+
           {/* bottom-left */}
           <View
             style={[
@@ -345,13 +411,56 @@ function DraggableVoiceText({
             ]}
             {...resizePan.panHandlers}
           />
+
+          {/* middle-left */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              {
+                top: '50%',
+                marginTop: -7,
+                left: -8,
+                borderColor: note.color,
+              },
+            ]}
+            {...resizePan.panHandlers}
+          />
+
+          {/* middle-right */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              {
+                top: '50%',
+                marginTop: -7,
+                right: -8,
+                borderColor: note.color,
+              },
+            ]}
+            {...resizePan.panHandlers}
+          />
+
+          {/* 🎯 center-right: draggable circle to control height */}
+          <View
+            style={[
+              styles.voiceHeightHandle,
+              {
+                top: '50%',
+                marginTop: -10,
+                right: -28,
+                borderColor: note.color,
+              },
+            ]}
+            {...heightPan.panHandlers}
+          />
         </>
       )}
     </Animated.View>
   );
 }
 
-// 🧩 Draggable image sticker (drag + double-tap edit + resize like voice text)
+
+// 🧩 Draggable image sticker (drag + double-tap edit + 8-dot resize)
 function DraggableImageSticker({
   sticker,
   imageSource,
@@ -550,11 +659,33 @@ function DraggableImageSticker({
             ]}
             {...resizePan.panHandlers}
           />
+
           {/* top-right */}
           <View
             style={[
               styles.voiceResizeHandle,
               { top: -8, right: -8, borderColor: '#0EA5A4' },
+            ]}
+            {...resizePan.panHandlers}
+          />
+          {/* middle-left */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              { top: '50%', marginTop: -7, left: -8, borderColor: '#0EA5A4' },
+            ]}
+            {...resizePan.panHandlers}
+          />
+          {/* middle-right */}
+          <View
+            style={[
+              styles.voiceResizeHandle,
+              {
+                top: '50%',
+                marginTop: -7,
+                right: -8,
+                borderColor: '#0EA5A4',
+              },
             ]}
             {...resizePan.panHandlers}
           />
@@ -566,6 +697,7 @@ function DraggableImageSticker({
             ]}
             {...resizePan.panHandlers}
           />
+
           {/* bottom-right */}
           <View
             style={[
@@ -947,10 +1079,17 @@ export default function FormImageEditor() {
     );
   };
 
-  // update note scale after resize
+  // update note scale after resize (width factor)
   const handleVoiceNoteScaleChange = (id: string, scale: number) => {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, scale } : n))
+    );
+  };
+
+  // 🔤 update note text while editing (keyboard)
+  const handleVoiceNoteTextChange = (id: string, text: string) => {
+    setVoiceNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, text } : n))
     );
   };
 
@@ -1648,7 +1787,7 @@ export default function FormImageEditor() {
         editorSavedAt: Date.now(),
         storageKey: STORAGE_KEY,
         formName: route.params?.formName,
-        // 🔥 Also send overlays as top-level fields for FormImageScreen
+        // overlays
         voiceNotes,
         imageStickers,
       };
@@ -1680,7 +1819,6 @@ export default function FormImageEditor() {
 
     setSaveStatus('idle');
 
-    // Always go back directly to FormImageScreen
     navigation.navigate('FormImageScreen', payload);
   };
 
@@ -1731,12 +1869,11 @@ export default function FormImageEditor() {
             <FontAwesome
               name="pencil-square-o"
               size={20}
-              // When writing is OFF, highlight this icon strongly
               color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
             />
           </TouchableOpacity>
 
-          {/* ➕ Add Image Sticker icon (just after writing icon) */}
+          {/* ➕ Add Image Sticker icon */}
           <TouchableOpacity
             onPress={handleAddStickerIconPress}
             style={styles.iconBtn}
@@ -1971,7 +2108,7 @@ export default function FormImageEditor() {
                       />
                     </View>
 
-                    {/* Voice / typed notes (draggable + double-tap edit + corner resize) */}
+                    {/* Voice / typed notes (draggable + double-tap edit + 4-dot resize) */}
                     {notesForPage.map((note) => (
                       <DraggableVoiceText
                         key={note.id}
@@ -1986,10 +2123,11 @@ export default function FormImageEditor() {
                         onPositionChange={handleVoiceNotePositionChange}
                         onScaleChange={handleVoiceNoteScaleChange}
                         onDelete={handleVoiceNoteDelete}
+                        onChangeText={handleVoiceNoteTextChange}
                       />
                     ))}
 
-                    {/* Image stickers (drag + double-tap edit + resize) */}
+                    {/* Image stickers (drag + double-tap edit + 8-dot resize) */}
                     {stickersForPage.map((sticker) => (
                       <DraggableImageSticker
                         key={sticker.id}
@@ -2053,7 +2191,7 @@ export default function FormImageEditor() {
         </TouchableOpacity>
       </View>
 
-      {/* 🔊 floating mic FAB (no fade; click shows hint when editing off) */}
+      {/* 🔊 floating mic FAB */}
       <TouchableOpacity
         style={[
           styles.voiceFab,
@@ -2078,6 +2216,7 @@ export default function FormImageEditor() {
         </View>
       )}
 
+      {/* Sticker modal */}
       <Modal
         visible={stickerModalVisible}
         transparent
@@ -2132,7 +2271,6 @@ export default function FormImageEditor() {
           </View>
         </View>
       </Modal>
-
       {/* 📝 Typed Text Modal */}
       <Modal
         visible={textModalVisible}
@@ -2192,7 +2330,7 @@ export default function FormImageEditor() {
         </View>
       </Modal>
 
-      {/* 🔽 Thickness dropdown panel (one tool at a time, HORIZONTAL slider) */}
+      {/* 🔽 Thickness dropdown panel (horizontal slider) */}
       {thicknessPanelOpen && thicknessTool && writingEnabled && (
         <View
           style={[
@@ -2240,6 +2378,7 @@ export default function FormImageEditor() {
         </View>
       )}
 
+      {/* Color palette panel */}
       {colorPanelOpen && (
         <Animated.View style={styles.colorPanel}>
           <View style={styles.paletteGrid}>
@@ -2267,6 +2406,7 @@ export default function FormImageEditor() {
         </Animated.View>
       )}
 
+      {/* Voice overlay */}
       {voiceVisible && (
         <View style={styles.voiceOverlay}>
           <View style={styles.voiceDialog}>
@@ -2331,39 +2471,43 @@ export default function FormImageEditor() {
                   style={styles.saveOkButton}
                   onPress={handleSaveOk}
                 >
-                  <Text style={styles.saveOkButtonText}>OK</Text>
-                </TouchableOpacity>
-              </>
-            )}
+                  
+                  <Text style={styles.saveOkButtonText}>
+                    OK
+</Text>
+</TouchableOpacity>
+</>
+)}
 
-            {saveStatus === 'error' && (
-              <>
-                <Ionicons
-                  name="alert-circle"
-                  size={52}
-                  color="#dc2626"
-                  style={{ marginBottom: 8 }}
-                />
-                <Text style={styles.saveTitle}>Save failed</Text>
-                <Text style={styles.saveMessage}>
-                  Could not save changes. Please try again.
-                </Text>
-                <TouchableOpacity
-                  style={styles.saveOkButton}
-                  onPress={handleSaveErrorOk}
-                >
-                  <Text style={styles.saveOkButtonText}>OK</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      )}
-    </SafeAreaView>
-  );
+{saveStatus === 'error' && (
+<>
+  <Ionicons
+    name="alert-circle"
+    size={52}
+    color="#dc2626"
+    style={{ marginBottom: 8 }}
+  />
+  <Text style={styles.saveTitle}>Save failed</Text>
+  <Text style={styles.saveMessage}>
+    Could not save changes. Please try again.
+  </Text>
+  <TouchableOpacity
+    style={styles.saveOkButton}
+    onPress={handleSaveErrorOk}
+  >
+    <Text style={styles.saveOkButtonText}>OK</Text>
+  </TouchableOpacity>
+</>
+)}
+</View>
+</View>
+)}
+</SafeAreaView>
+);
 }
 
 const styles = StyleSheet.create({
+
   root: { flex: 1, backgroundColor: '#0EA5A4' },
 
   // TOP ROW (Back + DONE)
@@ -2462,6 +2606,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  
   canvasContainer: {
     position: 'absolute',
     left: 0,
@@ -2634,6 +2779,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     backgroundColor: 'transparent',
+  },
+  voiceTextInput: {
+    fontSize: 16,
+    fontWeight: '500',
+    backgroundColor: 'transparent',
+    padding: 0,
+    margin: 0,
   },
   voiceResizeHandle: {
     position: 'absolute',
@@ -2840,7 +2992,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // 🔆 Visual state styles
+  // Visual state styles
   toolsDisabled: {
     opacity: 0.35,
   },
