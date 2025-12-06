@@ -1,3 +1,4 @@
+// src/FormImageEditor.tsx
 import React, {
   useRef,
   useState,
@@ -24,6 +25,9 @@ import {
   Platform,
   Modal,
   TextInput,
+  LayoutRectangle,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -31,6 +35,7 @@ import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Slider from '@react-native-community/slider';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { LayoutChangeEvent } from 'react-native';
 
 import NativeDrawingView, { DrawingRef } from './components/NativeDrawingView';
 
@@ -52,24 +57,43 @@ const PAGE_SPACING = 18;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
 
-const IMAGES = [
-  require('./Images/first.jpeg'),
-  require('./Images/second.jpeg'),
-  require('./Images/Third.jpeg'),
-  require('./Images/forth.jpeg'),
-  require('./Images/fifth.jpeg'),
-  require('./Images/sixtg.jpeg'),
-  require('./Images/seventh.jpeg'),
-  require('./Images/Eighth.jpeg'),
-  require('./Images/Eleventh.jpeg'),
-  require('./Images/ninth.jpeg'),
-  require('./Images/Tenth.jpeg'),
-  require('./Images/Thirteen.jpeg'),
-  require('./Images/twelve.jpeg'),
+
+const IMAGES_BY_FORM: Record<string, any[]> = {
+  emergency_nursing_assessment: [
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0001.jpg'),
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0002.jpg'),
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0003.jpg'),
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0004.jpg'),
+  ],
+
+  initial_nursing_assessment: [
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0001.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0002.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0003.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0004.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0005.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0006.jpg'),
+  ],
+
+  neonatal_initial_nursing: [
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0001.jpg'),
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0002.jpg'),
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0003.jpg'),
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0004.jpg'),
+  ],
+  doctors_handover_isbar: [
+    require('./Images/DoctorHandOverFromat.jpg'),
+  ],
+};
+
+const DEFAULT_IMAGES: any[] = [
+  // fallback if no mapping exists for a formKey
+  // require('./Images/placeholder.jpg'),
 ];
 
 // 👉 Sticker image (local asset)
 const STICKER_IMAGE_SOURCE = require('./Images/NameStick.jpeg');
+// ------------------------------------------------------------------------------------
 
 type SavedMeta = { bitmapPath?: string | null };
 
@@ -86,7 +110,11 @@ export type VoiceNote = {
   color: string;
   x: number;
   y: number;
-  scale: number; // used as width factor
+  // box size instead of scale
+  boxWidth?: number;
+  boxHeight?: number;
+  // NEW: font size property
+  fontSize?: number;
 };
 
 // Image sticker type
@@ -96,6 +124,8 @@ export type ImageSticker = {
   x: number;
   y: number;
   scale: number;
+  width?: number;
+  height?: number;
 };
 
 // --- stable memoized drawing canvas that forwards ref reliably
@@ -116,73 +146,180 @@ const DrawingCanvas = React.memo(
     prev.index === next.index && prev.savedPath === next.savedPath
 );
 
-// Draggable + double-tap-to-edit + 8 handles + height controls
+// Simple clamp helper
+const clamp = (val: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, val));
+
+/**
+ * 📝 Draggable + resizable voice/typed text
+ */
 function DraggableVoiceText({
   note,
   isEditing,
   onToggleEdit,
   onPositionChange,
-  onScaleChange,
+  onBoxSizeChange,
   onDelete,
   onChangeText,
+  onChangeFontSize,
+  pageScale = 1,
 }: {
   note: VoiceNote;
   isEditing: boolean;
   onToggleEdit: (id: string) => void;
   onPositionChange: (id: string, x: number, y: number) => void;
-  onScaleChange: (id: string, scale: number) => void;
+  onBoxSizeChange: (id: string, width: number, height: number) => void;
   onDelete: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
+  onChangeFontSize: (id: string, fontSize: number) => void;
+  pageScale?: number;
 }) {
-  const currentPosRef = useRef<{ x: number; y: number }>({
-    x: note.x,
-    y: note.y,
-  });
+  const DEFAULT_WIDTH = 180;
+  const DEFAULT_HEIGHT = 60;
+  const DEFAULT_FONT_SIZE = 14;
+
+  const PADDING_H = 12; // left + right padding in the box
+  const PADDING_V = 8; // top + bottom padding in the box
+
+  const currentPosRef = useRef<{ x: number; y: number }>(
+    { x: note.x, y: note.y }
+  );
 
   const pan = useRef(
     new Animated.ValueXY({ x: note.x, y: note.y })
   ).current;
 
-  // logical "scale" factor that we map to width
-  const scaleAnim = useRef(new Animated.Value(note.scale ?? 1)).current;
+  // Animated width/height of the box
+  const widthAnim = useRef(
+    new Animated.Value(note.boxWidth ?? DEFAULT_WIDTH)
+  ).current;
+  const heightAnim = useRef(
+    new Animated.Value(note.boxHeight ?? DEFAULT_HEIGHT)
+  ).current;
+
+  // Keep track of current animated values without triggering re-renders
+  const currentWidthRef = useRef(note.boxWidth ?? DEFAULT_WIDTH);
+  const currentHeightRef = useRef(note.boxHeight ?? DEFAULT_HEIGHT);
+
+  // Track if we're currently resizing to avoid unnecessary state updates
+  const isResizingRef = useRef(false);
+
+  // Track if text input is focused
+  const [isTextInputFocused, setIsTextInputFocused] = useState(false);
 
   const startPosRef = useRef({ x: note.x, y: note.y });
-  const scaleStartRef = useRef(1);
   const lastTapRef = useRef(0);
 
-  // 👉 vertical scale for "max / min text height"
-  const [heightScale, setHeightScale] = useState(1);
-  const MIN_HEIGHT_SCALE = 0.6;
-  const MAX_HEIGHT_SCALE = 1.6;
-
-  // keep a ref for height so panResponder can read latest value
-  const heightScaleRef = useRef(1);
-  useEffect(() => {
-    heightScaleRef.current = heightScale;
-  }, [heightScale]);
-  const heightStartRef = useRef(1);
-
-  // we allow very small scale so you can almost go to single-word width
-  const MIN_TEXT_SCALE = 0.25;
-  const MAX_TEXT_SCALE = 2.8;
-
-  // base min & max width for the text box
-  const MIN_BOX_WIDTH = 40; // min width (when fully shrunk)
-  const MAX_BOX_WIDTH = SCREEN_W * 0.7; // max width (when fully expanded)
-
-  // width of the text box according to current scaleAnim
-  const boxWidth = scaleAnim.interpolate({
-    inputRange: [MIN_TEXT_SCALE, MAX_TEXT_SCALE],
-    outputRange: [MIN_BOX_WIDTH, MAX_BOX_WIDTH],
-    extrapolate: 'clamp',
+  const sizeStartRef = useRef<{ width: number; height: number }>({
+    width: currentWidthRef.current,
+    height: currentHeightRef.current,
   });
 
-  // sync external scale if it changes (undo/redo, load, etc.)
-  useEffect(() => {
-    scaleAnim.setValue(note.scale ?? 1);
-  }, [note.scale, scaleAnim]);
+  const MIN_WIDTH = 40;
+  const MAX_WIDTH = 400;
+  const MIN_HEIGHT = 30;
+  const MAX_HEIGHT = 400;
+  
+  // Font size limits
+  const MIN_FONT_SIZE = 10;
+  const MAX_FONT_SIZE = 36;
+  const currentFontSize = note.fontSize ?? DEFAULT_FONT_SIZE;
 
-  // Drag / tap handler (for moving + double-tap detection)
+  // measured content size (text-only, no padding)
+  const measuredContentSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const [measuredFlag, setMeasuredFlag] = useState(0);
+
+  // keep box size in sync if note changes from outside (e.g. undo, load)
+  useEffect(() => {
+    const w = note.boxWidth ?? DEFAULT_WIDTH;
+    const h = note.boxHeight ?? DEFAULT_HEIGHT;
+    currentWidthRef.current = w;
+    currentHeightRef.current = h;
+    widthAnim.setValue(w);
+    heightAnim.setValue(h);
+  }, [note.boxWidth, note.boxHeight, widthAnim, heightAnim]);
+
+  // If note has NO explicit box size, try to size to measured content
+  useEffect(() => {
+    if (
+      (note.boxWidth == null || note.boxHeight == null) &&
+      measuredContentSizeRef.current
+    ) {
+      const c = measuredContentSizeRef.current;
+      // add padding (horizontal + vertical)
+      const autoW = clamp(Math.round(c.w + PADDING_H * 2), MIN_WIDTH, MAX_WIDTH);
+      const autoH = clamp(Math.round(c.h + PADDING_V * 2), MIN_HEIGHT, MAX_HEIGHT);
+
+      // only set if note doesn't already have box size
+      if (note.boxWidth == null || note.boxHeight == null) {
+        currentWidthRef.current = autoW;
+        currentHeightRef.current = autoH;
+        widthAnim.setValue(autoW);
+        heightAnim.setValue(autoH);
+        // inform parent that box has sizes now so they persist
+        onBoxSizeChange(note.id, autoW, autoH);
+      }
+    }
+  }, [measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
+
+  // Ensure auto-fit size is applied immediately when entering edit mode
+  useEffect(() => {
+    // Only run while editing
+    if (!isEditing) return;
+
+    // Only auto-fit if the note does not already have fixed size
+    if (note.boxWidth != null && note.boxHeight != null) return;
+
+    const measured = measuredContentSizeRef.current;
+    if (!measured) return; // nothing measured yet
+
+    const autoW = clamp(Math.round(measured.w + PADDING_H * 2), MIN_WIDTH, MAX_WIDTH);
+    const autoH = clamp(Math.round(measured.h + PADDING_V * 2), MIN_HEIGHT, MAX_HEIGHT);
+
+    // Update animated values
+    widthAnim.setValue(autoW);
+    heightAnim.setValue(autoH);
+    currentWidthRef.current = autoW;
+    currentHeightRef.current = autoH;
+
+    // Persist to parent so box size is stored
+    onBoxSizeChange(note.id, autoW, autoH);
+  }, [isEditing, measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
+
+  // function to be called from onLayout of a hidden text measurement view
+  const onContentLayout = (layout: LayoutRectangle) => {
+    measuredContentSizeRef.current = { w: layout.width, h: layout.height };
+    // bump flag to run effect
+    setMeasuredFlag((v) => v + 1);
+  };
+
+  // keep position in sync if note.x,y changed externally
+  useEffect(() => {
+    pan.setValue({ x: note.x, y: note.y });
+    currentPosRef.current = { x: note.x, y: note.y };
+  }, [note.x, note.y, pan]);
+
+  // keep latest page scale for gesture math
+  const pageScaleRef = useRef(pageScale);
+  useEffect(() => {
+    pageScaleRef.current = pageScale || 1;
+  }, [pageScale]);
+
+  // Handle clicking outside to exit edit mode
+  const handleBackgroundPress = () => {
+    if (isEditing) {
+      onToggleEdit(note.id);
+    }
+  };
+
+  // Handle text area press - enter edit mode but don't auto-focus
+  const handleTextAreaPress = () => {
+    if (!isEditing) {
+      onToggleEdit(note.id);
+    }
+  };
+
+  // Drag / double-tap handler
   const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -205,8 +342,11 @@ function DraggableVoiceText({
         _evt: GestureResponderEvent,
         gestureState: PanResponderGestureState
       ) => {
-        const nx = startPosRef.current.x + gestureState.dx;
-        const ny = startPosRef.current.y + gestureState.dy;
+        const scale = pageScaleRef.current || 1;
+        const nx =
+          startPosRef.current.x + gestureState.dx / scale;
+        const ny =
+          startPosRef.current.y + gestureState.dy / scale;
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
       },
@@ -227,26 +367,23 @@ function DraggableVoiceText({
 
         const { x: finalX, y: finalY } = currentPosRef.current;
 
-        // Double tap => toggle edit mode
+        // Double tap => toggle edit
         if (isTap && delta < 280) {
           onPositionChange(note.id, finalX, finalY);
           onToggleEdit(note.id);
           return;
         }
 
-        // Single tap => just commit position
-        if (isTap) {
-          onPositionChange(note.id, finalX, finalY);
-          return;
-        }
-
-        // Drag => commit new position
+        // Single tap or drag => commit position
         onPositionChange(note.id, finalX, finalY);
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
-        const nx = startPosRef.current.x + gestureState.dx;
-        const ny = startPosRef.current.y + gestureState.dy;
+        const scale = pageScaleRef.current || 1;
+        const nx =
+          startPosRef.current.x + gestureState.dx / scale;
+        const ny =
+          startPosRef.current.y + gestureState.dy / scale;
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
         onPositionChange(note.id, nx, ny);
@@ -254,87 +391,157 @@ function DraggableVoiceText({
     })
   ).current;
 
-  // Resize handles pan (shared by all 6 "dot" handles) – only width
-  const resizePan = useRef(
-    PanResponder.create({
+  // Create resize pan responder function
+  const createResizePan = (opts: {
+    signX: -1 | 0 | 1;
+    signY: -1 | 0 | 1;
+  }) => {
+    return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: () => {
-        let current = 1;
-        try {
-          const v = (scaleAnim as any).__getValue?.();
-          if (typeof v === 'number') current = v;
-        } catch (e) {}
-        scaleStartRef.current = current;
+        isResizingRef.current = true;
+        sizeStartRef.current = {
+          width: currentWidthRef.current,
+          height: currentHeightRef.current,
+        };
       },
 
-      onPanResponderMove: (_evt: GestureResponderEvent, gestureState) => {
-        // only horizontal movement changes size
-        const axisDelta = gestureState.dx;
-        const factor = 1 + axisDelta / 220;
-        let newScale = scaleStartRef.current * factor;
-        if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
-        if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
-        scaleAnim.setValue(newScale); // changes boxWidth, text reflows
+      onPanResponderMove: (_evt: GestureResponderEvent, gs) => {
+        let newWidth = sizeStartRef.current.width;
+        let newHeight = sizeStartRef.current.height;
+
+        const scale = pageScaleRef.current || 1;
+
+        // linear delta (pixel-based): dx affects width, dy affects height
+        if (opts.signX !== 0) {
+          const deltaX = (gs.dx / scale) * opts.signX;
+          newWidth = clamp(
+            Math.round(sizeStartRef.current.width + deltaX),
+            MIN_WIDTH,
+            MAX_WIDTH
+          );
+        }
+
+        if (opts.signY !== 0) {
+          const deltaY = (gs.dy / scale) * opts.signY;
+          newHeight = clamp(
+            Math.round(sizeStartRef.current.height + deltaY),
+            MIN_HEIGHT,
+            MAX_HEIGHT
+          );
+        }
+
+        // Update animated values directly without state updates
+        widthAnim.setValue(newWidth);
+        heightAnim.setValue(newHeight);
+        currentWidthRef.current = newWidth;
+        currentHeightRef.current = newHeight;
       },
 
-      onPanResponderRelease: (_evt, gestureState) => {
-        const axisDelta = gestureState.dx;
-        const factor = 1 + axisDelta / 220;
-        let newScale = scaleStartRef.current * factor;
-        if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
-        if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
-        onScaleChange(note.id, newScale);
+      onPanResponderRelease: () => {
+        isResizingRef.current = false;
+        onBoxSizeChange(
+          note.id,
+          currentWidthRef.current,
+          currentHeightRef.current
+        );
       },
 
-      onPanResponderTerminate: (_evt, gestureState) => {
-        const axisDelta = gestureState.dx;
-        const factor = 1 + axisDelta / 220;
-        let newScale = scaleStartRef.current * factor;
-        if (newScale < MIN_TEXT_SCALE) newScale = MIN_TEXT_SCALE;
-        if (newScale > MAX_TEXT_SCALE) newScale = MAX_TEXT_SCALE;
-        onScaleChange(note.id, newScale);
+      onPanResponderTerminate: () => {
+        isResizingRef.current = false;
+        onBoxSizeChange(
+          note.id,
+          currentWidthRef.current,
+          currentHeightRef.current
+        );
       },
-    })
+    });
+  };
+
+  // Create 8 pan responders: 4 corners + 4 sides
+  const tlResizePan = useRef(
+    createResizePan({ signX: -1, signY: -1 })
+  ).current;
+  const trResizePan = useRef(
+    createResizePan({ signX: 1, signY: -1 })
+  ).current;
+  const blResizePan = useRef(
+    createResizePan({ signX: -1, signY: 1 })
+  ).current;
+  const brResizePan = useRef(
+    createResizePan({ signX: 1, signY: 1 })
   ).current;
 
-  // 🔄 DRAGGABLE CIRCLE for vertical height
-  const heightPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-
-      onPanResponderGrant: () => {
-        heightStartRef.current = heightScaleRef.current;
-      },
-
-      onPanResponderMove: (_evt, gestureState: PanResponderGestureState) => {
-        // drag up => smaller height; drag down => taller
-        const factor = gestureState.dy / 180; // adjust sensitivity
-        let next = heightStartRef.current - factor;
-
-        if (next < MIN_HEIGHT_SCALE) next = MIN_HEIGHT_SCALE;
-        if (next > MAX_HEIGHT_SCALE) next = MAX_HEIGHT_SCALE;
-
-        setHeightScale(parseFloat(next.toFixed(2)));
-      },
-
-      onPanResponderRelease: () => {},
-      onPanResponderTerminate: () => {},
-    })
+  const mlResizePan = useRef(
+    createResizePan({ signX: -1, signY: 0 })
   ).current;
+  const mrResizePan = useRef(
+    createResizePan({ signX: 1, signY: 0 })
+  ).current;
+  const mtResizePan = useRef(
+    createResizePan({ signX: 0, signY: -1 })
+  ).current;
+  const mbResizePan = useRef(
+    createResizePan({ signX: 0, signY: 1 })
+  ).current;
+
+  // Listen to animated value changes to update refs without re-rendering
+  useEffect(() => {
+    const widthListener = widthAnim.addListener(({ value }) => {
+      currentWidthRef.current = value;
+    });
+    
+    const heightListener = heightAnim.addListener(({ value }) => {
+      currentHeightRef.current = value;
+    });
+    
+    return () => {
+      widthAnim.removeListener(widthListener);
+      heightAnim.removeListener(heightListener);
+    };
+  }, [widthAnim, heightAnim]);
+
+  // Font size controls
+  const increaseFontSize = () => {
+    const newSize = clamp(currentFontSize + 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
+    onChangeFontSize(note.id, newSize);
+  };
+
+  const decreaseFontSize = () => {
+    const newSize = clamp(currentFontSize - 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
+    onChangeFontSize(note.id, newSize);
+  };
+
+  // TextInput ref for focus management
+  const textInputRef = useRef<TextInput>(null);
+
+  // Focus text input when entering edit mode
+  useEffect(() => {
+    if (isEditing && isTextInputFocused && textInputRef.current) {
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isEditing, isTextInputFocused]);
+
+  // Handle text input focus
+  const handleTextInputFocus = () => {
+    setIsTextInputFocused(true);
+  };
+
+  // Handle text input blur
+  const handleTextInputBlur = () => {
+    setIsTextInputFocused(false);
+  };
 
   return (
     <Animated.View
       style={[
         styles.voiceTextDragWrapper,
         {
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scaleY: heightScale }, // 👈 vertical height control
-          ],
+          transform: [{ translateX: pan.x }, { translateY: pan.y }],
         },
       ]}
     >
@@ -349,71 +556,131 @@ function DraggableVoiceText({
         </TouchableOpacity>
       )}
 
-      {/* Main touch area: drag / double tap */}
+      {/* Font size controls (only when editing) */}
+      {isEditing && (
+        <View style={styles.fontSizeControls}>
+          <TouchableOpacity
+            style={[styles.fontSizeButton, { borderColor: note.color }]}
+            onPress={decreaseFontSize}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Ionicons name="remove" size={14} color={note.color} />
+          </TouchableOpacity>
+          <Text style={[styles.fontSizeText, { color: note.color }]}>
+            {currentFontSize}px
+          </Text>
+          <TouchableOpacity
+            style={[styles.fontSizeButton, { borderColor: note.color }]}
+            onPress={increaseFontSize}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Ionicons name="add" size={14} color={note.color} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Main touch area: drag / double-tap */}
       <Animated.View
         {...dragPan.panHandlers}
         style={[
           styles.voiceTextHitBox,
-          isEditing && { borderColor: note.color, borderWidth: 1 },
-          // 👉 When editing: controlled width (with min/max via scale)
-          //    When not editing: no width => box takes natural text size
-          isEditing ? { width: boxWidth } : undefined,
+          {
+            width: widthAnim,
+            height: heightAnim,
+            paddingHorizontal: PADDING_H,
+            paddingVertical: PADDING_V,
+          },
+          isEditing && {
+            borderColor: note.color,
+            borderWidth: 1,
+          },
         ]}
       >
+        {/* When editing use a multiline TextInput that fills the box so text wraps when box width is decreased */}
         {isEditing ? (
           <TextInput
-            style={[styles.voiceTextInput, { color: note.color }]}
-            multiline
+            ref={textInputRef}
+            style={[
+              styles.voiceTextInput,
+              {
+                color: note.color,
+                width: '100%',
+                height: '100%',
+                textAlignVertical: 'top',
+                fontSize: currentFontSize,
+              },
+            ]}
+            multiline={true}
             value={note.text}
-            onChangeText={(t) => onChangeText(note.id, t)}
-            autoFocus
+            onChangeText={(t) => {
+              onChangeText(note.id, t);
+            }}
+            onFocus={handleTextInputFocus}
+            onBlur={handleTextInputBlur}
+            textBreakStrategy="simple"
+            underlineColorAndroid="transparent"
+            placeholder=""
+            allowFontScaling={false}
+            scrollEnabled={true}
+            autoFocus={false}
+            onTouchStart={(e) => e.stopPropagation()}
           />
         ) : (
-          <Text style={[styles.voiceTextDrag, { color: note.color }]}>
-            {note.text}
-          </Text>
+          <TouchableOpacity
+            onPress={handleTextAreaPress}
+            style={styles.textTouchArea}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.voiceTextDrag, 
+                { 
+                  color: note.color,
+                  fontSize: currentFontSize,
+                }
+              ]}
+            >
+              {note.text}
+            </Text>
+          </TouchableOpacity>
         )}
       </Animated.View>
 
-      {/* Resize handles: 8 positions + draggable height circle */}
+      {/* 8 resize handles when editing */}
       {isEditing && (
         <>
-          {/* top-left */}
-          <View
+          {/* corners */}
+          <Animated.View
             style={[
               styles.voiceResizeHandle,
               { top: -8, left: -8, borderColor: note.color },
             ]}
-            {...resizePan.panHandlers}
+            {...tlResizePan.panHandlers}
           />
-          {/* top-right */}
-          <View
+          <Animated.View
             style={[
               styles.voiceResizeHandle,
               { top: -8, right: -8, borderColor: note.color },
             ]}
-            {...resizePan.panHandlers}
+            {...trResizePan.panHandlers}
           />
-
-          {/* bottom-left */}
-          <View
+          <Animated.View
             style={[
               styles.voiceResizeHandle,
               { bottom: -8, left: -8, borderColor: note.color },
             ]}
-            {...resizePan.panHandlers}
+            {...blResizePan.panHandlers}
           />
-          {/* bottom-right */}
-          <View
+          <Animated.View
             style={[
               styles.voiceResizeHandle,
               { bottom: -8, right: -8, borderColor: note.color },
             ]}
-            {...resizePan.panHandlers}
+            {...brResizePan.panHandlers}
           />
 
-          {/* middle-left */}
-          <View
+          {/* sides */}
+          <Animated.View
             style={[
               styles.voiceResizeHandle,
               {
@@ -423,11 +690,9 @@ function DraggableVoiceText({
                 borderColor: note.color,
               },
             ]}
-            {...resizePan.panHandlers}
+            {...mlResizePan.panHandlers}
           />
-
-          {/* middle-right */}
-          <View
+          <Animated.View
             style={[
               styles.voiceResizeHandle,
               {
@@ -437,70 +702,142 @@ function DraggableVoiceText({
                 borderColor: note.color,
               },
             ]}
-            {...resizePan.panHandlers}
+            {...mrResizePan.panHandlers}
           />
-
-          {/* 🎯 center-right: draggable circle to control height */}
-          <View
+          <Animated.View
             style={[
-              styles.voiceHeightHandle,
+              styles.voiceResizeHandle,
               {
-                top: '50%',
-                marginTop: -10,
-                right: -28,
+                left: '50%',
+                marginLeft: -7,
+                top: -8,
                 borderColor: note.color,
               },
             ]}
-            {...heightPan.panHandlers}
+            {...mtResizePan.panHandlers}
+          />
+          <Animated.View
+            style={[
+              styles.voiceResizeHandle,
+              {
+                left: '50%',
+                marginLeft: -7,
+                bottom: -8,
+                borderColor: note.color,
+              },
+            ]}
+            {...mbResizePan.panHandlers}
           />
         </>
       )}
+
+      {/* Hidden measurement text */}
+      <View
+        style={styles.measureContainer}
+        pointerEvents="none"
+      >
+        <Text
+          style={[
+            styles.voiceTextDrag,
+            { 
+              position: 'absolute', 
+              opacity: 0, 
+              left: -10000, 
+              maxWidth: 10000, 
+              includeFontPadding: false,
+              fontSize: currentFontSize,
+            },
+          ]}
+          onLayout={(e) => {
+            onContentLayout(e.nativeEvent.layout);
+          }}
+        >
+          {note.text || ''}
+        </Text>
+      </View>
     </Animated.View>
   );
 }
 
-
-// 🧩 Draggable image sticker (drag + double-tap edit + 8-dot resize)
+/**
+ * 🧩 Draggable + resizable image sticker
+ */
 function DraggableImageSticker({
   sticker,
   imageSource,
   isEditing,
   onToggleEdit,
   onPositionChange,
-  onScaleChange,
+  onSizeChange,
   onDelete,
+  pageScale = 1,
 }: {
   sticker: ImageSticker;
   imageSource: any;
   isEditing: boolean;
   onToggleEdit: (id: string) => void;
   onPositionChange: (id: string, x: number, y: number) => void;
-  onScaleChange: (id: string, scale: number) => void;
+  onSizeChange: (id: string, width: number, height: number) => void;
   onDelete: (id: string) => void;
+  pageScale?: number;
 }) {
+  const DEFAULT_WIDTH = 140;
+  const DEFAULT_HEIGHT = 90;
+  const MIN_SCALE = 0.5;
+  const MAX_SCALE = 3;
+
+  // Store current values in refs for gesture calculations
   const currentPosRef = useRef<{ x: number; y: number }>({
     x: sticker.x,
     y: sticker.y,
   });
 
+  // Animated position
   const pan = useRef(
     new Animated.ValueXY({ x: sticker.x, y: sticker.y })
   ).current;
 
+  // Animated scale
   const scaleAnim = useRef(new Animated.Value(sticker.scale ?? 1)).current;
 
+  // Current size
+  const currentSizeRef = useRef<{ width: number; height: number }>({
+    width: sticker.width ?? DEFAULT_WIDTH,
+    height: sticker.height ?? DEFAULT_HEIGHT,
+  });
+
   const startPosRef = useRef({ x: sticker.x, y: sticker.y });
-  const scaleStartRef = useRef(1);
   const lastTapRef = useRef(0);
+  const scaleStartRef = useRef(sticker.scale ?? 1);
 
-  const MIN_SCALE = 0.6;
-  const MAX_SCALE = 3;
-
-  // keep external scale in sync
+  // Keep page scale in ref for gesture calculations
+  const pageScaleRef = useRef(pageScale);
   useEffect(() => {
-    scaleAnim.setValue(sticker.scale ?? 1);
-  }, [sticker.scale, scaleAnim]);
+    pageScaleRef.current = pageScale || 1;
+  }, [pageScale]);
 
+  // Sync animated values with props
+  useEffect(() => {
+    if (currentPosRef.current.x !== sticker.x || currentPosRef.current.y !== sticker.y) {
+      pan.setValue({ x: sticker.x, y: sticker.y });
+      currentPosRef.current = { x: sticker.x, y: sticker.y };
+    }
+    
+    if (scaleStartRef.current !== sticker.scale) {
+      scaleAnim.setValue(sticker.scale ?? 1);
+      scaleStartRef.current = sticker.scale ?? 1;
+    }
+    
+    if (currentSizeRef.current.width !== (sticker.width ?? DEFAULT_WIDTH) || 
+        currentSizeRef.current.height !== (sticker.height ?? DEFAULT_HEIGHT)) {
+      currentSizeRef.current = {
+        width: sticker.width ?? DEFAULT_WIDTH,
+        height: sticker.height ?? DEFAULT_HEIGHT,
+      };
+    }
+  }, [sticker.x, sticker.y, sticker.scale, sticker.width, sticker.height, pan, scaleAnim]);
+
+  // Drag gesture handler
   const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -523,8 +860,10 @@ function DraggableImageSticker({
         _evt: GestureResponderEvent,
         gestureState: PanResponderGestureState
       ) => {
-        const nx = startPosRef.current.x + gestureState.dx;
-        const ny = startPosRef.current.y + gestureState.dy;
+        const scale = pageScaleRef.current || 1;
+        const nx = startPosRef.current.x + gestureState.dx / scale;
+        const ny = startPosRef.current.y + gestureState.dy / scale;
+        
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
       },
@@ -538,33 +877,27 @@ function DraggableImageSticker({
         const delta = now - lastTapRef.current;
         lastTapRef.current = now;
 
-        const isTap =
-          moveDist < 5 &&
+        const isTap = moveDist < 5 &&
           Math.abs(gestureState.vx) < 0.3 &&
           Math.abs(gestureState.vy) < 0.3;
 
         const { x: finalX, y: finalY } = currentPosRef.current;
 
-        // Double tap => toggle edit mode, keep current position
+        // Double tap => toggle edit mode
         if (isTap && delta < 280) {
           onPositionChange(sticker.id, finalX, finalY);
           onToggleEdit(sticker.id);
           return;
         }
 
-        // Single tap => commit but don't move
-        if (isTap) {
-          onPositionChange(sticker.id, finalX, finalY);
-          return;
-        }
-
-        // Real drag
         onPositionChange(sticker.id, finalX, finalY);
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
-        const nx = startPosRef.current.x + gestureState.dx;
-        const ny = startPosRef.current.y + gestureState.dy;
+        const scale = pageScaleRef.current || 1;
+        const nx = startPosRef.current.x + gestureState.dx / scale;
+        const ny = startPosRef.current.y + gestureState.dy / scale;
+        
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
         onPositionChange(sticker.id, nx, ny);
@@ -572,18 +905,17 @@ function DraggableImageSticker({
     })
   ).current;
 
-  const resizePan = useRef(
-    PanResponder.create({
+  // Create resize pan responder
+  const createResizePan = (opts: {
+    signX: -1 | 0 | 1;
+    signY: -1 | 0 | 1;
+  }) => {
+    return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
       onPanResponderGrant: () => {
-        let current = 1;
-        try {
-          const v = (scaleAnim as any).__getValue?.();
-          if (typeof v === 'number') current = v;
-        } catch (e) {}
-        scaleStartRef.current = current;
+        scaleStartRef.current = sticker.scale ?? 1;
       },
 
       onPanResponderMove: (_evt: GestureResponderEvent, gestureState) => {
@@ -591,6 +923,7 @@ function DraggableImageSticker({
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_SCALE) newScale = MIN_SCALE;
         if (newScale > MAX_SCALE) newScale = MAX_SCALE;
+        
         scaleAnim.setValue(newScale);
       },
 
@@ -599,18 +932,23 @@ function DraggableImageSticker({
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_SCALE) newScale = MIN_SCALE;
         if (newScale > MAX_SCALE) newScale = MAX_SCALE;
-        onScaleChange(sticker.id, newScale);
+        
+        const newWidth = DEFAULT_WIDTH * newScale;
+        const newHeight = DEFAULT_HEIGHT * newScale;
+        
+        onSizeChange(sticker.id, newWidth, newHeight);
       },
 
-      onPanResponderTerminate: (_evt, gestureState) => {
-        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
-        let newScale = scaleStartRef.current * factor;
-        if (newScale < MIN_SCALE) newScale = MIN_SCALE;
-        if (newScale > MAX_SCALE) newScale = MAX_SCALE;
-        onScaleChange(sticker.id, newScale);
+      onPanResponderTerminate: () => {
+        const newWidth = DEFAULT_WIDTH * (sticker.scale ?? 1);
+        const newHeight = DEFAULT_HEIGHT * (sticker.scale ?? 1);
+        onSizeChange(sticker.id, newWidth, newHeight);
       },
-    })
-  ).current;
+    });
+  };
+
+  // Create resize handlers
+  const resizePan = useRef(createResizePan({ signX: 1, signY: 1 })).current;
 
   return (
     <Animated.View
@@ -625,9 +963,10 @@ function DraggableImageSticker({
         },
       ]}
     >
+      {/* Delete button - only show when NOT editing */}
       {!isEditing && (
         <TouchableOpacity
-          style={styles.voiceDeleteButton}
+          style={styles.stickerDeleteButton}
           onPress={() => onDelete(sticker.id)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
@@ -644,64 +983,44 @@ function DraggableImageSticker({
       >
         <Image
           source={imageSource}
-          style={styles.stickerImage}
+          style={[
+            styles.stickerImage,
+            {
+              width: currentSizeRef.current.width,
+              height: currentSizeRef.current.height,
+            },
+          ]}
           resizeMode="contain"
         />
       </View>
 
       {isEditing && (
         <>
-          {/* top-left */}
+          {/* corners */}
           <View
             style={[
-              styles.voiceResizeHandle,
+              styles.stickerResizeHandle,
               { top: -8, left: -8, borderColor: '#0EA5A4' },
             ]}
             {...resizePan.panHandlers}
           />
-
-          {/* top-right */}
           <View
             style={[
-              styles.voiceResizeHandle,
+              styles.stickerResizeHandle,
               { top: -8, right: -8, borderColor: '#0EA5A4' },
             ]}
             {...resizePan.panHandlers}
           />
-          {/* middle-left */}
           <View
             style={[
-              styles.voiceResizeHandle,
-              { top: '50%', marginTop: -7, left: -8, borderColor: '#0EA5A4' },
-            ]}
-            {...resizePan.panHandlers}
-          />
-          {/* middle-right */}
-          <View
-            style={[
-              styles.voiceResizeHandle,
-              {
-                top: '50%',
-                marginTop: -7,
-                right: -8,
-                borderColor: '#0EA5A4',
-              },
-            ]}
-            {...resizePan.panHandlers}
-          />
-          {/* bottom-left */}
-          <View
-            style={[
-              styles.voiceResizeHandle,
+              styles.stickerResizeHandle,
               { bottom: -8, left: -8, borderColor: '#0EA5A4' },
             ]}
             {...resizePan.panHandlers}
           />
-
-          {/* bottom-right */}
           <View
             style={[
-              styles.voiceResizeHandle,
+              styles.stickerResizeHandle,
               { bottom: -8, right: -8, borderColor: '#0EA5A4' },
             ]}
             {...resizePan.panHandlers}
@@ -718,17 +1037,37 @@ export default function FormImageEditor() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
 
+  // 🔥 ADDED DEBUG LOGGING
+  console.log('FormImageEditor - Route params:', route.params);
+  
+  // Determine which form's images to show from route.params.formKey (same key used in FormImageScreen)
+  const formKeyParam = route.params?.formKey as string | undefined;
+  
+  // 🔥 ADDED DEBUG LOGGING
+  console.log('FormImageEditor - formKeyParam:', formKeyParam);
+  console.log('FormImageEditor - Available form keys in IMAGES_BY_FORM:', Object.keys(IMAGES_BY_FORM));
+  
+  const IMAGES = useMemo(
+    () => IMAGES_BY_FORM[formKeyParam ?? ''] ?? DEFAULT_IMAGES,
+    [formKeyParam]
+  );
+
+  // 🔥 ADDED DEBUG LOGGING
+  console.log('FormImageEditor - IMAGES length for this form:', IMAGES.length);
+  if (IMAGES.length === 0) {
+    console.log('FormImageEditor - WARNING: No images found for formKey:', formKeyParam);
+    console.log('FormImageEditor - Available form keys:', Object.keys(IMAGES_BY_FORM));
+  }
+
   const storageKeyParam = route.params?.storageKey as string | undefined;
   const uiKeyParam = route.params?.uiStorageKey as string | undefined;
   const STORAGE_KEY = storageKeyParam ?? DEFAULT_STORAGE_KEY;
   const STORAGE_UI_KEY = uiKeyParam ?? DEFAULT_UI_KEY;
-  const returnScreen = route.params?.returnScreen as string | undefined;
 
   const initialStrokesFromParams = Array.isArray(route.params?.savedStrokes)
     ? route.params.savedStrokes
     : null;
 
-  // 🔹 Load overlays from params if present (so they persist when you come back)
   const initialVoiceNotesFromParams: VoiceNote[] = Array.isArray(
     route.params?.voiceNotes
   )
@@ -743,27 +1082,20 @@ export default function FormImageEditor() {
 
   const [color, setColor] = useState('#0EA5A4');
   const [penWidth, setPenWidth] = useState(4);
-  const [eraserWidth, setEraserWidth] = useState(20); // default eraser thicker
+  const [eraserWidth, setEraserWidth] = useState(20);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [colorPanelOpen, setColorPanelOpen] = useState(false);
-  // which tool's thickness panel is open: 'pen' | 'eraser' | null
-  const [thicknessTool, setThicknessTool] = useState<'pen' | 'eraser' | null>(
-    null
-  );
+  const [thicknessTool, setThicknessTool] = useState<'pen' | 'eraser' | null>(null);
   const thicknessPanelOpen = thicknessTool !== null;
 
-  // ✏️ writing on/off
   const [writingEnabled, setWritingEnabled] = useState(true);
   const writingEnabledRef = useRef(writingEnabled);
   useEffect(() => {
     writingEnabledRef.current = writingEnabled;
   }, [writingEnabled]);
 
-  // derived: current active stroke width (used for preview + syncing)
-  const activeStrokeWidth =
-    tool === 'eraser' ? eraserWidth : penWidth;
+  const activeStrokeWidth = tool === 'eraser' ? eraserWidth : penWidth;
 
-  // save status for overlay UI
   const [saveStatus, setSaveStatus] = useState<
     'idle' | 'saving' | 'success' | 'error'
   >('idle');
@@ -774,7 +1106,6 @@ export default function FormImageEditor() {
     colorRef.current = color;
   }, [color]);
 
-  // 🔔 temporary "Editing mode Off" hint above mic / sticker / text
   const [editingOffHintVisible, setEditingOffHintVisible] = useState(false);
   const editingOffHintTimeoutRef = useRef<any>(null);
   useEffect(() => {
@@ -785,7 +1116,6 @@ export default function FormImageEditor() {
     };
   }, []);
 
-  // when writing disabled, close panels
   useEffect(() => {
     if (!writingEnabled) {
       setThicknessTool(null);
@@ -793,12 +1123,11 @@ export default function FormImageEditor() {
     }
   }, [writingEnabled]);
 
-  // stable storage for canvas refs
+  // initialize canvas refs sized to number of IMAGES for this form
   const canvasRefs = useRef<Array<DrawingRef | null>>(
-    useMemo(() => IMAGES.map(() => null), [])
+    IMAGES.map(() => null)
   );
 
-  // Initial savedMeta from params or blank
   const [savedMeta, setSavedMeta] = useState<Array<SavedMeta>>(() => {
     if (
       initialStrokesFromParams &&
@@ -811,49 +1140,30 @@ export default function FormImageEditor() {
     return IMAGES.map(() => ({ bitmapPath: null }));
   });
 
-  // voice notes on pages (initialised from route params)
-  const [voiceNotes, setVoiceNotes] =
-    useState<VoiceNote[]>(initialVoiceNotesFromParams);
+  const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>(initialVoiceNotesFromParams);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
-  // image stickers on pages (initialised from route params)
-  const [imageStickers, setImageStickers] =
-    useState<ImageSticker[]>(initialImageStickersFromParams);
-  const [editingStickerId, setEditingStickerId] = useState<string | null>(
-    null
-  );
+  const [imageStickers, setImageStickers] = useState<ImageSticker[]>(initialImageStickersFromParams);
+  const [editingStickerId, setEditingStickerId] = useState<string | null>(null);
 
-  // simple redo stack for deleted notes per page
   const voiceRedoStackRef = useRef<Record<number, VoiceNote[]>>({});
 
-  // sticker modal
   const [stickerModalVisible, setStickerModalVisible] = useState(false);
-
-  // text modal (for manual typed text)
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [typedText, setTypedText] = useState('');
 
-  // stable ref setter array (store refs directly for imperative calls)
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
-    useMemo(
-      () =>
-        IMAGES.map((_img, i) => (r: DrawingRef | null) => {
-          canvasRefs.current[i] = r;
-        }),
-      []
-    )
+    IMAGES.map((_img, i) => (r: DrawingRef | null) => {
+      canvasRefs.current[i] = r;
+    })
   );
 
   const scrollRef = useRef<ScrollView | null>(null);
   const scrollY = useRef(0);
   const topPadding = Math.max(8, insets.top + 6);
 
-  // NO touch scrolling (only via right handle) while writing is ON.
   const [scrollEnabled] = useState(false);
 
-  // -----------------------------
-  // VoiceKit: state + hook usage
-  // -----------------------------
   const [voiceVisible, setVoiceVisible] = useState(false);
   const [voiceText, setVoiceText] = useState('');
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -870,14 +1180,12 @@ export default function FormImageEditor() {
     enablePartialResults: true,
   });
 
-  // Update local text whenever transcript changes
   useEffect(() => {
     if (voiceTranscript != null && voiceTranscript !== '') {
       setVoiceText(voiceTranscript);
     }
   }, [voiceTranscript]);
 
-  // ask for mic permission on Android
   const ensureMicPermission = async () => {
     if (Platform.OS !== 'android') return true;
 
@@ -895,7 +1203,6 @@ export default function FormImageEditor() {
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   };
 
-  // 🔄 Load persisted drawings + overlays (if editor opened fresh via storageKey)
   useEffect(() => {
     if (!AsyncStorage) return;
 
@@ -914,7 +1221,6 @@ export default function FormImageEditor() {
 
         const paramsObj = route.params || {};
 
-        // Backwards compatibility: old version stored just an array of bitmaps
         if (Array.isArray(parsed)) {
           if (!initialStrokesFromParams) {
             const metaArr: SavedMeta[] = IMAGES.map((_, idx) => {
@@ -926,7 +1232,6 @@ export default function FormImageEditor() {
           return;
         }
 
-        // New structure: { bitmaps, voiceNotes, imageStickers }
         if (Array.isArray(parsed.bitmaps) && !initialStrokesFromParams) {
           const metaArr: SavedMeta[] = IMAGES.map((_, idx) => {
             const m = parsed.bitmaps[idx];
@@ -940,7 +1245,11 @@ export default function FormImageEditor() {
             paramsObj.voiceNotes.length === 0) &&
           Array.isArray(parsed.voiceNotes)
         ) {
-          setVoiceNotes(parsed.voiceNotes);
+          const notesWithFontSize = parsed.voiceNotes.map((note: any) => ({
+            ...note,
+            fontSize: note.fontSize || 14,
+          }));
+          setVoiceNotes(notesWithFontSize);
         }
 
         if (
@@ -951,7 +1260,6 @@ export default function FormImageEditor() {
           setImageStickers(parsed.imageStickers);
         }
 
-        // Optionally restore brush UI
         try {
           const uiRaw = await AsyncStorage.getItem(STORAGE_UI_KEY);
           if (uiRaw) {
@@ -972,7 +1280,6 @@ export default function FormImageEditor() {
     loadPersisted();
   }, [STORAGE_KEY, STORAGE_UI_KEY, route.params, initialStrokesFromParams]);
 
-  // current page index helper (uses scrollY)
   function getCurrentPageIndex() {
     const CONTENT_TOP_PADDING = Math.max(
       24,
@@ -988,7 +1295,6 @@ export default function FormImageEditor() {
     );
   }
 
-  // create a new voice note on current page
   const addVoiceNote = (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -999,16 +1305,15 @@ export default function FormImageEditor() {
       id: `${Date.now()}-${Math.random()}`,
       pageIndex,
       text: trimmed,
-      color, // use current pen color
-      x: SCREEN_W * 0.15, // initial relative position
+      color,
+      x: SCREEN_W * 0.15,
       y: PAGE_HEIGHT * 0.15,
-      scale: 1,
+      fontSize: 14,
     };
 
     setVoiceNotes((prev) => [...prev, newNote]);
   };
 
-  // create a new image sticker on current page
   const addImageSticker = () => {
     const pageIndex = getCurrentPageIndex();
 
@@ -1018,6 +1323,8 @@ export default function FormImageEditor() {
       x: SCREEN_W * 0.2,
       y: PAGE_HEIGHT * 0.2,
       scale: 1,
+      width: 140,
+      height: 90,
     };
 
     setImageStickers((prev) => [...prev, newSticker]);
@@ -1037,7 +1344,6 @@ export default function FormImageEditor() {
   const handleAddStickerIconPress = () => {
     if (saveStatus === 'saving') return;
 
-    // When writing is OFF, just show short hint "Editing mode Off"
     if (!writingEnabled) {
       showEditingOffHint();
       return;
@@ -1049,7 +1355,6 @@ export default function FormImageEditor() {
   const handleAddTextIconPress = () => {
     if (saveStatus === 'saving') return;
 
-    // When writing is OFF, just show short hint "Editing mode Off"
     if (!writingEnabled) {
       showEditingOffHint();
       return;
@@ -1068,32 +1373,32 @@ export default function FormImageEditor() {
     setTypedText('');
   };
 
-  // update note position after drag / double-tap
-  const handleVoiceNotePositionChange = (
-    id: string,
-    x: number,
-    y: number
-  ) => {
+  const handleVoiceNotePositionChange = (id: string, x: number, y: number) => {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, x, y } : n))
     );
   };
 
-  // update note scale after resize (width factor)
-  const handleVoiceNoteScaleChange = (id: string, scale: number) => {
+  const handleVoiceNoteBoxChange = (id: string, width: number, height: number) => {
     setVoiceNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, scale } : n))
+      prev.map((n) =>
+        n.id === id ? { ...n, boxWidth: width, boxHeight: height } : n
+      )
     );
   };
 
-  // 🔤 update note text while editing (keyboard)
   const handleVoiceNoteTextChange = (id: string, text: string) => {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, text } : n))
     );
   };
 
-  // delete note via small cross icon
+  const handleVoiceNoteFontSizeChange = (id: string, fontSize: number) => {
+    setVoiceNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, fontSize } : n))
+    );
+  };
+
   const handleVoiceNoteDelete = (id: string) => {
     setVoiceNotes((prev) => {
       const note = prev.find((n) => n.id === id);
@@ -1109,25 +1414,19 @@ export default function FormImageEditor() {
     setEditingNoteId((prev) => (prev === id ? null : prev));
   };
 
-  // update sticker position after drag / double-tap
-  const handleStickerPositionChange = (
-    id: string,
-    x: number,
-    y: number
-  ) => {
+  const handleStickerPositionChange = (id: string, x: number, y: number) => {
     setImageStickers((prev) =>
       prev.map((s) => (s.id === id ? { ...s, x, y } : s))
     );
   };
 
-  // update sticker scale after resize
-  const handleStickerScaleChange = (id: string, scale: number) => {
+  const handleStickerSizeChange = (id: string, width: number, height: number) => {
+    const scale = width / 140;
     setImageStickers((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, scale } : s))
+      prev.map((s) => (s.id === id ? { ...s, scale, width, height } : s))
     );
   };
 
-  // delete sticker
   const handleStickerDelete = (id: string) => {
     setImageStickers((prev) => prev.filter((s) => s.id !== id));
     setEditingStickerId((prev) => (prev === id ? null : prev));
@@ -1136,7 +1435,6 @@ export default function FormImageEditor() {
   const handleVoiceFabPress = async () => {
     if (saveStatus === 'saving') return;
 
-    // When writing is OFF, just show short hint "Editing mode Off"
     if (!writingEnabled) {
       showEditingOffHint();
       return;
@@ -1174,7 +1472,6 @@ export default function FormImageEditor() {
     } catch (e) {
       // ignore
     } finally {
-      // when user stops, create a note from latest text
       if (voiceText && voiceText.trim()) {
         addVoiceNote(voiceText);
       }
@@ -1183,7 +1480,14 @@ export default function FormImageEditor() {
     }
   };
 
-  // 🔧 sync brush + eraser with native drawing views
+  const handleVoiceClose = () => {
+    if (voiceListening) {
+      stopListening();
+    }
+    setVoiceVisible(false);
+    setVoiceText('');
+  };
+
   useEffect(() => {
     const activeWidth = tool === 'eraser' ? eraserWidth : penWidth;
 
@@ -1215,7 +1519,6 @@ export default function FormImageEditor() {
     const c = canvasRefs.current[idx];
     if (c && typeof c.undo === 'function') c.undo();
 
-    // also undo last text note on this page
     let undoneNote: VoiceNote | null = null;
 
     setVoiceNotes((prev) => {
@@ -1241,7 +1544,6 @@ export default function FormImageEditor() {
     const c = canvasRefs.current[idx];
     if (c && typeof c.redo === 'function') c.redo();
 
-    // also redo last undone text note on this page
     const stack = voiceRedoStackRef.current[idx] ?? [];
     if (stack.length === 0) return;
 
@@ -1265,7 +1567,6 @@ export default function FormImageEditor() {
     const c = canvasRefs.current[idx];
     if (c && typeof c.clear === 'function') c.clear();
 
-    // also clear all text notes & stickers on this page
     clearNotesForPage(idx);
     setEditingNoteId(null);
     setEditingStickerId(null);
@@ -1275,19 +1576,14 @@ export default function FormImageEditor() {
     if (!writingEnabled) return;
     setTool('pen');
   };
+  
   const activateEraser = () => {
     if (!writingEnabled) return;
     setTool('eraser');
   };
 
-  const CONTENT_TOP_PADDING = Math.max(
-    24,
-    (insets.top ?? 0) + PAGE_SPACING + 8
-  );
-  const CONTENT_BOTTOM_PADDING = Math.max(
-    160,
-    SCREEN_H - PAGE_HEIGHT + PAGE_SPACING + 24
-  );
+  const CONTENT_TOP_PADDING = Math.max(24, (insets.top ?? 0) + PAGE_SPACING + 8);
+  const CONTENT_BOTTOM_PADDING = Math.max(160, SCREEN_H - PAGE_HEIGHT + PAGE_SPACING + 24);
 
   const PALETTE = [
     '#0EA5A4',
@@ -1306,40 +1602,6 @@ export default function FormImageEditor() {
     '#FFFFFF',
   ];
 
-  const NibPreview = ({ size = 36 }: { size?: number }) => (
-    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: tool === 'eraser' ? '#ffffff' : color,
-          borderWidth: tool === 'eraser' ? 1 : 0,
-          borderColor: '#d1d5db',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <View
-          style={{
-            width: Math.max(
-              4,
-              Math.round((activeStrokeWidth / 30) * size)
-            ),
-            height: Math.max(
-              4,
-              Math.round((activeStrokeWidth / 30) * size)
-            ),
-            borderRadius: 100,
-            backgroundColor: tool === 'eraser' ? '#94a3b8' : '#ffffff',
-            opacity: 0.95,
-          }}
-        />
-      </View>
-    </View>
-  );
-
-  // RIGHT handle code (keeps scrolling via handle)
   const RIGHT_HANDLE_WIDTH = 36;
   const RIGHT_HANDLE_HEIGHT = 100;
   const rightTopAnim = useRef(
@@ -1354,8 +1616,7 @@ export default function FormImageEditor() {
   const maxScrollY = Math.max(0, totalContentHeight - SCREEN_H);
 
   const MIN_HANDLE_TOP = (insets.top ?? 0) + 130;
-  const MAX_HANDLE_TOP =
-    SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
+  const MAX_HANDLE_TOP = SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
 
   const clampRightTop = (val: number) => {
     const minTop = MIN_HANDLE_TOP;
@@ -1371,15 +1632,6 @@ export default function FormImageEditor() {
     const normalized = Math.max(minTop, Math.min(maxTop, top));
     const progress = (normalized - minTop) / tRange;
     return progress * sRange;
-  };
-
-  const scrollToRightTop = (sY: number) => {
-    const minTop = MIN_HANDLE_TOP;
-    const maxTop = MAX_HANDLE_TOP;
-    const tRange = Math.max(1, maxTop - minTop);
-    const sRange = Math.max(1, maxScrollY);
-    const progress = Math.max(0, Math.min(sY, sRange)) / sRange;
-    return progress * tRange + minTop;
   };
 
   useEffect(() => {
@@ -1451,7 +1703,7 @@ export default function FormImageEditor() {
   ).current;
 
   const syncRightHandleToScroll = (sY: number) => {
-    const newTop = scrollToRightTop(sY);
+    const newTop = (sY / maxScrollY) * (MAX_HANDLE_TOP - MIN_HANDLE_TOP) + MIN_HANDLE_TOP;
     try {
       const curr = (rightTopAnim as any).__getValue
         ? (rightTopAnim as any).__getValue()
@@ -1462,14 +1714,9 @@ export default function FormImageEditor() {
     }
   };
 
-  // ---------------------------
-  // IMAGE + DRAWING PINCH ZOOM + PAN (per-page)
-  // ---------------------------
-
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 3;
 
-  // per-page animated values
   const pageScaleAnimsRef = useRef(
     IMAGES.map(() => new Animated.Value(1))
   ).current;
@@ -1480,7 +1727,6 @@ export default function FormImageEditor() {
     IMAGES.map(() => new Animated.Value(0))
   ).current;
 
-  // per-page numeric scale + pan start
   const lastScalePerPageRef = useRef(IMAGES.map(() => 1)).current;
   const panStartPerPageRef = useRef(
     IMAGES.map(() => ({ x: 0, y: 0 }))
@@ -1496,17 +1742,16 @@ export default function FormImageEditor() {
 
   const pinchResponder = useRef(
     PanResponder.create({
-      // Decide when to capture gestures
       onStartShouldSetPanResponder: (evt) => {
+        if (editingNoteId || editingStickerId) return false;
+
         const touches = evt.nativeEvent.touches || [];
         const count = touches.length;
         const pageIndex = getCurrentPageIndex();
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-        // 2-finger => always for pinch
         if (count === 2) return true;
 
-        // When writing is OFF and that page is zoomed in, 1-finger drag pans the page
         if (
           !writingEnabledRef.current &&
           count === 1 &&
@@ -1544,7 +1789,6 @@ export default function FormImageEditor() {
         const pageIndex = getCurrentPageIndex();
 
         if (count === 2) {
-          // start pinch zoom for this page
           const [t1, t2] = touches;
           const dx = t1.pageX - t2.pageX;
           const dy = t1.pageY - t2.pageY;
@@ -1560,7 +1804,6 @@ export default function FormImageEditor() {
           count === 1 &&
           (lastScalePerPageRef[pageIndex] ?? 1) > 1.01
         ) {
-          // start panning this page
           activePanPageRef.current = pageIndex;
           try {
             const currX = (pageTranslateXRef[pageIndex] as any).__getValue
@@ -1583,8 +1826,6 @@ export default function FormImageEditor() {
         const count = touches.length;
 
         if (count === 2) {
-          // If we don't have an active pinch (e.g. user was panning, then adds a 2nd finger),
-          // initialise pinchState here so pinch-out works after pan.
           if (!pinchStateRef.current) {
             const pageIndex = getCurrentPageIndex();
             const [t1, t2] = touches;
@@ -1596,12 +1837,10 @@ export default function FormImageEditor() {
               startScale: lastScalePerPageRef[pageIndex] ?? 1,
               pageIndex,
             };
-            // stop any pan in progress
             activePanPageRef.current = null;
           }
 
-          const { pageIndex, initialDistance, startScale } =
-            pinchStateRef.current!;
+          const { pageIndex, initialDistance, startScale } = pinchStateRef.current!;
           const [t1, t2] = touches;
           const dx = t1.pageX - t2.pageX;
           const dy = t1.pageY - t2.pageY;
@@ -1618,7 +1857,6 @@ export default function FormImageEditor() {
           count === 1 &&
           activePanPageRef.current !== null
         ) {
-          // Pan the zoomed page
           const pageIndex = activePanPageRef.current;
           if ((lastScalePerPageRef[pageIndex] ?? 1) <= 1.01) return;
 
@@ -1631,7 +1869,6 @@ export default function FormImageEditor() {
       },
 
       onPanResponderRelease: () => {
-        // finish pinch
         if (pinchStateRef.current) {
           const pageIndex = pinchStateRef.current.pageIndex;
           let finalScale = lastScalePerPageRef[pageIndex] ?? 1;
@@ -1646,7 +1883,6 @@ export default function FormImageEditor() {
 
           lastScalePerPageRef[pageIndex] = finalScale;
 
-          // if zoomed back to ~1, reset transform for that page
           if (finalScale <= 1.01) {
             lastScalePerPageRef[pageIndex] = 1;
             pageScaleAnimsRef[pageIndex].setValue(1);
@@ -1657,7 +1893,6 @@ export default function FormImageEditor() {
           pinchStateRef.current = null;
         }
 
-        // finish pan
         activePanPageRef.current = null;
       },
 
@@ -1671,7 +1906,6 @@ export default function FormImageEditor() {
 
   const ZOOM_STEP = 0.25;
 
-  // Helper for zoom buttons: apply target scale to current page
   const applyZoomForPage = (pageIndex: number, requestedScale: number) => {
     let newScale = requestedScale;
     if (newScale < MIN_ZOOM) newScale = MIN_ZOOM;
@@ -1705,7 +1939,6 @@ export default function FormImageEditor() {
 
   const APP_FILES_DIR = '/data/data/com.doctor/files';
 
-  // ✅ Helper to make per-patient + per-form file paths
   const makePageFilePath = (pageIndex: number) => {
     const safeKey = (STORAGE_KEY || DEFAULT_STORAGE_KEY).replace(
       /[^a-zA-Z0-9_-]/g,
@@ -1716,7 +1949,7 @@ export default function FormImageEditor() {
   };
 
   const onSaveAll = async () => {
-    if (saveStatus === 'saving') return; // avoid double taps
+    if (saveStatus === 'saving') return;
 
     setSaveStatus('saving');
 
@@ -1746,14 +1979,12 @@ export default function FormImageEditor() {
 
     console.log('[onSaveAll] allMeta =', allMeta);
 
-    // Brush UI settings (no overlays here)
     const uiPayload = {
       color,
       penWidth,
       eraserWidth,
     };
 
-    // ✅ FULL persisted blob: drawings + overlays
     const fullSaveBlob = {
       bitmaps: allMeta,
       voiceNotes,
@@ -1762,18 +1993,8 @@ export default function FormImageEditor() {
 
     try {
       if (AsyncStorage) {
-        // UI stuff
-        await AsyncStorage.setItem(
-          STORAGE_UI_KEY,
-          JSON.stringify(uiPayload)
-        );
-
-        // Main content: pen drawings + voice text + stickers
-        await AsyncStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(fullSaveBlob)
-        );
-
+        await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(uiPayload));
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fullSaveBlob));
         console.log('[onSaveAll] wrote to AsyncStorage key =', STORAGE_KEY);
       } else {
         console.log('AsyncStorage not available — session-only.');
@@ -1787,7 +2008,6 @@ export default function FormImageEditor() {
         editorSavedAt: Date.now(),
         storageKey: STORAGE_KEY,
         formName: route.params?.formName,
-        // overlays
         voiceNotes,
         imageStickers,
       };
@@ -1800,7 +2020,6 @@ export default function FormImageEditor() {
     }
   };
 
-  // ✅ IMPORTANT: update existing FormImageScreen instead of pushing new one
   const handleSaveOk = () => {
     const payload =
       lastPayloadRef.current || {
@@ -1818,8 +2037,7 @@ export default function FormImageEditor() {
       };
 
     setSaveStatus('idle');
-
-    navigation.navigate('FormImageScreen', payload);
+    navigation.goBack();
   };
 
   const handleSaveErrorOk = () => {
@@ -1846,12 +2064,13 @@ export default function FormImageEditor() {
           style={styles.doneButton}
           disabled={saveStatus === 'saving'}
         >
-          <Text style={styles.doneButtonText}>DONE</Text>
+          <Text style={styles.doneButtonText}>SAVE</Text>
         </TouchableOpacity>
       </View>
 
-      {/* SECOND ROW: Tools (scrollable horizontally) */}
-      <View style={styles.topBarTools}>
+
+            {/* SECOND ROW: Tools (scrollable horizontally) */}
+            <View style={styles.topBarTools}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1923,11 +2142,7 @@ export default function FormImageEditor() {
               style={styles.iconBtn}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
-              <MaterialCommunityIcons
-                name="broom"
-                size={20}
-                color="#fff"
-              />
+              <MaterialCommunityIcons name="broom" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
 
@@ -1958,9 +2173,7 @@ export default function FormImageEditor() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() =>
-                  setThicknessTool((prev) =>
-                    prev === 'pen' ? null : 'pen'
-                  )
+                  setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))
                 }
                 style={styles.toolChipIcon}
                 disabled={saveStatus === 'saving' || !writingEnabled}
@@ -2059,99 +2272,113 @@ export default function FormImageEditor() {
           decelerationRate="fast"
           overScrollMode="always"
           showsVerticalScrollIndicator={false}
-          // when writing is OFF, enable normal vertical scroll
           scrollEnabled={!writingEnabled ? true : scrollEnabled}
         >
-          {IMAGES.map((src, pageIndex) => {
-            const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
-            const notesForPage = voiceNotes.filter(
-              (n) => n.pageIndex === pageIndex
-            );
-            const stickersForPage = imageStickers.filter(
-              (s) => s.pageIndex === pageIndex
-            );
-            return (
-              <View key={`page-${pageIndex}`} style={styles.pageWrap}>
-                <View style={styles.pageInner}>
-                  {/* ZOOMED GROUP: image + drawing + text + stickers together */}
-                  <Animated.View
-                    style={[
-                      styles.zoomGroup,
-                      {
-                        transform: [
-                          { translateX: pageTranslateXRef[pageIndex] },
-                          { translateY: pageTranslateYRef[pageIndex] },
-                          { scale: pageScaleAnimsRef[pageIndex] },
-                        ],
-                      },
-                    ]}
-                  >
-                    {/* Image fills entire area */}
-                    <Image
-                      source={src}
-                      style={styles.pageImage}
-                      resizeMode="stretch"
-                    />
+          {IMAGES.length === 0 ? (
+            // 🔥 ADDED: Show message when no images are found
+            <View style={styles.noImagesContainer}>
+              <Text style={styles.noImagesText}>
+                No images found for form: {formKeyParam || 'Unknown'}
+              </Text>
+              <Text style={styles.noImagesSubText}>
+                Available forms: {Object.keys(IMAGES_BY_FORM).join(', ')}
+              </Text>
+            </View>
+          ) : (
+            IMAGES.map((src, pageIndex) => {
+              const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
+              const notesForPage = voiceNotes.filter(
+                (n) => n.pageIndex === pageIndex
+              );
+              const stickersForPage = imageStickers.filter(
+                (s) => s.pageIndex === pageIndex
+              );
 
-                    <View
-                      style={styles.canvasContainer}
-                      pointerEvents={
-                        editingNoteId || editingStickerId || !writingEnabled
-                          ? 'none'
-                          : 'box-none'
-                      }
+              // 🔥 ADDED DEBUG LOGGING for each image
+              console.log(`FormImageEditor - Rendering page ${pageIndex}, source:`, src);
+
+              return (
+                <View key={`page-${pageIndex}`} style={styles.pageWrap}>
+                  <View style={styles.pageInner}>
+                    <Animated.View
+                      style={[
+                        styles.zoomGroup,
+                        {
+                          transform: [
+                            { translateX: pageTranslateXRef[pageIndex] },
+                            { translateY: pageTranslateYRef[pageIndex] },
+                            { scale: pageScaleAnimsRef[pageIndex] },
+                          ],
+                        },
+                      ]}
                     >
-                      <DrawingCanvas
-                        index={pageIndex}
-                        savedPath={savedPath}
-                        ref={(r) => refSetters.current[pageIndex](r)}
+                      <Image
+                        source={src}
+                        style={styles.pageImage}
+                        resizeMode="stretch"
                       />
-                    </View>
 
-                    {/* Voice / typed notes (draggable + double-tap edit + 4-dot resize) */}
-                    {notesForPage.map((note) => (
-                      <DraggableVoiceText
-                        key={note.id}
-                        note={note}
-                        isEditing={editingNoteId === note.id}
-                        onToggleEdit={(id) => {
-                          setEditingNoteId((prev) =>
-                            prev === id ? null : id
-                          );
-                          setEditingStickerId(null);
-                        }}
-                        onPositionChange={handleVoiceNotePositionChange}
-                        onScaleChange={handleVoiceNoteScaleChange}
-                        onDelete={handleVoiceNoteDelete}
-                        onChangeText={handleVoiceNoteTextChange}
-                      />
-                    ))}
+                      <View
+                        style={styles.canvasContainer}
+                        pointerEvents={
+                          editingNoteId || editingStickerId || !writingEnabled
+                            ? 'none'
+                            : 'box-none'
+                        }
+                      >
+                        <DrawingCanvas
+                          index={pageIndex}
+                          savedPath={savedPath}
+                          ref={(r) => refSetters.current[pageIndex](r)}
+                        />
+                      </View>
 
-                    {/* Image stickers (drag + double-tap edit + 8-dot resize) */}
-                    {stickersForPage.map((sticker) => (
-                      <DraggableImageSticker
-                        key={sticker.id}
-                        sticker={sticker}
-                        imageSource={STICKER_IMAGE_SOURCE}
-                        isEditing={editingStickerId === sticker.id}
-                        onToggleEdit={(id) => {
-                          setEditingStickerId((prev) =>
-                            prev === id ? null : id
-                          );
-                          setEditingNoteId(null);
-                        }}
-                        onPositionChange={handleStickerPositionChange}
-                        onScaleChange={handleStickerScaleChange}
-                        onDelete={handleStickerDelete}
-                      />
-                    ))}
-                  </Animated.View>
+                      {notesForPage.map((note) => (
+                        <DraggableVoiceText
+                          key={note.id}
+                          note={note}
+                          isEditing={editingNoteId === note.id}
+                          onToggleEdit={(id) => {
+                            setEditingNoteId((prev) =>
+                              prev === id ? null : id
+                            );
+                            setEditingStickerId(null);
+                          }}
+                          onPositionChange={handleVoiceNotePositionChange}
+                          onBoxSizeChange={handleVoiceNoteBoxChange}
+                          onDelete={handleVoiceNoteDelete}
+                          onChangeText={handleVoiceNoteTextChange}
+                          onChangeFontSize={handleVoiceNoteFontSizeChange}
+                          pageScale={lastScalePerPageRef[pageIndex]}
+                        />
+                      ))}
+
+                      {stickersForPage.map((sticker) => (
+                        <DraggableImageSticker
+                          key={sticker.id}
+                          sticker={sticker}
+                          imageSource={STICKER_IMAGE_SOURCE}
+                          isEditing={editingStickerId === sticker.id}
+                          onToggleEdit={(id) => {
+                            setEditingStickerId((prev) =>
+                              prev === id ? null : id
+                            );
+                            setEditingNoteId(null);
+                          }}
+                          onPositionChange={handleStickerPositionChange}
+                          onSizeChange={handleStickerSizeChange}
+                          onDelete={handleStickerDelete}
+                          pageScale={lastScalePerPageRef[pageIndex]}
+                        />
+                      ))}
+                    </Animated.View>
+                  </View>
+
+                  <View style={styles.pageLabelCompact} />
                 </View>
-
-                <View style={styles.pageLabelCompact} />
-              </View>
-            );
-          })}
+              );
+            })
+          )}
         </ScrollView>
       </View>
 
@@ -2166,7 +2393,7 @@ export default function FormImageEditor() {
         </View>
       </Animated.View>
 
-      {/* 🔍 Zoom +/- buttons just above mic (never faded) */}
+      {/* 🔍 Zoom +/- buttons just above mic */}
       <View
         style={[
           styles.zoomFabContainer,
@@ -2271,6 +2498,7 @@ export default function FormImageEditor() {
           </View>
         </View>
       </Modal>
+
       {/* 📝 Typed Text Modal */}
       <Modal
         visible={textModalVisible}
@@ -2288,6 +2516,7 @@ export default function FormImageEditor() {
               multiline
               value={typedText}
               onChangeText={setTypedText}
+              autoFocus
             />
             <View style={styles.stickerModalButtonsRow}>
               <TouchableOpacity
@@ -2330,7 +2559,7 @@ export default function FormImageEditor() {
         </View>
       </Modal>
 
-      {/* 🔽 Thickness dropdown panel (horizontal slider) */}
+      {/* 🔽 Thickness dropdown panel */}
       {thicknessPanelOpen && thicknessTool && writingEnabled && (
         <View
           style={[
@@ -2340,16 +2569,10 @@ export default function FormImageEditor() {
         >
           <View style={styles.thicknessHeaderRow}>
             <Text style={styles.thicknessTitle}>
-              {thicknessTool === 'pen'
-                ? 'Pen thickness'
-                : 'Eraser thickness'}
+              {thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}
             </Text>
             <TouchableOpacity onPress={() => setThicknessTool(null)}>
-              <Ionicons
-                name="chevron-up"
-                size={18}
-                color="#111827"
-              />
+              <Ionicons name="chevron-up" size={18} color="#111827" />
             </TouchableOpacity>
           </View>
 
@@ -2378,9 +2601,17 @@ export default function FormImageEditor() {
         </View>
       )}
 
-      {/* Color palette panel */}
+      {/* Color palette panel with close icon */}
       {colorPanelOpen && (
         <Animated.View style={styles.colorPanel}>
+          {/* Close button at top right */}
+          <TouchableOpacity
+            style={styles.colorPanelCloseButton}
+            onPress={() => setColorPanelOpen(false)}
+          >
+            <Ionicons name="close" size={20} color="#111827" />
+          </TouchableOpacity>
+
           <View style={styles.paletteGrid}>
             {PALETTE.map((c) => (
               <TouchableOpacity
@@ -2397,46 +2628,59 @@ export default function FormImageEditor() {
                 ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <View
-                  style={[styles.gridSwatch, { backgroundColor: c }]}
-                />
+                <View style={[styles.gridSwatch, { backgroundColor: c }]} />
               </TouchableOpacity>
             ))}
           </View>
         </Animated.View>
       )}
 
-      {/* Voice overlay */}
+      {/* Voice overlay with close icon and text display */}
       {voiceVisible && (
         <View style={styles.voiceOverlay}>
           <View style={styles.voiceDialog}>
+            {/* Close button at top right */}
+            <TouchableOpacity
+              style={styles.voiceCloseButton}
+              onPress={handleVoiceClose}
+            >
+              <Ionicons name="close" size={24} color="#9ca3af" />
+            </TouchableOpacity>
+
             <Text style={styles.voiceTitle}>Google</Text>
             <Text style={styles.voiceSubtitle}>
-              {voiceListening ? 'Listening…' : 'Processing…'}
+              {voiceListening ? voiceText || 'Listening...' : 'Processing...'}
             </Text>
 
-            <View style={styles.voiceDotsRow}>
-              <View style={styles.voiceDot} />
-              <View style={styles.voiceDot} />
-              <View style={styles.voiceDot} />
-              <View style={styles.voiceDot} />
+            {/* Mic animation circle */}
+            <View style={styles.voiceMicContainer}>
+              {voiceListening && (
+                <View
+                  style={[
+                    styles.voiceMicPulse,
+                    { borderColor: '#2563eb' },
+                  ]}
+                />
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.voiceMicButton,
+                  voiceListening && styles.voiceMicButtonActive,
+                ]}
+                onPress={handleVoiceStopPress}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={voiceListening ? 'mic' : 'mic-off'}
+                  size={32}
+                  color="#fff"
+                />
+              </TouchableOpacity>
             </View>
 
             {voiceError ? (
               <Text style={styles.voiceErrorText}>{voiceError}</Text>
             ) : null}
-
-            <TouchableOpacity
-              style={styles.voiceMicButton}
-              onPress={handleVoiceStopPress}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name={voiceListening ? 'mic' : 'mic-off'}
-                size={32}
-                color="#fff"
-              />
-            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -2471,43 +2715,39 @@ export default function FormImageEditor() {
                   style={styles.saveOkButton}
                   onPress={handleSaveOk}
                 >
-                  
-                  <Text style={styles.saveOkButtonText}>
-                    OK
-</Text>
-</TouchableOpacity>
-</>
-)}
+                  <Text style={styles.saveOkButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
 
-{saveStatus === 'error' && (
-<>
-  <Ionicons
-    name="alert-circle"
-    size={52}
-    color="#dc2626"
-    style={{ marginBottom: 8 }}
-  />
-  <Text style={styles.saveTitle}>Save failed</Text>
-  <Text style={styles.saveMessage}>
-    Could not save changes. Please try again.
-  </Text>
-  <TouchableOpacity
-    style={styles.saveOkButton}
-    onPress={handleSaveErrorOk}
-  >
-    <Text style={styles.saveOkButtonText}>OK</Text>
-  </TouchableOpacity>
-</>
-)}
-</View>
-</View>
-)}
-</SafeAreaView>
-);
+            {saveStatus === 'error' && (
+              <>
+                <Ionicons
+                  name="alert-circle"
+                  size={52}
+                  color="#dc2626"
+                  style={{ marginBottom: 8 }}
+                />
+                <Text style={styles.saveTitle}>Save failed</Text>
+                <Text style={styles.saveMessage}>
+                  Could not save changes. Please try again.
+                </Text>
+                <TouchableOpacity
+                  style={styles.saveOkButton}
+                  onPress={handleSaveErrorOk}
+                >
+                  <Text style={styles.saveOkButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      )}
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-
   root: { flex: 1, backgroundColor: '#0EA5A4' },
 
   // TOP ROW (Back + DONE)
@@ -2530,17 +2770,42 @@ const styles = StyleSheet.create({
   },
 
   iconBtn: { padding: 6, borderRadius: 18, marginLeft: 6 },
+  writeToggleActive: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
 
   doneButton: {
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#000000',
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   doneButtonText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+
+  // 🔥 ADDED: No images container style
+  noImagesContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#fff',
+    margin: 20,
+    borderRadius: 10,
+  },
+  noImagesText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  noImagesSubText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
 
   controlsCompact: {
@@ -2606,7 +2871,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  
+
   canvasContainer: {
     position: 'absolute',
     left: 0,
@@ -2642,6 +2907,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
+  },
+  colorPanelCloseButton: {
+    position: 'absolute',
+    // top: 10,
+    // right: 10,
+    zIndex: 10,
+    padding: 4,
   },
   paletteGrid: {
     flexDirection: 'row',
@@ -2771,9 +3043,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   voiceTextHitBox: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 4,
+    minHeight: 30,
   },
   voiceTextDrag: {
     fontSize: 16,
@@ -2786,6 +3058,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     padding: 0,
     margin: 0,
+    flex: 1,
   },
   voiceResizeHandle: {
     position: 'absolute',
@@ -2794,6 +3067,7 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     backgroundColor: '#fff',
     borderWidth: 1.5,
+    zIndex: 10,
   },
   voiceDeleteButton: {
     position: 'absolute',
@@ -2803,6 +3077,43 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffffee',
     borderRadius: 10,
     padding: 1,
+  },
+  fontSizeControls: {
+    position: 'absolute',
+    top: -30,
+    left: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffffee',
+    borderRadius: 15,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    zIndex: 5,
+  },
+  fontSizeButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  fontSizeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginHorizontal: 4,
+  },
+  textTouchArea: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  measureContainer: {
+    position: 'absolute',
+    opacity: 0,
+    pointerEvents: 'none',
   },
 
   // Sticker
@@ -2815,9 +3126,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   stickerImage: {
-    width: 140,
-    height: 90,
     borderRadius: 8,
+  },
+  stickerResizeHandle: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    zIndex: 10,
+  },
+  stickerDeleteButton: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    zIndex: 5,
+    backgroundColor: '#ffffffee',
+    borderRadius: 10,
+    padding: 1,
   },
 
   // Sticker modal
@@ -2902,35 +3229,52 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     alignItems: 'center',
   },
+  voiceCloseButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    padding: 4,
+  },
   voiceTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#f9fafb',
+    marginTop: 8,
   },
   voiceSubtitle: {
     marginTop: 8,
-    fontSize: 14,
-    color: '#9ca3af',
+    fontSize: 16,
+    color: '#ffffff',
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    minHeight: 24,
   },
-  voiceDotsRow: {
-    flexDirection: 'row',
-    marginTop: 18,
+  voiceMicContainer: {
+    position: 'relative',
+    marginTop: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  voiceDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginHorizontal: 4,
-    backgroundColor: '#9ca3af',
+  voiceMicPulse: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: '#2563eb',
+    opacity: 0.5,
   },
   voiceMicButton: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#374151',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
+  },
+  voiceMicButtonActive: {
+    backgroundColor: '#2563eb',
   },
   voiceErrorText: {
     marginTop: 10,
@@ -2995,9 +3339,6 @@ const styles = StyleSheet.create({
   // Visual state styles
   toolsDisabled: {
     opacity: 0.35,
-  },
-  writeToggleActive: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
   },
 
   writingOffBanner: {

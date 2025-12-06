@@ -1,4 +1,4 @@
-
+// src/FormImageScreen.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -17,114 +17,111 @@ import {
   useNavigation,
   useFocusEffect,
 } from '@react-navigation/native';
-import Ionicons from 'react-native-vector-icons/Ionicons'; 
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// 🔹 Import types from editor (no runtime code, only types)
-import type {
-  VoiceNote,
-  ImageSticker,
-} from './FormImageEditor';
+// ---------- IMPORTANT ----------
+// Keep these require(...) lines exactly as they are if those files exist.
+// If you move this file, update the relative paths accordingly.
+// --------------------------------
+
+const IMAGES_BY_FORM: Record<string, any[]> = {
+  emergency_nursing_assessment: [
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0001.jpg'),
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0002.jpg'),
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0003.jpg'),
+    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0004.jpg'),
+  ],
+
+  initial_nursing_assessment: [
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0001.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0002.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0003.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0004.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0005.jpg'),
+    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0006.jpg'),
+  ],
+
+  neonatal_initial_nursing: [
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0001.jpg'),
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0002.jpg'),
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0003.jpg'),
+    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0004.jpg'),
+  ],
+  doctors_handover_isbar: [
+    require('./Images/DoctorHandOverFromat.jpg'),
+  ],
+  
+};
+
+const DEFAULT_IMAGES: any[] = [
+  // Add fallback images here if desired, example:
+  // require('./Images/placeholder.jpg'),
+];
 
 const { width: W, height: H } = Dimensions.get('window');
-
-// Same page height logic as editor (PAGE_HEIGHT = SCREEN_H * 0.72)
 const PAGE_HEIGHT = Math.round(H * 0.72);
-
-const LOCAL_IMAGE_LIST = [
-  require('./Images/first.jpeg'),
-  require('./Images/second.jpeg'),
-  require('./Images/Third.jpeg'),
-  require('./Images/forth.jpeg'),
-  require('./Images/fifth.jpeg'),
-  require('./Images/sixtg.jpeg'),
-  require('./Images/seventh.jpeg'),
-  require('./Images/Eighth.jpeg'),
-  require('./Images/Eleventh.jpeg'),
-  require('./Images/ninth.jpeg'),
-  require('./Images/Tenth.jpeg'),
-  require('./Images/Thirteen.jpeg'),
-  require('./Images/twelve.jpeg'),
-];
 
 type PageMeta = { bitmapPath?: string | null };
 
-// Try AsyncStorage if available (for persistence per patient+form)
 let AsyncStorage: any = null;
 try {
-  AsyncStorage =
-    require('@react-native-async-storage/async-storage').default;
+  // optional: if AsyncStorage is available use it, otherwise code still runs
+  AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch (e) {
   AsyncStorage = null;
+  // It's fine to log here; app will work without AsyncStorage
+  console.warn('[FormImageScreen] AsyncStorage not installed');
 }
 
-export function FormImageScreen() {
+function FormImageScreenInternal() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const params = (route.params as any) || {};
   const formName: string | undefined = params.formName;
+  const formKey: string | undefined = params.formKey;
 
   const perFormStorageKey =
-    (params.storageKey as string | undefined) ??
-    `DoctorApp:pagesBitmaps:v1`;
+    (params.storageKey as string | undefined) ?? `DoctorApp:pagesBitmaps:v1`;
 
-  // 🔥 Initial pageMeta from navigation (savedStrokes) if available
-  const [pageMeta, setPageMeta] = useState<PageMeta[]>(() => {
-    if (params.savedStrokes && Array.isArray(params.savedStrokes)) {
-      return LOCAL_IMAGE_LIST.map((_, idx) => {
-        const m = params.savedStrokes[idx];
-        return { bitmapPath: m?.bitmapPath ?? null };
-      });
-    }
-    return LOCAL_IMAGE_LIST.map(() => ({ bitmapPath: null }));
-  });
-
-  // 🔊 Voice notes + 🧩 stickers state (per page)
-  const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>(() =>
-    Array.isArray(params.voiceNotes) ? params.voiceNotes : []
+  const imagesForThisForm = IMAGES_BY_FORM[formKey ?? ''] ?? DEFAULT_IMAGES;
+  const [pageMeta, setPageMeta] = useState<PageMeta[]>(
+    () => imagesForThisForm.map(() => ({ bitmapPath: null }))
   );
-  const [imageStickers, setImageStickers] = useState<ImageSticker[]>(() =>
-    Array.isArray(params.imageStickers) ? params.imageStickers : []
+
+  const [voiceNotes, setVoiceNotes] = useState<any[]>(
+    () => (Array.isArray(params.voiceNotes) ? params.voiceNotes : [])
+  );
+  const [imageStickers, setImageStickers] = useState<any[]>(
+    () => (Array.isArray(params.imageStickers) ? params.imageStickers : [])
   );
 
   const [reloadToken, setReloadToken] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // ✅ Handle Android hardware back to always go to FormTypeScreen
-  // ✅ Also bump reloadToken whenever this screen comes into focus,
-  //    so overlay images are forced to refresh.
   useFocusEffect(
     useCallback(() => {
-      // Every time we come back to this screen (from editor, etc.),
-      // bump reloadToken so Image URIs change (`?t=...`) and cache is busted.
       setReloadToken((t) => t + 1);
 
       const onBackPress = () => {
+        // ensure this route exists in your navigator
         navigation.navigate('FormType');
-        return true; // block default behaviour
+        return true;
       };
 
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
-        onBackPress,
+        onBackPress
       );
 
-      return () => {
-        subscription.remove();
-      };
-    }, [navigation]),
+      return () => subscription.remove();
+    }, [navigation])
   );
 
-  // 🔥 When editor comes back with new savedStrokes / overlays, apply them
   useEffect(() => {
     const p = (route.params as any) || {};
 
-    // bitmaps
     if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
-      console.log(
-        '[FormImageScreen] got payload savedStrokes =',
-        p.savedStrokes,
-      );
-      const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
+      const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
         const m = p.savedStrokes[idx];
         return { bitmapPath: m?.bitmapPath ?? null };
       });
@@ -132,64 +129,44 @@ export function FormImageScreen() {
       setReloadToken((t) => t + 1);
     }
 
-    // overlays: voice notes + stickers
-    if (Array.isArray(p.voiceNotes)) {
-      setVoiceNotes(p.voiceNotes);
-    }
-    if (Array.isArray(p.imageStickers)) {
-      setImageStickers(p.imageStickers);
-    }
+    if (Array.isArray(p.voiceNotes)) setVoiceNotes(p.voiceNotes);
+    if (Array.isArray(p.imageStickers)) setImageStickers(p.imageStickers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params]);
 
-  // ✅ On fresh open (no savedStrokes in params), try to restore from AsyncStorage
   useEffect(() => {
     let isMounted = true;
 
     const p = (route.params as any) || {};
-    // If we already have savedStrokes from editor, don't override them
     if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
       return;
     }
 
-    if (!AsyncStorage) {
-      return;
-    }
+    if (!AsyncStorage) return;
 
     const loadFromStorage = async () => {
       try {
         setLoading(true);
         const json = await AsyncStorage.getItem(perFormStorageKey);
         if (!isMounted) return;
-
         if (json) {
           try {
             const parsed = JSON.parse(json);
-
-            // 🧩 Old structure: just an array of bitmaps
             if (Array.isArray(parsed)) {
-              const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
+              const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
                 const m = parsed[idx];
                 return { bitmapPath: m?.bitmapPath ?? null };
               });
               setPageMeta(metaArr);
               setReloadToken((t) => t + 1);
-              console.log(
-                '[FormImageScreen] restored (legacy) from AsyncStorage key =',
-                perFormStorageKey,
-              );
             } else if (parsed && typeof parsed === 'object') {
-              // 🧩 New structure: { bitmaps, voiceNotes, imageStickers }
               if (Array.isArray(parsed.bitmaps)) {
-                const metaArr: PageMeta[] = LOCAL_IMAGE_LIST.map((_, idx) => {
+                const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
                   const m = parsed.bitmaps[idx];
                   return { bitmapPath: m?.bitmapPath ?? null };
                 });
                 setPageMeta(metaArr);
                 setReloadToken((t) => t + 1);
-                console.log(
-                  '[FormImageScreen] restored (full blob) from AsyncStorage key =',
-                  perFormStorageKey,
-                );
               }
 
               if (Array.isArray(parsed.voiceNotes)) {
@@ -201,19 +178,11 @@ export function FormImageScreen() {
               }
             }
           } catch (e) {
-            console.warn(
-              '[FormImageScreen] failed to parse stored data for key =',
-              perFormStorageKey,
-              e,
-            );
+            console.warn('[FormImageScreen] failed to parse stored data', e);
           }
         }
       } catch (e) {
-        console.warn(
-          '[FormImageScreen] error reading AsyncStorage key =',
-          perFormStorageKey,
-          e,
-        );
+        console.warn('[FormImageScreen] error reading AsyncStorage', e);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -224,11 +193,11 @@ export function FormImageScreen() {
     return () => {
       isMounted = false;
     };
-  }, [perFormStorageKey, route.params]);
+  }, [perFormStorageKey, imagesForThisForm]);
 
-  // 🔗 Open editor for single page (still pass full overlays so they persist)
   const openEditorForPage = (pageIndex: number) => {
-    const localModule = LOCAL_IMAGE_LIST[pageIndex] ?? null;
+    const localModule = imagesForThisForm[pageIndex] ?? null;
+    // Make sure 'FormImageEditor' is a registered route in your navigator
     navigation.navigate('FormImageEditor', {
       imageUri: null,
       localImageModule: localModule,
@@ -238,13 +207,14 @@ export function FormImageScreen() {
       uiStorageKey: undefined,
       pageIndex,
       returnScreen: 'FormImageScreen',
-      savedStrokes: pageMeta, // pass current pen overlays
+      savedStrokes: pageMeta,
       voiceNotes,
       imageStickers,
+      // 🔥 ADD THIS LINE - Pass the formKey received from FormTypeScreen
+      formKey: formKey, // This is the key that maps to IMAGES_BY_FORM
     });
   };
 
-  // 🔗 Open full multi-page editor, with all overlays
   const openFullEditor = () => {
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
@@ -252,9 +222,11 @@ export function FormImageScreen() {
       uiStorageKey: undefined,
       formName,
       returnScreen: 'FormImageScreen',
-      savedStrokes: pageMeta, // pass current pen overlays
+      savedStrokes: pageMeta,
       voiceNotes,
       imageStickers,
+      // 🔥 ADD THIS LINE - Pass the formKey received from FormTypeScreen
+      formKey: formKey, // This is the key that maps to IMAGES_BY_FORM
     });
   };
 
@@ -273,23 +245,14 @@ export function FormImageScreen() {
 
     let overlaySource: any = null;
     if (isSaved && savedPath) {
-      const baseUri = savedPath.startsWith('file://')
-        ? savedPath
-        : `file://${savedPath}`;
+      const baseUri = savedPath.startsWith('file://') ? savedPath : `file://${savedPath}`;
       const stampedUri = `${baseUri}?t=${reloadToken}`;
       overlaySource = { uri: stampedUri };
     }
 
-    // 🔎 Overlays for this page
-    const notesForPage = voiceNotes.filter(
-      (n) => n.pageIndex === idx
-    );
-    const stickersForPage = imageStickers.filter(
-      (s) => s.pageIndex === idx
-    );
+    const notesForPage = voiceNotes.filter((n) => n.pageIndex === idx);
+    const stickersForPage = imageStickers.filter((s) => s.pageIndex === idx);
 
-    // 🔎 Scale factors: editor used SCREEN_W & PAGE_HEIGHT
-    // Card uses width = W - 24, height = H * 0.58
     const cardWidth = W - 24;
     const cardHeight = H * 0.58;
     const scaleX = cardWidth / W;
@@ -303,14 +266,8 @@ export function FormImageScreen() {
         style={styles.card}
       >
         <View style={styles.cardImageContainer}>
-          {/* Base form image */}
-          <Image
-            source={source}
-            style={styles.cardImage}
-            resizeMode="contain"
-          />
-
-          {/* Pen overlay PNG (from native drawing) */}
+          {/* source could be require(...) or { uri: '...' } */}
+          <Image source={source} style={styles.cardImage} resizeMode="contain" />
           {overlaySource && (
             <Image
               key={`overlay-${idx}-${reloadToken}`}
@@ -319,8 +276,6 @@ export function FormImageScreen() {
               resizeMode="contain"
             />
           )}
-
-          {/* Voice text + stickers overlayed on top (read-only) */}
           <View style={StyleSheet.absoluteFill}>
             {notesForPage.map((note) => (
               <View
@@ -329,16 +284,14 @@ export function FormImageScreen() {
                   position: 'absolute',
                   left: note.x * scaleX,
                   top: note.y * scaleY,
-                  transform: [
-                    { scale: note.scale * uniformScale },
-                  ],
+                  transform: [{ scale: note.scale * uniformScale }],
                 }}
               >
                 <Text
                   style={{
                     fontSize: 16,
                     fontWeight: '500',
-                    color: note.color,
+                    color: note.color || '#000',
                     backgroundColor: 'transparent',
                   }}
                 >
@@ -354,13 +307,9 @@ export function FormImageScreen() {
                   position: 'absolute',
                   left: sticker.x * scaleX,
                   top: sticker.y * scaleY,
-                  transform: [
-                    { scale: sticker.scale * uniformScale },
-                  ],
+                  transform: [{ scale: sticker.scale * uniformScale }],
                 }}
               >
-                {/* This is just a placeholder visual; FormImageEditor uses NameStick.jpeg. 
-                    On screen we only need to show that sticker is present. */}
                 <View
                   style={{
                     width: 140 * uniformScale,
@@ -385,7 +334,6 @@ export function FormImageScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 🔙 Header with back button + title */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.navigate('FormType')}
@@ -394,34 +342,30 @@ export function FormImageScreen() {
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
 
-        <Text style={styles.title}>
-          {formName || 'Form Images'}
-        </Text>
+        <Text style={styles.title}>{formName || 'Form Images'}</Text>
 
-        {/* Spacer to balance layout */}
+        {/* keep an empty view for spacing so title is centered */}
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={true}
-      >
-        {LOCAL_IMAGE_LIST.map((srcItem, i) => (
-          <ThumbCard
-            key={`card-${i}`}
-            idx={i}
-            source={srcItem}
-            reloadToken={reloadToken}
-          />
+      <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator>
+        {imagesForThisForm.length === 0 && (
+          <View style={{ padding: 20 }}>
+            <Text style={{ textAlign: 'center', color: '#666' }}>
+              No images available for this form key: {String(formKey)}
+            </Text>
+          </View>
+        )}
+
+        {imagesForThisForm.map((srcItem, i) => (
+          <ThumbCard key={`card-${i}`} idx={i} source={srcItem} reloadToken={reloadToken} />
         ))}
+
         <View style={{ height: 92 }} />
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.openEditorBtn}
-          onPress={openFullEditor}
-        >
+        <TouchableOpacity style={styles.openEditorBtn} onPress={openFullEditor}>
           <Text style={styles.openEditorBtnText}>Open Editor</Text>
         </TouchableOpacity>
       </View>
@@ -528,3 +472,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
+// Export BOTH default and named export to avoid default/named import mismatch in navigator
+export default FormImageScreenInternal;
+export { FormImageScreenInternal as FormImageScreen };
