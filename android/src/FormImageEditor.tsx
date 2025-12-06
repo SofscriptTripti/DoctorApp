@@ -1490,14 +1490,11 @@ export default function FormImageEditor() {
 
   useEffect(() => {
     const activeWidth = tool === 'eraser' ? eraserWidth : penWidth;
-
+  
     canvasRefs.current.forEach((c) => {
       if (!c) return;
-
-      if (typeof c.setBrushSize === 'function') {
-        c.setBrushSize(activeWidth);
-      }
-
+  
+      // Set eraser mode BEFORE setting brush size
       if (tool === 'eraser') {
         if (typeof c.setEraser === 'function') {
           c.setEraser(true);
@@ -1509,6 +1506,11 @@ export default function FormImageEditor() {
         if (typeof c.setColor === 'function') {
           c.setColor(color);
         }
+      }
+  
+      // Set brush size AFTER setting the mode
+      if (typeof c.setBrushSize === 'function') {
+        c.setBrushSize(activeWidth);
       }
     });
   }, [tool, color, penWidth, eraserWidth]);
@@ -2582,21 +2584,31 @@ export default function FormImageEditor() {
             </Text>
 
             <Slider
-              style={styles.thicknessSlider}
-              minimumValue={thicknessTool === 'pen' ? 1 : 4}
-              maximumValue={thicknessTool === 'pen' ? 40 : 50}
-              step={1}
-              value={thicknessTool === 'pen' ? penWidth : eraserWidth}
-              onValueChange={(v) => {
-                const val = Math.round(v);
-                if (thicknessTool === 'pen') {
-                  setPenWidth(val);
-                } else {
-                  setEraserWidth(val);
-                }
-              }}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            />
+  style={styles.thicknessSlider}
+  minimumValue={thicknessTool === 'pen' ? 1 : 4}
+  maximumValue={thicknessTool === 'pen' ? 40 : 50}
+  step={1}
+  value={thicknessTool === 'pen' ? penWidth : eraserWidth}
+  onValueChange={(v) => {
+    const val = Math.round(v);
+    if (thicknessTool === 'pen') {
+      setPenWidth(val);
+    } else {
+      setEraserWidth(val);
+      // Ensure eraser mode stays active when changing eraser thickness
+      canvasRefs.current.forEach((c) => {
+        if (!c) return;
+        if (typeof c.setEraser === 'function') {
+          c.setEraser(true);
+        }
+        if (typeof c.setBrushSize === 'function') {
+          c.setBrushSize(val);
+        }
+      });
+    }
+  }}
+  disabled={saveStatus === 'saving' || !writingEnabled}
+/>
           </View>
         </View>
       )}
@@ -2613,24 +2625,55 @@ export default function FormImageEditor() {
           </TouchableOpacity>
 
           <View style={styles.paletteGrid}>
-            {PALETTE.map((c) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => {
-                  setColor(c);
-                  setColorPanelOpen(false);
-                }}
-                style={[
-                  styles.gridSwatchWrap,
-                  c.toUpperCase() === color.toUpperCase()
-                    ? styles.gridSwatchActive
-                    : undefined,
-                ]}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <View style={[styles.gridSwatch, { backgroundColor: c }]} />
-              </TouchableOpacity>
-            ))}
+          {PALETTE.map((c) => (
+  <TouchableOpacity
+    key={c}
+    onPress={() => {
+      setColor(c);
+      setColorPanelOpen(false);
+      
+      // 🔥 FIX: If currently in eraser mode, switch to pen mode when color is selected
+      if (tool === 'eraser') {
+        setTool('pen');
+        
+        // Immediately update all canvases to disable eraser mode and set color
+        canvasRefs.current.forEach((canvas) => {
+          if (!canvas) return;
+          
+          // Disable eraser mode
+          if (typeof canvas.setEraser === 'function') {
+            canvas.setEraser(false);
+          }
+          
+          // Set the new color
+          if (typeof canvas.setColor === 'function') {
+            canvas.setColor(c);
+          }
+        });
+      } else {
+        // If already in pen mode, just update the color
+        canvasRefs.current.forEach((canvas) => {
+          if (!canvas || typeof canvas.setColor !== 'function') return;
+          canvas.setColor(c);
+        });
+      }
+    }}
+    style={[
+      styles.gridSwatchWrap,
+      c.toUpperCase() === color.toUpperCase()
+        ? styles.gridSwatchActive
+        : undefined,
+    ]}
+    disabled={saveStatus === 'saving' || !writingEnabled}
+  >
+    <View style={[styles.gridSwatch, { backgroundColor: c }]} />
+    {/* Add a small indicator for white color to make it visible */}
+    {c.toUpperCase() === '#FFFFFF' && (
+      <View style={styles.whiteSwatchBorder} />
+    )}
+  </TouchableOpacity>
+))}
+            
           </View>
         </Animated.View>
       )}
@@ -3250,6 +3293,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     minHeight: 24,
   },
+  // Add to your StyleSheet
+whiteSwatchBorder: {
+  position: 'absolute',
+  width: '100%',
+  height: '100%',
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#d1d5db',
+  pointerEvents: 'none',
+},
   voiceMicContainer: {
     position: 'relative',
     marginTop: 24,
