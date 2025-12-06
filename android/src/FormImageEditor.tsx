@@ -2016,6 +2016,21 @@ export default function FormImageEditor() {
       lastPayloadRef.current = payload;
 
       setSaveStatus('success');
+      
+      // 🔥 FIX: Pass saved data back to FormImageScreen
+      navigation.navigate({
+        name: 'FormImageScreen',
+        params: {
+          savedStrokes: allMeta,
+          voiceNotes,
+          imageStickers,
+          storageKey: STORAGE_KEY,
+          formName: route.params?.formName,
+          formKey: formKeyParam,
+        },
+        merge: true, // This merges new params with existing ones
+      });
+      
     } catch (err) {
       console.warn('[onSaveAll] Error saving', err);
       setSaveStatus('error');
@@ -2039,7 +2054,16 @@ export default function FormImageEditor() {
       };
 
     setSaveStatus('idle');
-    navigation.goBack();
+    
+    // 🔥 FIX: Pass saved data back to FormImageScreen
+    navigation.navigate('FormImageScreen', {
+      savedStrokes: savedMeta,
+      voiceNotes,
+      imageStickers,
+      storageKey: STORAGE_KEY,
+      formName: route.params?.formName,
+      formKey: formKeyParam,
+    });
   };
 
   const handleSaveErrorOk = () => {
@@ -2048,8 +2072,9 @@ export default function FormImageEditor() {
 
   return (
     <SafeAreaView style={styles.root}>
-      {/* TOP ROW: Back + DONE */}
+      {/* FIRST ROW: Back + SAVE */}
       <View style={[styles.topBar, { paddingTop: topPadding }]}>
+        {/* Back button on left */}
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.iconBtn}
@@ -2057,10 +2082,10 @@ export default function FormImageEditor() {
         >
           <Ionicons name="arrow-back" size={20} color="#fff" />
         </TouchableOpacity>
-
+  
         <View style={{ flex: 1 }} />
-
-        {/* DONE button on right */}
+  
+        {/* SAVE button on right */}
         <TouchableOpacity
           onPress={onSaveAll}
           style={styles.doneButton}
@@ -2069,14 +2094,14 @@ export default function FormImageEditor() {
           <Text style={styles.doneButtonText}>SAVE</Text>
         </TouchableOpacity>
       </View>
-
-
-            {/* SECOND ROW: Tools (scrollable horizontally) */}
-            <View style={styles.topBarTools}>
+  
+      {/* SECOND ROW: Tools (scrollable horizontally, starts from right) */}
+      <View style={styles.toolsRow}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.topBarToolsScroll}
+          contentContainerStyle={styles.toolsScrollContent}
+          style={styles.toolsScrollView}
         >
           {/* Writing ON/OFF toggle */}
           <TouchableOpacity
@@ -2093,16 +2118,28 @@ export default function FormImageEditor() {
               color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
             />
           </TouchableOpacity>
-
-          {/* ➕ Add Image Sticker icon */}
+  
+          {/* Color picker circle */}
           <TouchableOpacity
-            onPress={handleAddStickerIconPress}
-            style={styles.iconBtn}
-            disabled={saveStatus === 'saving'}
+            onPress={() => setColorPanelOpen((v) => !v)}
+            style={[
+              styles.iconBtn,
+              !writingEnabled && styles.toolsDisabled,
+            ]}
+            disabled={saveStatus === 'saving' || !writingEnabled}
           >
-            <Ionicons name="image" size={20} color="#ffffff" />
+            <View
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: color,
+                borderWidth: 1,
+                borderColor: '#eee',
+              }}
+            />
           </TouchableOpacity>
-
+  
           {/* ➕ Add Text icon (typed text) */}
           <TouchableOpacity
             onPress={handleAddTextIconPress}
@@ -2115,9 +2152,16 @@ export default function FormImageEditor() {
               color="#ffffff"
             />
           </TouchableOpacity>
-
-          <View style={{ width: 8 }} />
-
+  
+          {/* ➕ Add Image Sticker icon */}
+          <TouchableOpacity
+            onPress={handleAddStickerIconPress}
+            style={styles.iconBtn}
+            disabled={saveStatus === 'saving'}
+          >
+            <Ionicons name="image" size={20} color="#ffffff" />
+          </TouchableOpacity>
+  
           {/* Undo / Redo / Clear group */}
           <View
             style={[
@@ -2147,7 +2191,7 @@ export default function FormImageEditor() {
               <MaterialCommunityIcons name="broom" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
-
+  
           {/* Pen / Eraser grouped nicely */}
           <View
             style={[
@@ -2191,7 +2235,7 @@ export default function FormImageEditor() {
                 />
               </TouchableOpacity>
             </View>
-
+  
             {/* Eraser group */}
             <View
               style={[
@@ -2231,31 +2275,59 @@ export default function FormImageEditor() {
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* Color picker circle */}
-          <TouchableOpacity
-            onPress={() => setColorPanelOpen((v) => !v)}
-            style={[
-              styles.iconBtn,
-              { marginLeft: 4 },
-              !writingEnabled && styles.toolsDisabled,
-            ]}
-            disabled={saveStatus === 'saving' || !writingEnabled}
-          >
-            <View
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 13,
-                backgroundColor: color,
-                borderWidth: 1,
-                borderColor: '#eee',
-              }}
-            />
-          </TouchableOpacity>
         </ScrollView>
       </View>
-
+  
+      {/* Color palette panel - positioned just below tools row */}
+      {colorPanelOpen && (
+        <Animated.View style={[styles.colorPanel, { top: topPadding + 100 }]}>
+          <View style={styles.paletteGrid}>
+            {PALETTE.map((c) => (
+              <TouchableOpacity
+                key={c}
+                onPress={() => {
+                  setColor(c);
+                  setColorPanelOpen(false);
+                  
+                  if (tool === 'eraser') {
+                    setTool('pen');
+                    
+                    canvasRefs.current.forEach((canvas) => {
+                      if (!canvas) return;
+                      
+                      if (typeof canvas.setEraser === 'function') {
+                        canvas.setEraser(false);
+                      }
+                      
+                      if (typeof canvas.setColor === 'function') {
+                        canvas.setColor(c);
+                      }
+                    });
+                  } else {
+                    canvasRefs.current.forEach((canvas) => {
+                      if (!canvas || typeof canvas.setColor !== 'function') return;
+                      canvas.setColor(c);
+                    });
+                  }
+                }}
+                style={[
+                  styles.gridSwatchWrap,
+                  c.toUpperCase() === color.toUpperCase()
+                    ? styles.gridSwatchActive
+                    : undefined,
+                ]}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <View style={[styles.gridSwatch, { backgroundColor: c }]} />
+                {c.toUpperCase() === '#FFFFFF' && (
+                  <View style={styles.whiteSwatchBorder} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+      )}
+  
       {/* Wrapper that handles pinch zoom / pan */}
       <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
         <ScrollView
@@ -2295,10 +2367,10 @@ export default function FormImageEditor() {
               const stickersForPage = imageStickers.filter(
                 (s) => s.pageIndex === pageIndex
               );
-
+  
               // 🔥 ADDED DEBUG LOGGING for each image
               console.log(`FormImageEditor - Rendering page ${pageIndex}, source:`, src);
-
+  
               return (
                 <View key={`page-${pageIndex}`} style={styles.pageWrap}>
                   <View style={styles.pageInner}>
@@ -2316,10 +2388,11 @@ export default function FormImageEditor() {
                     >
                       <Image
                         source={src}
+                        
                         style={styles.pageImage}
                         resizeMode="stretch"
                       />
-
+  
                       <View
                         style={styles.canvasContainer}
                         pointerEvents={
@@ -2334,7 +2407,7 @@ export default function FormImageEditor() {
                           ref={(r) => refSetters.current[pageIndex](r)}
                         />
                       </View>
-
+  
                       {notesForPage.map((note) => (
                         <DraggableVoiceText
                           key={note.id}
@@ -2354,7 +2427,7 @@ export default function FormImageEditor() {
                           pageScale={lastScalePerPageRef[pageIndex]}
                         />
                       ))}
-
+  
                       {stickersForPage.map((sticker) => (
                         <DraggableImageSticker
                           key={sticker.id}
@@ -2375,7 +2448,7 @@ export default function FormImageEditor() {
                       ))}
                     </Animated.View>
                   </View>
-
+  
                   <View style={styles.pageLabelCompact} />
                 </View>
               );
@@ -2383,7 +2456,7 @@ export default function FormImageEditor() {
           )}
         </ScrollView>
       </View>
-
+  
       {/* Right scroll handle */}
       <Animated.View
         style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]}
@@ -2394,7 +2467,7 @@ export default function FormImageEditor() {
           <View style={styles.rightGrip} />
         </View>
       </Animated.View>
-
+  
       {/* 🔍 Zoom +/- buttons just above mic */}
       <View
         style={[
@@ -2419,7 +2492,7 @@ export default function FormImageEditor() {
           <Ionicons name="remove" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
-
+  
       {/* 🔊 floating mic FAB */}
       <TouchableOpacity
         style={[
@@ -2432,7 +2505,7 @@ export default function FormImageEditor() {
       >
         <Ionicons name="mic" size={24} color="#fff" />
       </TouchableOpacity>
-
+  
       {/* "Editing mode Off" bubble above mic when tapped while writing OFF */}
       {editingOffHintVisible && (
         <View
@@ -2444,7 +2517,7 @@ export default function FormImageEditor() {
           <Text style={styles.writingOffText}>Editing mode Off</Text>
         </View>
       )}
-
+  
       {/* Sticker modal */}
       <Modal
         visible={stickerModalVisible}
@@ -2500,7 +2573,7 @@ export default function FormImageEditor() {
           </View>
         </View>
       </Modal>
-
+  
       {/* 📝 Typed Text Modal */}
       <Modal
         visible={textModalVisible}
@@ -2560,13 +2633,13 @@ export default function FormImageEditor() {
           </View>
         </View>
       </Modal>
-
+  
       {/* 🔽 Thickness dropdown panel */}
       {thicknessPanelOpen && thicknessTool && writingEnabled && (
         <View
           style={[
             styles.thicknessPanel,
-            { top: topPadding + 46 },
+            { top: topPadding + 100 },
           ]}
         >
           <View style={styles.thicknessHeaderRow}>
@@ -2577,107 +2650,42 @@ export default function FormImageEditor() {
               <Ionicons name="chevron-up" size={18} color="#111827" />
             </TouchableOpacity>
           </View>
-
+  
           <View style={styles.thicknessContentRow}>
             <Text style={styles.thicknessBigValue}>
               {thicknessTool === 'pen' ? penWidth : eraserWidth}px
             </Text>
-
+  
             <Slider
-  style={styles.thicknessSlider}
-  minimumValue={thicknessTool === 'pen' ? 1 : 4}
-  maximumValue={thicknessTool === 'pen' ? 40 : 50}
-  step={1}
-  value={thicknessTool === 'pen' ? penWidth : eraserWidth}
-  onValueChange={(v) => {
-    const val = Math.round(v);
-    if (thicknessTool === 'pen') {
-      setPenWidth(val);
-    } else {
-      setEraserWidth(val);
-      // Ensure eraser mode stays active when changing eraser thickness
-      canvasRefs.current.forEach((c) => {
-        if (!c) return;
-        if (typeof c.setEraser === 'function') {
-          c.setEraser(true);
-        }
-        if (typeof c.setBrushSize === 'function') {
-          c.setBrushSize(val);
-        }
-      });
-    }
-  }}
-  disabled={saveStatus === 'saving' || !writingEnabled}
-/>
+              style={styles.thicknessSlider}
+              minimumValue={thicknessTool === 'pen' ? 1 : 4}
+              maximumValue={thicknessTool === 'pen' ? 40 : 50}
+              step={1}
+              value={thicknessTool === 'pen' ? penWidth : eraserWidth}
+              onValueChange={(v) => {
+                const val = Math.round(v);
+                if (thicknessTool === 'pen') {
+                  setPenWidth(val);
+                } else {
+                  setEraserWidth(val);
+                  // Ensure eraser mode stays active when changing eraser thickness
+                  canvasRefs.current.forEach((c) => {
+                    if (!c) return;
+                    if (typeof c.setEraser === 'function') {
+                      c.setEraser(true);
+                    }
+                    if (typeof c.setBrushSize === 'function') {
+                      c.setBrushSize(val);
+                    }
+                  });
+                }
+              }}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            />
           </View>
         </View>
       )}
-
-      {/* Color palette panel with close icon */}
-      {colorPanelOpen && (
-        <Animated.View style={styles.colorPanel}>
-          {/* Close button at top right */}
-          <TouchableOpacity
-            style={styles.colorPanelCloseButton}
-            onPress={() => setColorPanelOpen(false)}
-          >
-            <Ionicons name="close" size={20} color="#111827" />
-          </TouchableOpacity>
-
-          <View style={styles.paletteGrid}>
-          {PALETTE.map((c) => (
-  <TouchableOpacity
-    key={c}
-    onPress={() => {
-      setColor(c);
-      setColorPanelOpen(false);
-      
-      // 🔥 FIX: If currently in eraser mode, switch to pen mode when color is selected
-      if (tool === 'eraser') {
-        setTool('pen');
-        
-        // Immediately update all canvases to disable eraser mode and set color
-        canvasRefs.current.forEach((canvas) => {
-          if (!canvas) return;
-          
-          // Disable eraser mode
-          if (typeof canvas.setEraser === 'function') {
-            canvas.setEraser(false);
-          }
-          
-          // Set the new color
-          if (typeof canvas.setColor === 'function') {
-            canvas.setColor(c);
-          }
-        });
-      } else {
-        // If already in pen mode, just update the color
-        canvasRefs.current.forEach((canvas) => {
-          if (!canvas || typeof canvas.setColor !== 'function') return;
-          canvas.setColor(c);
-        });
-      }
-    }}
-    style={[
-      styles.gridSwatchWrap,
-      c.toUpperCase() === color.toUpperCase()
-        ? styles.gridSwatchActive
-        : undefined,
-    ]}
-    disabled={saveStatus === 'saving' || !writingEnabled}
-  >
-    <View style={[styles.gridSwatch, { backgroundColor: c }]} />
-    {/* Add a small indicator for white color to make it visible */}
-    {c.toUpperCase() === '#FFFFFF' && (
-      <View style={styles.whiteSwatchBorder} />
-    )}
-  </TouchableOpacity>
-))}
-            
-          </View>
-        </Animated.View>
-      )}
-
+  
       {/* Voice overlay with close icon and text display */}
       {voiceVisible && (
         <View style={styles.voiceOverlay}>
@@ -2689,12 +2697,12 @@ export default function FormImageEditor() {
             >
               <Ionicons name="close" size={24} color="#9ca3af" />
             </TouchableOpacity>
-
+  
             <Text style={styles.voiceTitle}>Google</Text>
             <Text style={styles.voiceSubtitle}>
               {voiceListening ? voiceText || 'Listening...' : 'Processing...'}
             </Text>
-
+  
             {/* Mic animation circle */}
             <View style={styles.voiceMicContainer}>
               {voiceListening && (
@@ -2720,14 +2728,14 @@ export default function FormImageEditor() {
                 />
               </TouchableOpacity>
             </View>
-
+  
             {voiceError ? (
               <Text style={styles.voiceErrorText}>{voiceError}</Text>
             ) : null}
           </View>
         </View>
       )}
-
+  
       {/* Saving / Saved overlay */}
       {saveStatus !== 'idle' && (
         <View style={styles.saveOverlay}>
@@ -2741,7 +2749,7 @@ export default function FormImageEditor() {
                 </Text>
               </>
             )}
-
+  
             {saveStatus === 'success' && (
               <>
                 <Ionicons
@@ -2762,7 +2770,7 @@ export default function FormImageEditor() {
                 </TouchableOpacity>
               </>
             )}
-
+  
             {saveStatus === 'error' && (
               <>
                 <Ionicons
@@ -2789,45 +2797,57 @@ export default function FormImageEditor() {
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0EA5A4' },
 
-  // TOP ROW (Back + DONE)
+  // FIRST ROW (Back + SAVE)
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     backgroundColor: '#0EA5A4',
+    height: 50,
   },
 
-  // SECOND ROW (tools)
-  topBarTools: {
+  // SECOND ROW (tools - scrollable horizontally, starts from right)
+  toolsRow: {
     backgroundColor: '#0EA5A4',
     paddingBottom: 6,
     paddingTop: 4,
+    height: 50,
   },
-  topBarToolsScroll: {
+  toolsScrollView: {
+    flex: 1,
+  },
+  toolsScrollContent: {
+    flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
+    justifyContent: 'flex-end', // Start from right
+    minWidth: SCREEN_W, // Ensure content is scrollable
   },
 
-  iconBtn: { padding: 6, borderRadius: 18, marginLeft: 6 },
+  iconBtn: { 
+    padding: 6, 
+    borderRadius: 18, 
+    marginLeft: 6 
+  },
   writeToggleActive: {
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-
   doneButton: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 20,
+    borderWidth:2,
+    borderColor:"white"
   },
   doneButtonText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
   },
-
+  
   // 🔥 ADDED: No images container style
   noImagesContainer: {
     flex: 1,
@@ -2849,15 +2869,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
-  },
-
-  controlsCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-    backgroundColor: '#eee',
   },
 
   historyGroup: {
@@ -2941,7 +2952,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    bottom: 18,
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 10,
@@ -2950,13 +2960,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-  },
-  colorPanelCloseButton: {
-    position: 'absolute',
-    // top: 10,
-    // right: 10,
-    zIndex: 10,
-    padding: 4,
+    zIndex: 80,
   },
   paletteGrid: {
     flexDirection: 'row',
@@ -3295,15 +3299,15 @@ const styles = StyleSheet.create({
     minHeight: 24,
   },
   // Add to your StyleSheet
-whiteSwatchBorder: {
-  position: 'absolute',
-  width: '100%',
-  height: '100%',
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: '#d1d5db',
-  pointerEvents: 'none',
-},
+  whiteSwatchBorder: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    pointerEvents: 'none',
+  },
   voiceMicContainer: {
     position: 'relative',
     marginTop: 24,
