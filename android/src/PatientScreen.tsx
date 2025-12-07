@@ -242,26 +242,21 @@ export default function PatientScreen() {
       {/* Header with Back Icon + Title + Circular Logo   */}
       <View style={styles.header}>
         {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <Icon name="arrow-back" size={22} color="#fff" />
-        </TouchableOpacity>
+        <Image
+            source={require('./Images/Sofscript.png')}
+          style={styles.logo}
+        />
 
         {/* Center Title */}
-        <View style={{ flex: 1 ,justifyContent: 'center', alignItems: 'center'}}>
+        <View style={{ flex: 1 ,justifyContent: 'center', alignItems: 'center', right:40}}>
           <Text style={styles.headerTitle}>Patients List</Text>
         </View>
 
         {/* Circular Logo */}
-        <Image
-          source={{
-            uri: 'https://pbs.twimg.com/profile_images/1245651839262965761/vZcdH3RR_400x400.jpg',
-          }}
+        {/* <Image
+            source={require('./Images/Sofscript.png')}
           style={styles.logo}
-        />
+        /> */}
       </View>
 
       {/* Content */}
@@ -272,7 +267,7 @@ export default function PatientScreen() {
           <View style={styles.searchWrapperContent}> 
             <Icon name="search" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
             <TextInput
-              placeholder="Search by name, ward, doctor or id"
+              placeholder="Search by name, ward, doctor or IP No"
               placeholderTextColor="#64748B"
               value={searchText}
               onChangeText={setSearchText}
@@ -332,14 +327,13 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
 
- logo: {
-  width: 45,
-  height: 45,
-  borderRadius: 22.5,   // perfect circle
-  marginLeft: 10,
-  backgroundColor: '#fff',
-},
-
+  logo: {
+    width: 60,
+    height: 45,
+    marginLeft: 10,
+    borderRadius: 10, // Explicitly set to 0 for rectangle
+    backgroundColor: '#fff',
+  },
 
   headerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
   headerSub: { color: '#E0FFFC', fontSize: 12, marginTop: 2 },

@@ -15,6 +15,9 @@ import FormType from './android/src/FormType';
 import FormImageScreen from './android/src/FormImageScreen'; // default import
 import FormImageEditor from './android/src/FormImageEditor'; // default import
 import CareScribeLogin from './android/src/components/CareScribeLogin';
+import HMISFormType from './android/src/HMISFromType';
+import NoOFReport from './android/src/NoOFReport';
+import PdfViewerScreen from './android/src/PdfViewerScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -59,6 +62,9 @@ function App() {
             {/* Form image editor & viewer */}
             <Stack.Screen name="FormImageEditor" component={FormImageEditor} />
             <Stack.Screen name="FormImageScreen" component={FormImageScreen} />
+            <Stack.Screen name="HMISFormType" component={HMISFormType} />
+            <Stack.Screen name="NoOFReport" component={NoOFReport}/>
+            <Stack.Screen name="PdfViewer" component={PdfViewerScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>

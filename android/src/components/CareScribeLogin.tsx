@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   Animated,
@@ -15,11 +14,9 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
+  Dimensions,
 } from 'react-native';
-
-// Doctor illustration provided by user
-const DOCTOR_IMAGE =
-  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS5xIdiEYl9QZrTM9v2uLGSxbulNWg3xxnXiw&s';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Theme = 'light' | 'dark';
 
@@ -32,6 +29,9 @@ const BRAND = {
 };
 
 export default function CareScribeLogin({ navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const screenHeight = Dimensions.get('window').height;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -50,7 +50,7 @@ export default function CareScribeLogin({ navigation }: any) {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [cardAnim]);
 
   const validate = () => {
     let ok = true;
@@ -85,7 +85,12 @@ export default function CareScribeLogin({ navigation }: any) {
 
   const translateY = cardAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [20, 0],
+    outputRange: [50, 0],
+  });
+
+  const cardScale = cardAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.95, 1],
   });
 
   const dismissKeyboard = () => {
@@ -100,137 +105,114 @@ export default function CareScribeLogin({ navigation }: any) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <ScrollView 
+          <ScrollView
             contentContainerStyle={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            bounces={false}
           >
-            {/* Header / Hero */}
-            <View style={[styles.header, { backgroundColor: BRAND.primary }]}>
-              <View style={styles.headerInner}>
-                <View style={styles.headerTextWrap}>
-                  <Text style={styles.brandName}>{BRAND.name}</Text>
-                  <Text style={styles.brandTag}>Care, Capture, Connect</Text>
-                </View>
-              </View>
+            {/* Logo Header */}
+            <View style={styles.logoContainer}>
+            <View style={styles.logoBadge}>
+  <Image
+    source={require('../Images/CareScrib.png')}
+    style={styles.logo}
+    resizeMode="contain"
+  />
+</View>
 
-              {/* Doctor illustration — sits centered and overlaps the card below */}
-              {/* <View style={styles.heroWrap} pointerEvents="none">
-                <Image source={{ uri: DOCTOR_IMAGE }} style={styles.heroImage} />
-              </View> */}
+
+           
             </View>
 
-            {/* Card */}
+            {/* Full Screen Card */}
             <Animated.View
               style={[
-                styles.card,
+                styles.fullScreenCard,
                 bg.card,
                 {
-                  transform: [{ translateY }],
+                  transform: [{ translateY }, { scale: cardScale }],
                   opacity: cardAnim,
+                  minHeight: screenHeight - insets.top - 3800,
                 },
               ]}
             >
-              <Text style={[styles.h1, bg.text]}>Welcome </Text>
-              <Text style={[styles.sub, bg.subText]}>
-                Sign in to continue to {BRAND.name}
-              </Text>
+              {/* subtle top accent */}
+              <View style={styles.cardAccentBar} />
 
-              {/* Email */}
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, bg.label]}>Email</Text>
-                <TextInput
-                  style={[styles.input, bg.input]}
-                  placeholder="you@domain.com"
-                  placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={email}
-                  onChangeText={setEmail}
-                  returnKeyType="next"
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => {
-                    // Optionally focus next input
-                  }}
-                />
-                {!!emailError && <Text style={styles.errText}>{emailError}</Text>}
+              {/* Welcome Section */}
+              <View style={styles.welcomeSection}>
+                <Text style={[styles.h1, bg.text]}>Welcome Back</Text>
+                <Text style={[styles.sub, bg.subText]}>
+                  Sign in to continue to {BRAND.name}
+                </Text>
               </View>
 
-              {/* Password */}
-              <View style={styles.inputGroup}>
-                <View style={styles.rowSpace}>
-                  <Text style={[styles.label, bg.label]}>Password</Text>
-                  <TouchableOpacity onPress={() => setShowPwd(!showPwd)}>
-                    <Text style={[styles.showText, bg.showText]}>
-                      {showPwd ? 'Hide' : 'Show'}
-                    </Text>
-                  </TouchableOpacity>
+              {/* Login Form */}
+              <View style={styles.formContainer}>
+                {/* Email */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, bg.label]}>Email Address</Text>
+                  <TextInput
+                    style={[styles.input, bg.input]}
+                    placeholder="you@domain.com"
+                    placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    value={email}
+                    onChangeText={setEmail}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                  />
+                  {!!emailError && (
+                    <Text style={styles.errText}>{emailError}</Text>
+                  )}
                 </View>
 
-                <TextInput
-                  style={[styles.input, bg.input]}
-                  placeholder="Your secure password"
-                  placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
-                  secureTextEntry={!showPwd}
-                  value={password}
-                  onChangeText={setPassword}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                />
-                {!!pwdError && <Text style={styles.errText}>{pwdError}</Text>}
+                {/* Password */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.rowSpace}>
+                    <Text style={[styles.label, bg.label]}>Password</Text>
+                    <TouchableOpacity onPress={() => setShowPwd(!showPwd)}>
+                      <Text style={[styles.showText, bg.showText]}>
+                        {showPwd ? 'Hide' : 'Show'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TextInput
+                    style={[styles.input, bg.input]}
+                    placeholder="Your secure password"
+                    placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+                    secureTextEntry={!showPwd}
+                    value={password}
+                    onChangeText={setPassword}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                  />
+                  {!!pwdError && (
+                    <Text style={styles.errText}>{pwdError}</Text>
+                  )}
+                </View>
+
+                {/* Security Footer (kept, just colored line) */}
+                <View style={styles.securityFooter}>
+               
+                </View>
               </View>
 
-              {/* Remember / Forgot */}
-              <View style={[styles.rowSpace, { marginTop: 8 }]}>
-                <View style={styles.rowCenter}>
-                  <TouchableOpacity onPress={() => setRemember(!remember)}>
-                    <View
-                      style={[
-                        styles.checkbox,
-                        {
-                          borderColor: remember ? BRAND.primary : '#D1D5DB',
-                          backgroundColor: remember ? BRAND.primary : 'transparent',
-                        },
-                      ]}
-                    >
-                      {remember && <View style={styles.checkboxTick} />}
-                    </View>
-                  </TouchableOpacity>
-
-                  <Text style={[styles.smallText, bg.smallText, { marginLeft: 8 }]}>
-                    Remember me
-                  </Text>
-                </View>
-
-                <TouchableOpacity onPress={() => Alert.alert('Forgot Password')}>
-                  <Text style={[styles.smallText, { color: BRAND.primary }]}>
-                    Forgot?
+              {/* Sign In Button at bottom INSIDE card */}
+              <View style={styles.cardBottomSection}>
+                <TouchableOpacity
+                  style={[styles.bottomButton, { backgroundColor: BRAND.primary }]}
+                  onPress={handleLogin}
+                >
+                  <Text style={styles.bottomButtonText}>
+                    Sign in to Continue
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              {/* Login Button */}
-              <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: BRAND.primary }]}
-                onPress={handleLogin}
-              >
-                <Text style={styles.primaryBtnText}>Sign in</Text>
-              </TouchableOpacity>
-
-              {/* Optional: Add some spacing at the bottom for better scrolling */}
-              <View style={styles.bottomSpacing} />
             </Animated.View>
-
-            {/* FIXED FOOTER — always visible */}
-            <View style={styles.footerPinned}>
-              <Text style={[styles.footerText, bg.smallText]}>
-                Secure • Private • Designed for caregivers
-              </Text>
-
-              <Text style={styles.signatureTextPinned}>
-                Crafted with <Text style={styles.heart}>❤️</Text> by Sofscript
-              </Text>
-            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -240,72 +222,121 @@ export default function CareScribeLogin({ navigation }: any) {
 
 // Updated Styles
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  
+  container: {
+    flex: 1,
+  },
+
   scrollContainer: {
     flexGrow: 1,
-    paddingBottom: 100, // Extra padding for footer
+    justifyContent: 'space-between',
+    paddingBottom: 24,
   },
 
-  header: {
-    height: 220,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    elevation: 6,
-    overflow: 'visible',
-  },
-
-  headerInner: {
-    flexDirection: 'row',
+  // Logo Header Styles
+  logoContainer: {
     alignItems: 'center',
-    marginTop: 8,
+    paddingTop: 20,
+    paddingBottom: 10,
   },
-
-  headerTextWrap: { marginLeft: 6 },
-
-  brandNameLite: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
-  brandName: { color: '#fff', fontSize: 26, fontWeight: '900' },
-  brandTag: { color: 'rgba(255,255,255,0.9)', marginTop: 4, fontSize: 12 },
-
-  heroWrap: {
+  logoBadge: {
+    width: 140,
+    height: 140,
+    borderRadius: 140 / 2,   // full circle
+    backgroundColor: 'white',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 6,
-    // pull image down to overlap card
-    marginBottom: -60,
+    overflow: 'hidden',       // ensures image stays inside circle
   },
-  heroImage: {
-    width: 128,
-    height: 128,
-    borderRadius: 20,
-    borderWidth: 6,
-    borderColor: '#fff',
-    backgroundColor: '#fff',
-    // shadow
+  
+  logo: {
+    width: 110,
+    height: 110,
+  },
+  
+
+  logoText: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: BRAND.primary,
+    marginTop: 10,
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+
+  taglinePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,182,212,0.12)',
+  },
+
+  tagline: {
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+
+  fullScreenCard: {
+    flex: 1,
+    marginHorizontal: 16,
+    // marginTop: 8,
+    borderRadius: 24,
+    padding: 24,
     elevation: 8,
+    shadowColor: '#0EA5A4',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,164,0.18)',
   },
 
-  card: {
-    marginHorizontal: 18,
-    marginTop: -40,
-    padding: 18,
-    borderRadius: 16,
-    elevation: 6,
+  cardAccentBar: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: BRAND.accent,
+    marginBottom: 18,
+    width: 80,
+    alignSelf: 'flex-start',
+  },
+
+  welcomeSection: {
+    marginBottom: 24,
+  },
+
+  h1: {
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+
+  sub: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+
+  formContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+
+  inputGroup: {
     marginBottom: 20,
   },
 
-  h1: { fontSize: 22, fontWeight: '800' },
-  sub: { marginTop: 6, fontSize: 13, marginBottom: 10 },
-
-  inputGroup: { marginTop: 12 },
-  label: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
 
   input: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    fontSize: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 16,
+    fontSize: 16,
+    fontWeight: '400',
   },
 
   rowSpace: {
@@ -314,16 +345,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  rowCenter: { flexDirection: 'row', alignItems: 'center' },
+  rowCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 
   checkbox: {
     width: 20,
     height: 20,
-    borderRadius: 5,
-    borderWidth: 1.6,
+    borderRadius: 6,
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   checkboxTick: {
     width: 10,
     height: 10,
@@ -331,77 +366,136 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  smallText: { fontSize: 12 },
-
-  showText: { fontSize: 13, fontWeight: '700' },
-
-  primaryBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
+  smallText: {
+    fontSize: 14,
   },
-  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 
-  orRow: { flexDirection: 'row', alignItems: 'center', marginTop: 18 },
-  orLine: { flex: 1, height: 1, backgroundColor: '#E6EEF2' },
-  orText: { marginHorizontal: 10, fontSize: 12 },
+  showText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
-  socialRow: { flexDirection: 'row', marginTop: 12 },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 24,
+  },
+
+  orLine: {
+    flex: 1,
+    height: 1,
+  },
+
+  orText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 24,
+  },
+
   socialBtn: {
     flex: 1,
-    marginHorizontal: 6,
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    borderWidth: 2,
   },
-  socialText: { fontWeight: '700' },
 
-  errText: { color: BRAND.danger, fontSize: 12, marginTop: 4 },
+  socialText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
 
-  // FIXED FOOTER
-  footerPinned: {
-    position: 'absolute',
-    bottom: 18,
-    left: 0,
-    right: 0,
+  signupContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 20,
   },
-  footerText: { fontSize: 12, marginBottom: 6 },
 
-  signatureTextPinned: {
-    fontSize: 13,
+  securityFooter: {
+    alignItems: 'center',
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(14,165,164,0.18)',
+    marginTop: 'auto',
+  },
+
+  footerText: {
+    fontSize: 12,
+    textAlign: 'center',
+    paddingHorizontal: 10,
+  },
+
+  // Bottom section INSIDE card
+  cardBottomSection: {
+    marginTop: 24,
+  },
+
+  bottomButton: {
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#0EA5A4',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+
+  bottomButtonText: {
+    color: '#fff',
     fontWeight: '700',
-    color: '#6B7280',
+    fontSize: 16,
   },
-  heart: { color: '#EF4444' },
 
-  bottomSpacing: {
-    height: 40, // Extra spacing at bottom for better scrolling
+  errText: {
+    color: BRAND.danger,
+    fontSize: 12,
+    marginTop: 6,
+    fontWeight: '500',
   },
 });
 
 // Light Theme
 const stylesLight = StyleSheet.create({
-  container: { backgroundColor: '#F8FAFC' },
-  card: { backgroundColor: '#fff' },
-  text: { color: '#0F1724' },
-  subText: { color: '#475569' },
-  label: { color: '#0F1724' },
-  input: { color: '#0F1724', borderColor: '#E5E7EB' },
-  showText: { color: '#0F1724' },
-  smallText: { color: '#475569' },
+  container: { backgroundColor: '#ECFEFF' }, // more colorful, teal tint
+  card: { backgroundColor: '#FFFFFF' },
+  text: { color: '#0F172A' },
+  subText: { color: '#0F766E' },
+  label: { color: '#0F766E' },
+  input: {
+    color: '#0F172A',
+    borderColor: '#BAE6FD',
+    backgroundColor: '#F0FDFA',
+  },
+  showText: { color: BRAND.accent },
+  smallText: { color: '#64748B' },
+  socialBtn: { borderColor: '#E2E8F0' },
+  orLine: { backgroundColor: '#E2E8F0' },
 });
 
 // Dark Theme
 const stylesDark = StyleSheet.create({
-  container: { backgroundColor: '#0B1220' },
-  card: { backgroundColor: '#071229' },
-  text: { color: '#E6EEF2' },
-  subText: { color: '#94A3B8' },
-  label: { color: '#E6EEF2' },
-  input: { color: '#E6EEF2', borderColor: '#1F2937' },
-  showText: { color: '#E6EEF2' },
+  container: { backgroundColor: '#020617' },
+  card: { backgroundColor: '#020617' },
+  text: { color: '#F1F5F9' },
+  subText: { color: '#67E8F9' },
+  label: { color: '#E2E8F0' },
+  input: {
+    color: '#F1F5F9',
+    borderColor: '#334155',
+    backgroundColor: '#020617',
+  },
+  showText: { color: '#67E8F9' },
   smallText: { color: '#94A3B8' },
+  socialBtn: { borderColor: '#334155' },
+  orLine: { backgroundColor: '#334155' },
 });

@@ -30,6 +30,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Slider from '@react-native-community/slider';
@@ -52,11 +53,10 @@ try {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PAGE_HEIGHT = Math.round(SCREEN_H * 0.72);
-const PAGE_SPACING = 18;
+const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
+const PAGE_SPACING = 16;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
-
 
 const IMAGES_BY_FORM: Record<string, any[]> = {
   emergency_nursing_assessment: [
@@ -86,14 +86,11 @@ const IMAGES_BY_FORM: Record<string, any[]> = {
   ],
 };
 
-const DEFAULT_IMAGES: any[] = [
-  // fallback if no mapping exists for a formKey
-  // require('./Images/placeholder.jpg'),
-];
+const DEFAULT_IMAGES: any[] = [];
 
-// 👉 Sticker image (local asset)
-const STICKER_IMAGE_SOURCE = require('./Images/NameStick.jpeg');
-// ------------------------------------------------------------------------------------
+// 👉 Sticker images (local assets)
+const PATIENT_STICKER_SOURCE = require('./Images/NameStick.jpeg');
+const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 
 type SavedMeta = { bitmapPath?: string | null };
 
@@ -110,10 +107,8 @@ export type VoiceNote = {
   color: string;
   x: number;
   y: number;
-  // box size instead of scale
   boxWidth?: number;
   boxHeight?: number;
-  // NEW: font size property
   fontSize?: number;
 };
 
@@ -126,9 +121,10 @@ export type ImageSticker = {
   scale: number;
   width?: number;
   height?: number;
+  stickerType: 'patient' | 'doctor'; // Added sticker type
 };
 
-// --- stable memoized drawing canvas that forwards ref reliably
+// --- stable memoized drawing canvas
 const DrawingCanvas = React.memo(
   forwardRef(function DrawingCanvasInternal(
     { index, savedPath }: DrawingCanvasProps,
@@ -146,7 +142,6 @@ const DrawingCanvas = React.memo(
     prev.index === next.index && prev.savedPath === next.savedPath
 );
 
-// Simple clamp helper
 const clamp = (val: number, min: number, max: number) =>
   Math.max(min, Math.min(max, val));
 
@@ -178,8 +173,8 @@ function DraggableVoiceText({
   const DEFAULT_HEIGHT = 60;
   const DEFAULT_FONT_SIZE = 14;
 
-  const PADDING_H = 12; // left + right padding in the box
-  const PADDING_V = 8; // top + bottom padding in the box
+  const PADDING_H = 12;
+  const PADDING_V = 8;
 
   const currentPosRef = useRef<{ x: number; y: number }>(
     { x: note.x, y: note.y }
@@ -189,7 +184,6 @@ function DraggableVoiceText({
     new Animated.ValueXY({ x: note.x, y: note.y })
   ).current;
 
-  // Animated width/height of the box
   const widthAnim = useRef(
     new Animated.Value(note.boxWidth ?? DEFAULT_WIDTH)
   ).current;
@@ -197,14 +191,10 @@ function DraggableVoiceText({
     new Animated.Value(note.boxHeight ?? DEFAULT_HEIGHT)
   ).current;
 
-  // Keep track of current animated values without triggering re-renders
   const currentWidthRef = useRef(note.boxWidth ?? DEFAULT_WIDTH);
   const currentHeightRef = useRef(note.boxHeight ?? DEFAULT_HEIGHT);
 
-  // Track if we're currently resizing to avoid unnecessary state updates
   const isResizingRef = useRef(false);
-
-  // Track if text input is focused
   const [isTextInputFocused, setIsTextInputFocused] = useState(false);
 
   const startPosRef = useRef({ x: note.x, y: note.y });
@@ -220,16 +210,13 @@ function DraggableVoiceText({
   const MIN_HEIGHT = 30;
   const MAX_HEIGHT = 400;
   
-  // Font size limits
   const MIN_FONT_SIZE = 10;
   const MAX_FONT_SIZE = 36;
   const currentFontSize = note.fontSize ?? DEFAULT_FONT_SIZE;
 
-  // measured content size (text-only, no padding)
   const measuredContentSizeRef = useRef<{ w: number; h: number } | null>(null);
   const [measuredFlag, setMeasuredFlag] = useState(0);
 
-  // keep box size in sync if note changes from outside (e.g. undo, load)
   useEffect(() => {
     const w = note.boxWidth ?? DEFAULT_WIDTH;
     const h = note.boxHeight ?? DEFAULT_HEIGHT;
@@ -239,87 +226,63 @@ function DraggableVoiceText({
     heightAnim.setValue(h);
   }, [note.boxWidth, note.boxHeight, widthAnim, heightAnim]);
 
-  // If note has NO explicit box size, try to size to measured content
   useEffect(() => {
     if (
       (note.boxWidth == null || note.boxHeight == null) &&
       measuredContentSizeRef.current
     ) {
       const c = measuredContentSizeRef.current;
-      // add padding (horizontal + vertical)
       const autoW = clamp(Math.round(c.w + PADDING_H * 2), MIN_WIDTH, MAX_WIDTH);
       const autoH = clamp(Math.round(c.h + PADDING_V * 2), MIN_HEIGHT, MAX_HEIGHT);
 
-      // only set if note doesn't already have box size
       if (note.boxWidth == null || note.boxHeight == null) {
         currentWidthRef.current = autoW;
         currentHeightRef.current = autoH;
         widthAnim.setValue(autoW);
         heightAnim.setValue(autoH);
-        // inform parent that box has sizes now so they persist
         onBoxSizeChange(note.id, autoW, autoH);
       }
     }
   }, [measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
 
-  // Ensure auto-fit size is applied immediately when entering edit mode
   useEffect(() => {
-    // Only run while editing
     if (!isEditing) return;
-
-    // Only auto-fit if the note does not already have fixed size
     if (note.boxWidth != null && note.boxHeight != null) return;
 
     const measured = measuredContentSizeRef.current;
-    if (!measured) return; // nothing measured yet
+    if (!measured) return;
 
     const autoW = clamp(Math.round(measured.w + PADDING_H * 2), MIN_WIDTH, MAX_WIDTH);
     const autoH = clamp(Math.round(measured.h + PADDING_V * 2), MIN_HEIGHT, MAX_HEIGHT);
 
-    // Update animated values
     widthAnim.setValue(autoW);
     heightAnim.setValue(autoH);
     currentWidthRef.current = autoW;
     currentHeightRef.current = autoH;
-
-    // Persist to parent so box size is stored
     onBoxSizeChange(note.id, autoW, autoH);
   }, [isEditing, measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
 
-  // function to be called from onLayout of a hidden text measurement view
   const onContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = { w: layout.width, h: layout.height };
-    // bump flag to run effect
     setMeasuredFlag((v) => v + 1);
   };
 
-  // keep position in sync if note.x,y changed externally
   useEffect(() => {
     pan.setValue({ x: note.x, y: note.y });
     currentPosRef.current = { x: note.x, y: note.y };
   }, [note.x, note.y, pan]);
 
-  // keep latest page scale for gesture math
   const pageScaleRef = useRef(pageScale);
   useEffect(() => {
     pageScaleRef.current = pageScale || 1;
   }, [pageScale]);
 
-  // Handle clicking outside to exit edit mode
-  const handleBackgroundPress = () => {
-    if (isEditing) {
-      onToggleEdit(note.id);
-    }
-  };
-
-  // Handle text area press - enter edit mode but don't auto-focus
   const handleTextAreaPress = () => {
     if (!isEditing) {
       onToggleEdit(note.id);
     }
   };
 
-  // Drag / double-tap handler
   const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -343,10 +306,8 @@ function DraggableVoiceText({
         gestureState: PanResponderGestureState
       ) => {
         const scale = pageScaleRef.current || 1;
-        const nx =
-          startPosRef.current.x + gestureState.dx / scale;
-        const ny =
-          startPosRef.current.y + gestureState.dy / scale;
+        const nx = startPosRef.current.x + gestureState.dx / scale;
+        const ny = startPosRef.current.y + gestureState.dy / scale;
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
       },
@@ -360,30 +321,25 @@ function DraggableVoiceText({
         const delta = now - lastTapRef.current;
         lastTapRef.current = now;
 
-        const isTap =
-          moveDist < 5 &&
+        const isTap = moveDist < 5 &&
           Math.abs(gestureState.vx) < 0.3 &&
           Math.abs(gestureState.vy) < 0.3;
 
         const { x: finalX, y: finalY } = currentPosRef.current;
 
-        // Double tap => toggle edit
         if (isTap && delta < 280) {
           onPositionChange(note.id, finalX, finalY);
           onToggleEdit(note.id);
           return;
         }
 
-        // Single tap or drag => commit position
         onPositionChange(note.id, finalX, finalY);
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
         const scale = pageScaleRef.current || 1;
-        const nx =
-          startPosRef.current.x + gestureState.dx / scale;
-        const ny =
-          startPosRef.current.y + gestureState.dy / scale;
+        const nx = startPosRef.current.x + gestureState.dx / scale;
+        const ny = startPosRef.current.y + gestureState.dy / scale;
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
         onPositionChange(note.id, nx, ny);
@@ -391,7 +347,6 @@ function DraggableVoiceText({
     })
   ).current;
 
-  // Create resize pan responder function
   const createResizePan = (opts: {
     signX: -1 | 0 | 1;
     signY: -1 | 0 | 1;
@@ -414,7 +369,6 @@ function DraggableVoiceText({
 
         const scale = pageScaleRef.current || 1;
 
-        // linear delta (pixel-based): dx affects width, dy affects height
         if (opts.signX !== 0) {
           const deltaX = (gs.dx / scale) * opts.signX;
           newWidth = clamp(
@@ -433,7 +387,6 @@ function DraggableVoiceText({
           );
         }
 
-        // Update animated values directly without state updates
         widthAnim.setValue(newWidth);
         heightAnim.setValue(newHeight);
         currentWidthRef.current = newWidth;
@@ -460,7 +413,6 @@ function DraggableVoiceText({
     });
   };
 
-  // Create 8 pan responders: 4 corners + 4 sides
   const tlResizePan = useRef(
     createResizePan({ signX: -1, signY: -1 })
   ).current;
@@ -487,7 +439,6 @@ function DraggableVoiceText({
     createResizePan({ signX: 0, signY: 1 })
   ).current;
 
-  // Listen to animated value changes to update refs without re-rendering
   useEffect(() => {
     const widthListener = widthAnim.addListener(({ value }) => {
       currentWidthRef.current = value;
@@ -503,7 +454,6 @@ function DraggableVoiceText({
     };
   }, [widthAnim, heightAnim]);
 
-  // Font size controls
   const increaseFontSize = () => {
     const newSize = clamp(currentFontSize + 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
@@ -514,10 +464,8 @@ function DraggableVoiceText({
     onChangeFontSize(note.id, newSize);
   };
 
-  // TextInput ref for focus management
   const textInputRef = useRef<TextInput>(null);
 
-  // Focus text input when entering edit mode
   useEffect(() => {
     if (isEditing && isTextInputFocused && textInputRef.current) {
       setTimeout(() => {
@@ -526,12 +474,10 @@ function DraggableVoiceText({
     }
   }, [isEditing, isTextInputFocused]);
 
-  // Handle text input focus
   const handleTextInputFocus = () => {
     setIsTextInputFocused(true);
   };
 
-  // Handle text input blur
   const handleTextInputBlur = () => {
     setIsTextInputFocused(false);
   };
@@ -545,7 +491,6 @@ function DraggableVoiceText({
         },
       ]}
     >
-      {/* Delete cross (only when NOT editing) */}
       {!isEditing && (
         <TouchableOpacity
           style={styles.voiceDeleteButton}
@@ -556,7 +501,6 @@ function DraggableVoiceText({
         </TouchableOpacity>
       )}
 
-      {/* Font size controls (only when editing) */}
       {isEditing && (
         <View style={styles.fontSizeControls}>
           <TouchableOpacity
@@ -579,7 +523,6 @@ function DraggableVoiceText({
         </View>
       )}
 
-      {/* Main touch area: drag / double-tap */}
       <Animated.View
         {...dragPan.panHandlers}
         style={[
@@ -596,7 +539,6 @@ function DraggableVoiceText({
           },
         ]}
       >
-        {/* When editing use a multiline TextInput that fills the box so text wraps when box width is decreased */}
         {isEditing ? (
           <TextInput
             ref={textInputRef}
@@ -646,10 +588,8 @@ function DraggableVoiceText({
         )}
       </Animated.View>
 
-      {/* 8 resize handles when editing */}
       {isEditing && (
         <>
-          {/* corners */}
           <Animated.View
             style={[
               styles.voiceResizeHandle,
@@ -679,7 +619,6 @@ function DraggableVoiceText({
             {...brResizePan.panHandlers}
           />
 
-          {/* sides */}
           <Animated.View
             style={[
               styles.voiceResizeHandle,
@@ -731,7 +670,6 @@ function DraggableVoiceText({
         </>
       )}
 
-      {/* Hidden measurement text */}
       <View
         style={styles.measureContainer}
         pointerEvents="none"
@@ -764,7 +702,6 @@ function DraggableVoiceText({
  */
 function DraggableImageSticker({
   sticker,
-  imageSource,
   isEditing,
   onToggleEdit,
   onPositionChange,
@@ -773,7 +710,6 @@ function DraggableImageSticker({
   pageScale = 1,
 }: {
   sticker: ImageSticker;
-  imageSource: any;
   isEditing: boolean;
   onToggleEdit: (id: string) => void;
   onPositionChange: (id: string, x: number, y: number) => void;
@@ -786,21 +722,17 @@ function DraggableImageSticker({
   const MIN_SCALE = 0.5;
   const MAX_SCALE = 3;
 
-  // Store current values in refs for gesture calculations
   const currentPosRef = useRef<{ x: number; y: number }>({
     x: sticker.x,
     y: sticker.y,
   });
 
-  // Animated position
   const pan = useRef(
     new Animated.ValueXY({ x: sticker.x, y: sticker.y })
   ).current;
 
-  // Animated scale
   const scaleAnim = useRef(new Animated.Value(sticker.scale ?? 1)).current;
 
-  // Current size
   const currentSizeRef = useRef<{ width: number; height: number }>({
     width: sticker.width ?? DEFAULT_WIDTH,
     height: sticker.height ?? DEFAULT_HEIGHT,
@@ -810,13 +742,11 @@ function DraggableImageSticker({
   const lastTapRef = useRef(0);
   const scaleStartRef = useRef(sticker.scale ?? 1);
 
-  // Keep page scale in ref for gesture calculations
   const pageScaleRef = useRef(pageScale);
   useEffect(() => {
     pageScaleRef.current = pageScale || 1;
   }, [pageScale]);
 
-  // Sync animated values with props
   useEffect(() => {
     if (currentPosRef.current.x !== sticker.x || currentPosRef.current.y !== sticker.y) {
       pan.setValue({ x: sticker.x, y: sticker.y });
@@ -837,7 +767,6 @@ function DraggableImageSticker({
     }
   }, [sticker.x, sticker.y, sticker.scale, sticker.width, sticker.height, pan, scaleAnim]);
 
-  // Drag gesture handler
   const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -883,7 +812,6 @@ function DraggableImageSticker({
 
         const { x: finalX, y: finalY } = currentPosRef.current;
 
-        // Double tap => toggle edit mode
         if (isTap && delta < 280) {
           onPositionChange(sticker.id, finalX, finalY);
           onToggleEdit(sticker.id);
@@ -905,7 +833,6 @@ function DraggableImageSticker({
     })
   ).current;
 
-  // Create resize pan responder
   const createResizePan = (opts: {
     signX: -1 | 0 | 1;
     signY: -1 | 0 | 1;
@@ -947,8 +874,11 @@ function DraggableImageSticker({
     });
   };
 
-  // Create resize handlers
   const resizePan = useRef(createResizePan({ signX: 1, signY: 1 })).current;
+
+  const stickerImageSource = sticker.stickerType === 'doctor' 
+    ? DOCTOR_STICKER_SOURCE 
+    : PATIENT_STICKER_SOURCE;
 
   return (
     <Animated.View
@@ -963,7 +893,6 @@ function DraggableImageSticker({
         },
       ]}
     >
-      {/* Delete button - only show when NOT editing */}
       {!isEditing && (
         <TouchableOpacity
           style={styles.stickerDeleteButton}
@@ -982,7 +911,7 @@ function DraggableImageSticker({
         ]}
       >
         <Image
-          source={imageSource}
+          source={stickerImageSource}
           style={[
             styles.stickerImage,
             {
@@ -996,7 +925,6 @@ function DraggableImageSticker({
 
       {isEditing && (
         <>
-          {/* corners */}
           <View
             style={[
               styles.stickerResizeHandle,
@@ -1037,27 +965,12 @@ export default function FormImageEditor() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
 
-  // 🔥 ADDED DEBUG LOGGING
-  console.log('FormImageEditor - Route params:', route.params);
-  
-  // Determine which form's images to show from route.params.formKey (same key used in FormImageScreen)
   const formKeyParam = route.params?.formKey as string | undefined;
-  
-  // 🔥 ADDED DEBUG LOGGING
-  console.log('FormImageEditor - formKeyParam:', formKeyParam);
-  console.log('FormImageEditor - Available form keys in IMAGES_BY_FORM:', Object.keys(IMAGES_BY_FORM));
   
   const IMAGES = useMemo(
     () => IMAGES_BY_FORM[formKeyParam ?? ''] ?? DEFAULT_IMAGES,
     [formKeyParam]
   );
-
-  // 🔥 ADDED DEBUG LOGGING
-  console.log('FormImageEditor - IMAGES length for this form:', IMAGES.length);
-  if (IMAGES.length === 0) {
-    console.log('FormImageEditor - WARNING: No images found for formKey:', formKeyParam);
-    console.log('FormImageEditor - Available form keys:', Object.keys(IMAGES_BY_FORM));
-  }
 
   const storageKeyParam = route.params?.storageKey as string | undefined;
   const uiKeyParam = route.params?.uiStorageKey as string | undefined;
@@ -1094,8 +1007,6 @@ export default function FormImageEditor() {
     writingEnabledRef.current = writingEnabled;
   }, [writingEnabled]);
 
-  const activeStrokeWidth = tool === 'eraser' ? eraserWidth : penWidth;
-
   const [saveStatus, setSaveStatus] = useState<
     'idle' | 'saving' | 'success' | 'error'
   >('idle');
@@ -1123,7 +1034,6 @@ export default function FormImageEditor() {
     }
   }, [writingEnabled]);
 
-  // initialize canvas refs sized to number of IMAGES for this form
   const canvasRefs = useRef<Array<DrawingRef | null>>(
     IMAGES.map(() => null)
   );
@@ -1149,6 +1059,7 @@ export default function FormImageEditor() {
   const voiceRedoStackRef = useRef<Record<number, VoiceNote[]>>({});
 
   const [stickerModalVisible, setStickerModalVisible] = useState(false);
+  const [selectedStickerType, setSelectedStickerType] = useState<'patient' | 'doctor' | null>(null);
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [typedText, setTypedText] = useState('');
 
@@ -1314,7 +1225,7 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) => [...prev, newNote]);
   };
 
-  const addImageSticker = () => {
+  const addImageSticker = (stickerType: 'patient' | 'doctor') => {
     const pageIndex = getCurrentPageIndex();
 
     const newSticker: ImageSticker = {
@@ -1325,6 +1236,7 @@ export default function FormImageEditor() {
       scale: 1,
       width: 140,
       height: 90,
+      stickerType, // Added sticker type
     };
 
     setImageStickers((prev) => [...prev, newSticker]);
@@ -1341,7 +1253,7 @@ export default function FormImageEditor() {
     }, 2000);
   };
 
-  const handleAddStickerIconPress = () => {
+  const handlePatientStickerPress = () => {
     if (saveStatus === 'saving') return;
 
     if (!writingEnabled) {
@@ -1349,6 +1261,19 @@ export default function FormImageEditor() {
       return;
     }
 
+    setSelectedStickerType('patient');
+    setStickerModalVisible(true);
+  };
+
+  const handleDoctorStickerPress = () => {
+    if (saveStatus === 'saving') return;
+
+    if (!writingEnabled) {
+      showEditingOffHint();
+      return;
+    }
+
+    setSelectedStickerType('doctor');
     setStickerModalVisible(true);
   };
 
@@ -1494,7 +1419,6 @@ export default function FormImageEditor() {
     canvasRefs.current.forEach((c) => {
       if (!c) return;
   
-      // Set eraser mode BEFORE setting brush size
       if (tool === 'eraser') {
         if (typeof c.setEraser === 'function') {
           c.setEraser(true);
@@ -1508,7 +1432,6 @@ export default function FormImageEditor() {
         }
       }
   
-      // Set brush size AFTER setting the mode
       if (typeof c.setBrushSize === 'function') {
         c.setBrushSize(activeWidth);
       }
@@ -2015,21 +1938,8 @@ export default function FormImageEditor() {
       };
       lastPayloadRef.current = payload;
 
+      // Only show success message, don't navigate yet
       setSaveStatus('success');
-      
-      // 🔥 FIX: Pass saved data back to FormImageScreen
-      navigation.navigate({
-        name: 'FormImageScreen',
-        params: {
-          savedStrokes: allMeta,
-          voiceNotes,
-          imageStickers,
-          storageKey: STORAGE_KEY,
-          formName: route.params?.formName,
-          formKey: formKeyParam,
-        },
-        merge: true, // This merges new params with existing ones
-      });
       
     } catch (err) {
       console.warn('[onSaveAll] Error saving', err);
@@ -2055,7 +1965,7 @@ export default function FormImageEditor() {
 
     setSaveStatus('idle');
     
-    // 🔥 FIX: Pass saved data back to FormImageScreen
+    // Navigate only when user clicks OK
     navigation.navigate('FormImageScreen', {
       savedStrokes: savedMeta,
       voiceNotes,
@@ -2070,145 +1980,150 @@ export default function FormImageEditor() {
     setSaveStatus('idle');
   };
 
+  const getStickerImageSource = (stickerType: 'patient' | 'doctor') => {
+    return stickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE;
+  };
+
   return (
     <SafeAreaView style={styles.root}>
-      {/* FIRST ROW: Back + SAVE */}
-      <View style={[styles.topBar, { paddingTop: topPadding }]}>
-        {/* Back button on left */}
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.iconBtn}
-          disabled={saveStatus === 'saving'}
-        >
-          <Ionicons name="arrow-back" size={20} color="#fff" />
-        </TouchableOpacity>
-  
-        <View style={{ flex: 1 }} />
-  
-        {/* SAVE button on right */}
-        <TouchableOpacity
-          onPress={onSaveAll}
-          style={styles.doneButton}
-          disabled={saveStatus === 'saving'}
-        >
-          <Text style={styles.doneButtonText}>SAVE</Text>
-        </TouchableOpacity>
-      </View>
-  
-      {/* SECOND ROW: Tools (scrollable horizontally, starts from right) */}
-      <View style={styles.toolsRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.toolsScrollContent}
-          style={styles.toolsScrollView}
-        >
-          {/* Writing ON/OFF toggle */}
+      {/* Combined Header - Back + Tools + SAVE */}
+      <View style={styles.combinedHeader}>
+        {/* Top row: Back button on left, SAVE on right */}
+        <View style={styles.topRow}>
+          {/* Back button on left */}
           <TouchableOpacity
-            onPress={() => setWritingEnabled((prev) => !prev)}
-            style={[
-              styles.iconBtn,
-              !writingEnabled && styles.writeToggleActive,
-            ]}
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
             disabled={saveStatus === 'saving'}
           >
-            <FontAwesome
-              name="pencil-square-o"
-              size={20}
-              color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
-            />
+            <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
-  
-          {/* Color picker circle */}
+
+          {/* SAVE button on right */}
           <TouchableOpacity
-            onPress={() => setColorPanelOpen((v) => !v)}
-            style={[
-              styles.iconBtn,
-              !writingEnabled && styles.toolsDisabled,
-            ]}
-            disabled={saveStatus === 'saving' || !writingEnabled}
-          >
-            <View
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 13,
-                backgroundColor: color,
-                borderWidth: 1,
-                borderColor: '#eee',
-              }}
-            />
-          </TouchableOpacity>
-  
-          {/* ➕ Add Text icon (typed text) */}
-          <TouchableOpacity
-            onPress={handleAddTextIconPress}
-            style={styles.iconBtn}
+            onPress={onSaveAll}
+            style={styles.saveButton}
             disabled={saveStatus === 'saving'}
           >
-            <MaterialCommunityIcons
-              name="format-text"
-              size={20}
-              color="#ffffff"
-            />
+            <Text style={styles.saveButtonText}>SAVE</Text>
           </TouchableOpacity>
-  
-          {/* ➕ Add Image Sticker icon */}
-          <TouchableOpacity
-            onPress={handleAddStickerIconPress}
-            style={styles.iconBtn}
-            disabled={saveStatus === 'saving'}
+        </View>
+
+        {/* Bottom row: Tools */}
+        <View style={styles.toolsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.toolsScrollContent}
           >
-            <Ionicons name="image" size={20} color="#ffffff" />
-          </TouchableOpacity>
-  
-          {/* Undo / Redo / Clear group */}
-          <View
-            style={[
-              styles.historyGroup,
-              !writingEnabled && styles.toolsDisabled,
-            ]}
-          >
+            {/* Writing ON/OFF toggle */}
             <TouchableOpacity
-              onPress={performUndo}
-              style={styles.iconBtn}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <Ionicons name="arrow-undo" size={20} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={performRedo}
-              style={styles.iconBtn}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <Ionicons name="arrow-redo" size={20} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={performClear}
-              style={styles.iconBtn}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <MaterialCommunityIcons name="broom" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-  
-          {/* Pen / Eraser grouped nicely */}
-          <View
-            style={[
-              styles.toolGroupRow,
-              !writingEnabled && styles.toolsDisabled,
-            ]}
-          >
-            {/* Pen group */}
-            <View
+              onPress={() => setWritingEnabled((prev) => !prev)}
               style={[
-                styles.toolChip,
-                tool === 'pen' && styles.toolChipActive,
+                styles.toolButton,
+                !writingEnabled && styles.writeToggleActive,
               ]}
+              disabled={saveStatus === 'saving'}
             >
+              <FontAwesome
+                name="pencil-square-o"
+                size={20}
+                color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
+              />
+              <Text style={styles.toolButtonText}>
+                {writingEnabled ? 'ON' : 'OFF'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Color picker circle */}
+            <TouchableOpacity
+              onPress={() => setColorPanelOpen((v) => !v)}
+              style={[
+                styles.toolButton,
+                !writingEnabled && styles.toolsDisabled,
+              ]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <View
+                style={[
+                  styles.colorCircle,
+                  { backgroundColor: color },
+                ]}
+              />
+              <Text style={styles.toolButtonText}>Color</Text>
+            </TouchableOpacity>
+
+            {/* ➕ Add Text icon (typed text) */}
+            <TouchableOpacity
+              onPress={handleAddTextIconPress}
+              style={styles.toolButton}
+              disabled={saveStatus === 'saving'}
+            >
+              <MaterialCommunityIcons
+                name="format-text"
+                size={20}
+                color="#ffffff"
+              />
+              <Text style={styles.toolButtonText}>Text</Text>
+            </TouchableOpacity>
+
+            {/* Undo / Redo / Clear group */}
+            <View style={styles.toolGroup}>
+              <TouchableOpacity
+                onPress={performUndo}
+                style={styles.toolButton}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <Ionicons name="arrow-undo" size={20} color="#fff" />
+                <Text style={styles.toolButtonText}>Undo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={performRedo}
+                style={styles.toolButton}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <Ionicons name="arrow-redo" size={20} color="#fff" />
+                <Text style={styles.toolButtonText}>Redo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={performClear}
+                style={styles.toolButton}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <MaterialCommunityIcons name="broom" size={20} color="#fff" />
+                <Text style={styles.toolButtonText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Patient Sticker */}
+            <TouchableOpacity
+              onPress={handlePatientStickerPress}
+              style={styles.toolButton}
+              disabled={saveStatus === 'saving'}
+            >
+              <Ionicons name="person" size={20} color="#ffffff" />
+              <Text style={styles.toolButtonText}>Patient Sticker</Text>
+            </TouchableOpacity>
+
+            {/* Doctor Sticker */}
+            <TouchableOpacity
+              onPress={handleDoctorStickerPress}
+              style={styles.toolButton}
+              disabled={saveStatus === 'saving'}
+            >
+              <FontAwesome6 name="user-doctor" size={20} color="#ffffff" />
+              <Text style={styles.toolButtonText}>Doctor Sticker</Text>
+            </TouchableOpacity>
+
+            {/* Pen / Eraser group */}
+            <View style={styles.toolGroup}>
+              {/* Pen */}
               <TouchableOpacity
                 onPress={activatePen}
-                style={styles.toolChipIcon}
+                style={[
+                  styles.toolChip,
+                  tool === 'pen' && styles.toolChipActive,
+                ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
                 <MaterialCommunityIcons
@@ -2216,36 +2131,38 @@ export default function FormImageEditor() {
                   size={18}
                   color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
                 />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() =>
-                  setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))
-                }
-                style={styles.toolChipIcon}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <Ionicons
-                  name={
-                    thicknessPanelOpen && thicknessTool === 'pen'
-                      ? 'chevron-up'
-                      : 'chevron-down'
+                <Text style={[
+                  styles.toolChipText,
+                  tool === 'pen' && styles.toolChipTextActive
+                ]}>
+                  Pen
+                </Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))
                   }
-                  size={16}
-                  color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
-                />
+                  style={styles.thicknessToggle}
+                  disabled={saveStatus === 'saving' || !writingEnabled}
+                >
+                  <Ionicons
+                    name={
+                      thicknessPanelOpen && thicknessTool === 'pen'
+                        ? 'chevron-up'
+                        : 'chevron-down'
+                    }
+                    size={16}
+                    color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
+                  />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </View>
-  
-            {/* Eraser group */}
-            <View
-              style={[
-                styles.toolChip,
-                tool === 'eraser' && styles.toolChipActive,
-              ]}
-            >
+
+              {/* Eraser */}
               <TouchableOpacity
                 onPress={activateEraser}
-                style={styles.toolChipIcon}
+                style={[
+                  styles.toolChip,
+                  tool === 'eraser' && styles.toolChipActive,
+                ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
                 <MaterialCommunityIcons
@@ -2253,34 +2170,40 @@ export default function FormImageEditor() {
                   size={18}
                   color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
                 />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() =>
-                  setThicknessTool((prev) =>
-                    prev === 'eraser' ? null : 'eraser'
-                  )
-                }
-                style={styles.toolChipIcon}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <Ionicons
-                  name={
-                    thicknessPanelOpen && thicknessTool === 'eraser'
-                      ? 'chevron-up'
-                      : 'chevron-down'
+                <Text style={[
+                  styles.toolChipText,
+                  tool === 'eraser' && styles.toolChipTextActive
+                ]}>
+                  Eraser
+                </Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    setThicknessTool((prev) =>
+                      prev === 'eraser' ? null : 'eraser'
+                    )
                   }
-                  size={16}
-                  color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
-                />
+                  style={styles.thicknessToggle}
+                  disabled={saveStatus === 'saving' || !writingEnabled}
+                >
+                  <Ionicons
+                    name={
+                      thicknessPanelOpen && thicknessTool === 'eraser'
+                        ? 'chevron-up'
+                        : 'chevron-down'
+                    }
+                    size={16}
+                    color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
+                  />
+                </TouchableOpacity>
               </TouchableOpacity>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
-  
-      {/* Color palette panel - positioned just below tools row */}
+
+      {/* Color palette panel */}
       {colorPanelOpen && (
-        <Animated.View style={[styles.colorPanel, { top: topPadding + 100 }]}>
+        <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }]}>
           <View style={styles.paletteGrid}>
             {PALETTE.map((c) => (
               <TouchableOpacity
@@ -2327,7 +2250,7 @@ export default function FormImageEditor() {
           </View>
         </Animated.View>
       )}
-  
+
       {/* Wrapper that handles pinch zoom / pan */}
       <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
         <ScrollView
@@ -2335,6 +2258,7 @@ export default function FormImageEditor() {
           style={{ flex: 1 }}
           contentContainerStyle={{
             alignItems: 'center',
+            paddingTop: 8,
           }}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
             scrollY.current = e.nativeEvent.contentOffset.y;
@@ -2349,7 +2273,6 @@ export default function FormImageEditor() {
           scrollEnabled={!writingEnabled ? true : scrollEnabled}
         >
           {IMAGES.length === 0 ? (
-            // 🔥 ADDED: Show message when no images are found
             <View style={styles.noImagesContainer}>
               <Text style={styles.noImagesText}>
                 No images found for form: {formKeyParam || 'Unknown'}
@@ -2367,10 +2290,7 @@ export default function FormImageEditor() {
               const stickersForPage = imageStickers.filter(
                 (s) => s.pageIndex === pageIndex
               );
-  
-              // 🔥 ADDED DEBUG LOGGING for each image
-              console.log(`FormImageEditor - Rendering page ${pageIndex}, source:`, src);
-  
+
               return (
                 <View key={`page-${pageIndex}`} style={styles.pageWrap}>
                   <View style={styles.pageInner}>
@@ -2388,11 +2308,10 @@ export default function FormImageEditor() {
                     >
                       <Image
                         source={src}
-                        
                         style={styles.pageImage}
                         resizeMode="stretch"
                       />
-  
+
                       <View
                         style={styles.canvasContainer}
                         pointerEvents={
@@ -2407,7 +2326,7 @@ export default function FormImageEditor() {
                           ref={(r) => refSetters.current[pageIndex](r)}
                         />
                       </View>
-  
+
                       {notesForPage.map((note) => (
                         <DraggableVoiceText
                           key={note.id}
@@ -2427,12 +2346,11 @@ export default function FormImageEditor() {
                           pageScale={lastScalePerPageRef[pageIndex]}
                         />
                       ))}
-  
+
                       {stickersForPage.map((sticker) => (
                         <DraggableImageSticker
                           key={sticker.id}
                           sticker={sticker}
-                          imageSource={STICKER_IMAGE_SOURCE}
                           isEditing={editingStickerId === sticker.id}
                           onToggleEdit={(id) => {
                             setEditingStickerId((prev) =>
@@ -2448,7 +2366,7 @@ export default function FormImageEditor() {
                       ))}
                     </Animated.View>
                   </View>
-  
+
                   <View style={styles.pageLabelCompact} />
                 </View>
               );
@@ -2456,7 +2374,7 @@ export default function FormImageEditor() {
           )}
         </ScrollView>
       </View>
-  
+
       {/* Right scroll handle */}
       <Animated.View
         style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]}
@@ -2467,8 +2385,8 @@ export default function FormImageEditor() {
           <View style={styles.rightGrip} />
         </View>
       </Animated.View>
-  
-      {/* 🔍 Zoom +/- buttons just above mic */}
+
+      {/* 🔍 Zoom +/- buttons */}
       <View
         style={[
           styles.zoomFabContainer,
@@ -2492,7 +2410,7 @@ export default function FormImageEditor() {
           <Ionicons name="remove" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
-  
+
       {/* 🔊 floating mic FAB */}
       <TouchableOpacity
         style={[
@@ -2505,8 +2423,8 @@ export default function FormImageEditor() {
       >
         <Ionicons name="mic" size={24} color="#fff" />
       </TouchableOpacity>
-  
-      {/* "Editing mode Off" bubble above mic when tapped while writing OFF */}
+
+      {/* "Editing mode Off" bubble */}
       {editingOffHintVisible && (
         <View
           style={[
@@ -2517,7 +2435,7 @@ export default function FormImageEditor() {
           <Text style={styles.writingOffText}>Editing mode Off</Text>
         </View>
       )}
-  
+
       {/* Sticker modal */}
       <Modal
         visible={stickerModalVisible}
@@ -2527,9 +2445,11 @@ export default function FormImageEditor() {
       >
         <View style={styles.stickerModalBackdrop}>
           <View style={styles.stickerModalContent}>
-            <Text style={styles.stickerModalTitle}>Add image sticker</Text>
+            <Text style={styles.stickerModalTitle}>
+              Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker
+            </Text>
             <Image
-              source={STICKER_IMAGE_SOURCE}
+              source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE}
               style={styles.stickerModalImage}
               resizeMode="contain"
             />
@@ -2556,8 +2476,11 @@ export default function FormImageEditor() {
                   { backgroundColor: '#0EA5A4' },
                 ]}
                 onPress={() => {
+                  if (selectedStickerType) {
+                    addImageSticker(selectedStickerType);
+                  }
                   setStickerModalVisible(false);
-                  addImageSticker();
+                  setSelectedStickerType(null);
                 }}
               >
                 <Text
@@ -2573,7 +2496,7 @@ export default function FormImageEditor() {
           </View>
         </View>
       </Modal>
-  
+
       {/* 📝 Typed Text Modal */}
       <Modal
         visible={textModalVisible}
@@ -2633,13 +2556,13 @@ export default function FormImageEditor() {
           </View>
         </View>
       </Modal>
-  
+
       {/* 🔽 Thickness dropdown panel */}
       {thicknessPanelOpen && thicknessTool && writingEnabled && (
         <View
           style={[
             styles.thicknessPanel,
-            { top: topPadding + 100 },
+            { top: topPadding + 150 },
           ]}
         >
           <View style={styles.thicknessHeaderRow}>
@@ -2650,12 +2573,12 @@ export default function FormImageEditor() {
               <Ionicons name="chevron-up" size={18} color="#111827" />
             </TouchableOpacity>
           </View>
-  
+
           <View style={styles.thicknessContentRow}>
             <Text style={styles.thicknessBigValue}>
               {thicknessTool === 'pen' ? penWidth : eraserWidth}px
             </Text>
-  
+
             <Slider
               style={styles.thicknessSlider}
               minimumValue={thicknessTool === 'pen' ? 1 : 4}
@@ -2668,7 +2591,6 @@ export default function FormImageEditor() {
                   setPenWidth(val);
                 } else {
                   setEraserWidth(val);
-                  // Ensure eraser mode stays active when changing eraser thickness
                   canvasRefs.current.forEach((c) => {
                     if (!c) return;
                     if (typeof c.setEraser === 'function') {
@@ -2685,25 +2607,23 @@ export default function FormImageEditor() {
           </View>
         </View>
       )}
-  
-      {/* Voice overlay with close icon and text display */}
+
+      {/* Voice overlay */}
       {voiceVisible && (
         <View style={styles.voiceOverlay}>
           <View style={styles.voiceDialog}>
-            {/* Close button at top right */}
             <TouchableOpacity
               style={styles.voiceCloseButton}
               onPress={handleVoiceClose}
             >
               <Ionicons name="close" size={24} color="#9ca3af" />
             </TouchableOpacity>
-  
+
             <Text style={styles.voiceTitle}>Google</Text>
             <Text style={styles.voiceSubtitle}>
               {voiceListening ? voiceText || 'Listening...' : 'Processing...'}
             </Text>
-  
-            {/* Mic animation circle */}
+
             <View style={styles.voiceMicContainer}>
               {voiceListening && (
                 <View
@@ -2728,15 +2648,15 @@ export default function FormImageEditor() {
                 />
               </TouchableOpacity>
             </View>
-  
+
             {voiceError ? (
               <Text style={styles.voiceErrorText}>{voiceError}</Text>
             ) : null}
           </View>
         </View>
       )}
-  
-      {/* Saving / Saved overlay */}
+
+      {/* Saving / Saved overlay - FIXED: Now waits for OK button */}
       {saveStatus !== 'idle' && (
         <View style={styles.saveOverlay}>
           <View style={styles.saveDialog}>
@@ -2749,7 +2669,7 @@ export default function FormImageEditor() {
                 </Text>
               </>
             )}
-  
+
             {saveStatus === 'success' && (
               <>
                 <Ionicons
@@ -2764,13 +2684,13 @@ export default function FormImageEditor() {
                 </Text>
                 <TouchableOpacity
                   style={styles.saveOkButton}
-                  onPress={handleSaveOk}
+                  onPress={handleSaveOk} // This will navigate when clicked
                 >
                   <Text style={styles.saveOkButtonText}>OK</Text>
                 </TouchableOpacity>
               </>
             )}
-  
+
             {saveStatus === 'error' && (
               <>
                 <Ionicons
@@ -2785,7 +2705,7 @@ export default function FormImageEditor() {
                 </Text>
                 <TouchableOpacity
                   style={styles.saveOkButton}
-                  onPress={handleSaveErrorOk}
+                  onPress={handleSaveErrorOk} // This just closes the modal
                 >
                   <Text style={styles.saveOkButtonText}>OK</Text>
                 </TouchableOpacity>
@@ -2797,58 +2717,133 @@ export default function FormImageEditor() {
     </SafeAreaView>
   );
 }
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0EA5A4' },
 
-  // FIRST ROW (Back + SAVE)
-  topBar: {
+const styles = StyleSheet.create({
+  root: { 
+    flex: 1, 
+    backgroundColor: '#0EA5A4' 
+  },
+
+  combinedHeader: {
+    backgroundColor: '#0EA5A4',
+    paddingTop: 8,
+    paddingBottom: 6,
+  },
+
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+  },
+
+  backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    backgroundColor: '#0EA5A4',
+    paddingVertical: 6,
+  },
+
+  saveButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+
+  saveButtonText: {
+    color: '#0EA5A4',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  toolsRow: {
     height: 50,
   },
 
-  // SECOND ROW (tools - scrollable horizontally, starts from right)
-  toolsRow: {
-    backgroundColor: '#0EA5A4',
-    paddingBottom: 6,
-    paddingTop: 4,
-    height: 50,
-  },
-  toolsScrollView: {
-    flex: 1,
-  },
   toolsScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    justifyContent: 'flex-end', // Start from right
-    minWidth: SCREEN_W, // Ensure content is scrollable
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
 
-  iconBtn: { 
-    padding: 6, 
-    borderRadius: 18, 
-    marginLeft: 6 
+  toolButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginHorizontal: 2,
+    borderRadius: 16,
   },
+
+  toolButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+
+  toolGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+
+  toolChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 4,
+  },
+
+  toolChipActive: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+
+  toolChipText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '500',
+    marginHorizontal: 4,
+  },
+
+  toolChipTextActive: {
+    color: '#0EA5A4',
+  },
+
+  thicknessToggle: {
+    paddingLeft: 2,
+  },
+
+  colorCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 2,
+  },
+
   writeToggleActive: {
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  doneButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth:2,
-    borderColor:"white"
+
+  toolsDisabled: {
+    opacity: 0.35,
   },
-  doneButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  
-  // 🔥 ADDED: No images container style
+
   noImagesContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -2869,36 +2864,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
-  },
-
-  historyGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 4,
-  },
-
-  toolGroupRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 4,
-  },
-  toolChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    marginHorizontal: 2,
-  },
-  toolChipActive: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff',
-  },
-  toolChipIcon: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
   },
 
   pageWrap: {
@@ -2976,10 +2941,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  gridSwatchActive: { borderColor: '#0EA5A4', borderWidth: 2 },
-  gridSwatch: { width: '100%', height: '100%', borderRadius: 8 },
+  gridSwatchActive: { 
+    borderColor: '#0EA5A4', 
+    borderWidth: 2 
+  },
+  gridSwatch: { 
+    width: '100%', 
+    height: '100%', 
+    borderRadius: 8 
+  },
 
-  // Thickness dropdown (horizontal slider)
   thicknessPanel: {
     position: 'absolute',
     right: 12,
@@ -3090,7 +3061,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   voiceTextHitBox: {
-    // backgroundColor: 'rgba(255,255,255,0.8)',
     backgroundColor: 'transparent',
     borderRadius: 4,
     minHeight: 30,
@@ -3164,7 +3134,6 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
   },
 
-  // Sticker
   stickerWrapper: {
     position: 'absolute',
   },
@@ -3195,7 +3164,6 @@ const styles = StyleSheet.create({
     padding: 1,
   },
 
-  // Sticker modal
   stickerModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -3243,7 +3211,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Typed text modal input
   textModalInput: {
     minHeight: 80,
     borderWidth: 1,
@@ -3298,7 +3265,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     minHeight: 24,
   },
-  // Add to your StyleSheet
+
   whiteSwatchBorder: {
     position: 'absolute',
     width: '100%',
@@ -3308,6 +3275,7 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
     pointerEvents: 'none',
   },
+
   voiceMicContainer: {
     position: 'relative',
     marginTop: 24,
@@ -3392,11 +3360,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
-  },
-
-  // Visual state styles
-  toolsDisabled: {
-    opacity: 0.35,
   },
 
   writingOffBanner: {

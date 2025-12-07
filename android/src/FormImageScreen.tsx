@@ -8,9 +8,9 @@ import {
   Dimensions,
   TouchableOpacity,
   ActivityIndicator,
-  ScrollView,
   BackHandler,
   Platform,
+  FlatList,            // ⬅️ use FlatList instead of ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -21,9 +21,6 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // ---------- IMPORTANT ----------
-// Keep these require(...) lines exactly as they are if those files exist.
-// If you move this file, update the relative paths accordingly.
-// --------------------------------
 
 const IMAGES_BY_FORM: Record<string, any[]> = {
   emergency_nursing_assessment: [
@@ -53,13 +50,9 @@ const IMAGES_BY_FORM: Record<string, any[]> = {
   ],
 };
 
-// Name sticker image
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpeg');
 
-const DEFAULT_IMAGES: any[] = [
-  // Add fallback images here if desired, example:
-  // require('./Images/placeholder.jpg'),
-];
+const DEFAULT_IMAGES: any[] = [];
 
 const { width: W, height: H } = Dimensions.get('window');
 const PAGE_HEIGHT = Math.round(H * 0.72);
@@ -68,11 +61,9 @@ type PageMeta = { bitmapPath?: string | null };
 
 let AsyncStorage: any = null;
 try {
-  // optional: if AsyncStorage is available use it, otherwise code still runs
   AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch (e) {
   AsyncStorage = null;
-  // It's fine to log here; app will work without AsyncStorage
   console.warn('[FormImageScreen] AsyncStorage not installed');
 }
 
@@ -100,21 +91,17 @@ function FormImageScreenInternal() {
 
   const [reloadToken, setReloadToken] = useState(0);
   const [loading, setLoading] = useState(false);
-
-  // 🔥 FIX: Add a state to track if we're receiving fresh data
   const [isReceivingFreshData, setIsReceivingFreshData] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       console.log('[FormImageScreen] Focused, checking for fresh data...');
       
-      // Check if we have fresh data in route.params
       const freshParams = (route.params as any) || {};
       if (freshParams.savedStrokes && Array.isArray(freshParams.savedStrokes)) {
         console.log('[FormImageScreen] Fresh data detected on focus');
         setIsReceivingFreshData(true);
         
-        // Update state with fresh data
         const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
           const m = freshParams.savedStrokes[idx];
           return { bitmapPath: m?.bitmapPath ?? null };
@@ -131,7 +118,6 @@ function FormImageScreenInternal() {
         
         setReloadToken(t => t + 1);
         
-        // Clear the params after processing to avoid re-processing
         setTimeout(() => {
           navigation.setParams({
             savedStrokes: undefined,
@@ -142,7 +128,6 @@ function FormImageScreenInternal() {
       }
 
       const onBackPress = () => {
-        // ensure this route exists in your navigator
         navigation.navigate('FormType');
         return true;
       };
@@ -181,13 +166,11 @@ function FormImageScreenInternal() {
       console.log('[FormImageScreen] useEffect: Received imageStickers from params');
       setImageStickers(p.imageStickers);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.params]);
+  }, [route.params, imagesForThisForm]);
 
   useEffect(() => {
     let isMounted = true;
 
-    // 🔥 FIX: Only load from storage if we're not receiving fresh data
     if (isReceivingFreshData) {
       console.log('[FormImageScreen] Skipping storage load - receiving fresh data');
       return;
@@ -319,8 +302,8 @@ function FormImageScreenInternal() {
     const notesForPage = voiceNotes.filter((n) => n.pageIndex === idx);
     const stickersForPage = imageStickers.filter((s) => s.pageIndex === idx);
 
-    const cardWidth = W - 24;
-    const cardHeight = H * 0.58;
+    const cardWidth = W;           // full screen width
+    const cardHeight = PAGE_HEIGHT;
     const scaleX = cardWidth / W;
     const scaleY = cardHeight / PAGE_HEIGHT;
 
@@ -409,14 +392,36 @@ function FormImageScreenInternal() {
         </View>
 
         <View style={styles.cardFooter}>
-          <Text style={styles.cardTitle}>Page {idx + 1}</Text>
+          <Text style={styles.cardTitle}>
+            Page {idx + 1} of {imagesForThisForm.length}
+          </Text>
           
-          {/* Show indicator if there's content */}
           {(isSaved || notesForPage.length > 0 || stickersForPage.length > 0) && (
             <View style={styles.contentIndicator}>
-              {isSaved && <Ionicons name="pencil" size={14} color="#0EA5A4" style={styles.indicatorIcon} />}
-              {notesForPage.length > 0 && <Ionicons name="chatbubble-outline" size={14} color="#E4572E" style={styles.indicatorIcon} />}
-              {stickersForPage.length > 0 && <Ionicons name="image-outline" size={14} color="#16a34a" style={styles.indicatorIcon} />}
+              {isSaved && (
+                <Ionicons
+                  name="pencil"
+                  size={14}
+                  color="#0EA5A4"
+                  style={styles.indicatorIcon}
+                />
+              )}
+              {notesForPage.length > 0 && (
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={14}
+                  color="#E4572E"
+                  style={styles.indicatorIcon}
+                />
+              )}
+              {stickersForPage.length > 0 && (
+                <Ionicons
+                  name="image-outline"
+                  size={14}
+                  color="#16a34a"
+                  style={styles.indicatorIcon}
+                />
+              )}
             </View>
           )}
         </View>
@@ -426,7 +431,6 @@ function FormImageScreenInternal() {
 
   return (
     <View style={styles.container}>
-      {/* Status Bar Safe Area for Android */}
       {Platform.OS === 'android' && <View style={styles.statusBarSpacer} />}
       
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -445,33 +449,39 @@ function FormImageScreenInternal() {
           <View style={styles.headerPlaceholder} />
         </View>
 
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={true}
-          bounces={true}
-        >
-          {imagesForThisForm.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="document-outline" size={64} color="#ccc" />
-              <Text style={styles.emptyText}>
-                No images available for this form
-              </Text>
-              <Text style={styles.emptySubText}>
-                Form key: {String(formKey)}
-              </Text>
-            </View>
-          )}
+        {/* 🔥 Full-screen pager: one page per screen */}
+        {imagesForThisForm.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="document-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyText}>
+              No images available for this form
+            </Text>
+            <Text style={styles.emptySubText}>
+              Form key: {String(formKey)}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.pagerContainer}>
+            <FlatList
+              data={imagesForThisForm}
+              keyExtractor={(_, index) => `page-${index}`}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item, index }) => (
+                <View style={styles.pageWrapper}>
+                  <ThumbCard
+                    idx={index}
+                    source={item}
+                    reloadToken={reloadToken}
+                  />
+                </View>
+              )}
+            />
+          </View>
+        )}
 
-          {imagesForThisForm.map((srcItem, i) => (
-            <ThumbCard key={`card-${i}`} idx={i} source={srcItem} reloadToken={reloadToken} />
-          ))}
-          
-          {/* Add extra space at the bottom to ensure content doesn't hide behind the fixed button */}
-          <View style={styles.bottomSpacer} />
-        </ScrollView>
-
-        {/* Fixed bottom button with safe area handling */}
+        {/* Fixed bottom button */}
         <SafeAreaView style={styles.footerSafeArea} edges={['bottom', 'left', 'right']}>
           <View style={styles.footerContainer}>
             <TouchableOpacity 
@@ -538,18 +548,22 @@ const styles = StyleSheet.create({
   headerPlaceholder: {
     width: 32,
   },
-  scrollView: {
+
+  // 🔥 New pager container
+  pagerContainer: {
     flex: 1,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 120, // Extra padding to ensure content clears the fixed button
+  pageWrapper: {
+    width: W,         // One item = full screen width
+    flex: 1,
   },
+
   emptyContainer: {
+    flex: 1,
     padding: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 40,
+    marginTop: 20,
   },
   emptyText: {
     textAlign: 'center',
@@ -564,28 +578,22 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
   },
+
+  // Card is now a full "page"
   card: {
-    width: '100%',
+    flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: 0,
+    marginBottom: 0,
     overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderWidth: 0,
   },
   cardImageContainer: {
+    flex: 1,
     width: '100%',
-    height: H * 0.58,
     backgroundColor: '#f8fafc',
     alignItems: 'center',
     justifyContent: 'center',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
   },
   cardImage: {
     width: '100%',
@@ -598,7 +606,7 @@ const styles = StyleSheet.create({
   },
   cardFooter: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -608,7 +616,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: 15,
     color: '#374151',
   },
   contentIndicator: {
@@ -618,9 +626,7 @@ const styles = StyleSheet.create({
   indicatorIcon: {
     marginLeft: 8,
   },
-  bottomSpacer: {
-    height: 100, // Space at the bottom of scroll content
-  },
+
   footerSafeArea: {
     backgroundColor: '#fff',
   },

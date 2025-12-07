@@ -15,10 +15,10 @@ import Icon from 'react-native-vector-icons/Ionicons';
 
 // NOTE: each item has title and key. key maps to a folder in ./Images
 const FORM_TYPES = [
-  { title: 'Initial Nursing Assessment - ADULTS', key: 'initial_nursing_assessment' },
-  { title: 'Neonatal Initial Nursing Assessment Form', key: 'neonatal_initial_nursing' },
-  { title: 'Emergency Nursing Assessment', key: 'emergency_nursing_assessment' },
-  { title: 'Doctors Handover Format ISBAR', key: 'doctors_handover_isbar' },
+  { title: 'LIS Report', key: 'initial_nursing_assessment' },
+  { title: 'Medical Report', key: 'neonatal_initial_nursing' },
+  { title: 'Discharge Summary', key: 'emergency_nursing_assessment' },
+  { title: 'Other MRD Report', key: 'doctors_handover_isbar' },
 ];
 
 function makeStorageKey(patientName: string, formType: string) {
@@ -27,7 +27,7 @@ function makeStorageKey(patientName: string, formType: string) {
   return `DoctorApp:${safePatient}:${safeForm}:pagesBitmaps:v1`;
 }
 
-export default function FormTypeScreen() {
+export default function HMISFormType() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
@@ -44,37 +44,63 @@ export default function FormTypeScreen() {
   }, [searchQuery]);
 
   const handlePress = (form: { title: string; key: string }) => {
-    const storageKey = makeStorageKey(patientName, form.title);
+    // STOP navigation for Medical Report and Other MRD Report
+    if (
+      form.title === 'Medical Report' ||
+      form.title === 'Other MRD Report'
+    ) {
+      return;
+    }
 
-    navigation.navigate('FormImageScreen', {
-      patientName,
-      formName: form.title,
-      formKey: form.key,
-      storageKey,
-    });
+    // LIS Report -> go to NoOFReport
+    if (form.title === 'LIS Report') {
+      navigation.navigate('NoOFReport', {
+        patientName,
+        patientId,
+        formTitle: form.title,
+        formKey: form.key,
+        storageKey: makeStorageKey(patientName, form.title),
+      });
+      return;
+    }
+
+    // Discharge Summary -> open NST003.pdf directly
+    if (form.title === 'Discharge Summary') {
+      navigation.navigate('PdfViewer', {
+        title: 'Discharge Summary',
+        pdfSource: require('./PDF/NST003.pdf'),
+      });
+      return;
+    }
   };
 
-  const renderItem = ({ item }: { item: { title: string; key: string } }) => (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.9}
-      onPress={() => handlePress(item)}
-    >
-      <View style={styles.cardRow}>
-        <View style={styles.iconCircle}>
-          <Text style={styles.iconText}>{item.title.charAt(0)}</Text>
-        </View>
+  const renderItem = ({ item }: { item: { title: string; key: string } }) => {
+    const isDisabled =
+      item.title === 'Medical Report' || item.title === 'Other MRD Report';
 
-        <View style={styles.cardTextBlock}>
-          <Text style={styles.formName}>{item.title}</Text>
-        </View>
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={isDisabled ? 1 : 0.9}
+        onPress={() => !isDisabled && handlePress(item)}
+        disabled={isDisabled}
+      >
+        <View style={styles.cardRow}>
+          <View style={styles.iconCircle}>
+            <Text style={styles.iconText}>{item.title.charAt(0)}</Text>
+          </View>
 
-        <View style={styles.chevronWrap}>
-          <Text style={styles.chevron}>{'›'}</Text>
+          <View style={styles.cardTextBlock}>
+            <Text style={styles.formName}>{item.title}</Text>
+          </View>
+
+          <View style={styles.chevronWrap}>
+            <Text style={styles.chevron}>{'›'}</Text>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
@@ -87,28 +113,18 @@ export default function FormTypeScreen() {
         >
           <Icon name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
-
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={styles.headerTitle}>Form Types</Text>
-        </View>
-
-        {/* <View style={styles.hmisRow}> */}
-        <TouchableOpacity
-          style={styles.hmisButton}
-          onPress={() => navigation.navigate('HMISFormType')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.hmisButtonText}>HMIS Report</Text>
-        </TouchableOpacity>
-      {/* </View> */}
       </View>
-
 
       {/* MAIN CONTENT */}
       <View style={styles.contentWrapper}>
         <View style={styles.sectionHeader}>
           <View style={styles.searchWrapperContent}>
-            <Icon name="search" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
+            <Icon
+              name="search"
+              size={18}
+              color="#94A3B8"
+              style={{ marginRight: 8 }}
+            />
 
             <TextInput
               placeholder="Search forms..."
@@ -133,10 +149,16 @@ export default function FormTypeScreen() {
           keyExtractor={(item, idx) => `${idx}-${item.key}`}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, paddingTop: 10 }}
+          contentContainerStyle={{
+            paddingBottom: 24,
+            paddingHorizontal: 16,
+            paddingTop: 10,
+          }}
           ListEmptyComponent={() => (
             <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#94A3B8' }}>No forms match your search.</Text>
+              <Text style={{ color: '#94A3B8' }}>
+                No forms match your search.
+              </Text>
             </View>
           )}
         />
@@ -197,9 +219,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 8,
-    borderColor:"white",
-    borderWidth:2,
-    // height:"200%"
+    borderColor: 'white',
+    borderWidth: 2,
   },
 
   hmisButtonText: {
