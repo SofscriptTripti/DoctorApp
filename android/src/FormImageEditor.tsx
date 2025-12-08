@@ -89,7 +89,7 @@ const IMAGES_BY_FORM: Record<string, any[]> = {
 const DEFAULT_IMAGES: any[] = [];
 
 // 👉 Sticker images (local assets)
-const PATIENT_STICKER_SOURCE = require('./Images/NameStick.jpeg');
+const PATIENT_STICKER_SOURCE = require('./Images/NameStick.jpg');
 const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 
 type SavedMeta = { bitmapPath?: string | null };
@@ -158,6 +158,7 @@ function DraggableVoiceText({
   onChangeText,
   onChangeFontSize,
   pageScale = 1,
+  writingEnabled = true,
 }: {
   note: VoiceNote;
   isEditing: boolean;
@@ -168,6 +169,7 @@ function DraggableVoiceText({
   onChangeText: (id: string, text: string) => void;
   onChangeFontSize: (id: string, fontSize: number) => void;
   pageScale?: number;
+  writingEnabled?: boolean;
 }) {
   const DEFAULT_WIDTH = 180;
   const DEFAULT_HEIGHT = 60;
@@ -278,6 +280,7 @@ function DraggableVoiceText({
   }, [pageScale]);
 
   const handleTextAreaPress = () => {
+    if (!writingEnabled) return; // Don't allow editing when writing is disabled
     if (!isEditing) {
       onToggleEdit(note.id);
     }
@@ -285,10 +288,12 @@ function DraggableVoiceText({
 
   const dragPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // FIXED: Only allow dragging when writing is enabled
+      onStartShouldSetPanResponder: () => writingEnabled,
+      onMoveShouldSetPanResponder: () => writingEnabled,
 
       onPanResponderGrant: () => {
+        if (!writingEnabled) return;
         try {
           const v = (pan as any).__getValue?.();
           if (v && typeof v.x === 'number' && typeof v.y === 'number') {
@@ -305,6 +310,7 @@ function DraggableVoiceText({
         _evt: GestureResponderEvent,
         gestureState: PanResponderGestureState
       ) => {
+        if (!writingEnabled) return;
         const scale = pageScaleRef.current || 1;
         const nx = startPosRef.current.x + gestureState.dx / scale;
         const ny = startPosRef.current.y + gestureState.dy / scale;
@@ -313,6 +319,8 @@ function DraggableVoiceText({
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
+        if (!writingEnabled) return;
+        
         const dx = gestureState.dx;
         const dy = gestureState.dy;
         const moveDist = Math.sqrt(dx * dx + dy * dy);
@@ -337,6 +345,7 @@ function DraggableVoiceText({
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
+        if (!writingEnabled) return;
         const scale = pageScaleRef.current || 1;
         const nx = startPosRef.current.x + gestureState.dx / scale;
         const ny = startPosRef.current.y + gestureState.dy / scale;
@@ -352,10 +361,12 @@ function DraggableVoiceText({
     signY: -1 | 0 | 1;
   }) => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // FIXED: Only allow resizing when writing is enabled
+      onStartShouldSetPanResponder: () => writingEnabled,
+      onMoveShouldSetPanResponder: () => writingEnabled,
 
       onPanResponderGrant: () => {
+        if (!writingEnabled) return;
         isResizingRef.current = true;
         sizeStartRef.current = {
           width: currentWidthRef.current,
@@ -364,6 +375,8 @@ function DraggableVoiceText({
       },
 
       onPanResponderMove: (_evt: GestureResponderEvent, gs) => {
+        if (!writingEnabled) return;
+        
         let newWidth = sizeStartRef.current.width;
         let newHeight = sizeStartRef.current.height;
 
@@ -394,6 +407,7 @@ function DraggableVoiceText({
       },
 
       onPanResponderRelease: () => {
+        if (!writingEnabled) return;
         isResizingRef.current = false;
         onBoxSizeChange(
           note.id,
@@ -403,6 +417,7 @@ function DraggableVoiceText({
       },
 
       onPanResponderTerminate: () => {
+        if (!writingEnabled) return;
         isResizingRef.current = false;
         onBoxSizeChange(
           note.id,
@@ -455,11 +470,13 @@ function DraggableVoiceText({
   }, [widthAnim, heightAnim]);
 
   const increaseFontSize = () => {
+    if (!writingEnabled) return;
     const newSize = clamp(currentFontSize + 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
   };
 
   const decreaseFontSize = () => {
+    if (!writingEnabled) return;
     const newSize = clamp(currentFontSize - 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
   };
@@ -491,22 +508,26 @@ function DraggableVoiceText({
         },
       ]}
     >
-      {!isEditing && (
+      {/* FIXED: Only show delete button when writing is enabled */}
+      {!isEditing && writingEnabled && (
         <TouchableOpacity
           style={styles.voiceDeleteButton}
           onPress={() => onDelete(note.id)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          disabled={!writingEnabled}
         >
           <Ionicons name="close-circle" size={18} color={note.color} />
         </TouchableOpacity>
       )}
 
-      {isEditing && (
+      {/* FIXED: Only show font size controls when writing is enabled */}
+      {isEditing && writingEnabled && (
         <View style={styles.fontSizeControls}>
           <TouchableOpacity
             style={[styles.fontSizeButton, { borderColor: note.color }]}
             onPress={decreaseFontSize}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            disabled={!writingEnabled}
           >
             <Ionicons name="remove" size={14} color={note.color} />
           </TouchableOpacity>
@@ -517,6 +538,7 @@ function DraggableVoiceText({
             style={[styles.fontSizeButton, { borderColor: note.color }]}
             onPress={increaseFontSize}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            disabled={!writingEnabled}
           >
             <Ionicons name="add" size={14} color={note.color} />
           </TouchableOpacity>
@@ -533,7 +555,7 @@ function DraggableVoiceText({
             paddingHorizontal: PADDING_H,
             paddingVertical: PADDING_V,
           },
-          isEditing && {
+          isEditing && writingEnabled && {
             borderColor: note.color,
             borderWidth: 1,
           },
@@ -566,12 +588,14 @@ function DraggableVoiceText({
             scrollEnabled={true}
             autoFocus={false}
             onTouchStart={(e) => e.stopPropagation()}
+            editable={writingEnabled}
           />
         ) : (
           <TouchableOpacity
             onPress={handleTextAreaPress}
             style={styles.textTouchArea}
             activeOpacity={0.7}
+            disabled={!writingEnabled}
           >
             <Text
               style={[
@@ -579,6 +603,7 @@ function DraggableVoiceText({
                 { 
                   color: note.color,
                   fontSize: currentFontSize,
+                  // FIXED: No opacity change when writing is disabled
                 }
               ]}
             >
@@ -588,7 +613,8 @@ function DraggableVoiceText({
         )}
       </Animated.View>
 
-      {isEditing && (
+      {/* FIXED: Only show resize handles when writing is enabled and editing */}
+      {isEditing && writingEnabled && (
         <>
           <Animated.View
             style={[
@@ -708,6 +734,7 @@ function DraggableImageSticker({
   onSizeChange,
   onDelete,
   pageScale = 1,
+  writingEnabled = true,
 }: {
   sticker: ImageSticker;
   isEditing: boolean;
@@ -716,6 +743,7 @@ function DraggableImageSticker({
   onSizeChange: (id: string, width: number, height: number) => void;
   onDelete: (id: string) => void;
   pageScale?: number;
+  writingEnabled?: boolean;
 }) {
   const DEFAULT_WIDTH = 140;
   const DEFAULT_HEIGHT = 90;
@@ -769,10 +797,12 @@ function DraggableImageSticker({
 
   const dragPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // FIXED: Only allow dragging when writing is enabled
+      onStartShouldSetPanResponder: () => writingEnabled,
+      onMoveShouldSetPanResponder: () => writingEnabled,
 
       onPanResponderGrant: () => {
+        if (!writingEnabled) return;
         try {
           const v = (pan as any).__getValue?.();
           if (v && typeof v.x === 'number' && typeof v.y === 'number') {
@@ -789,6 +819,7 @@ function DraggableImageSticker({
         _evt: GestureResponderEvent,
         gestureState: PanResponderGestureState
       ) => {
+        if (!writingEnabled) return;
         const scale = pageScaleRef.current || 1;
         const nx = startPosRef.current.x + gestureState.dx / scale;
         const ny = startPosRef.current.y + gestureState.dy / scale;
@@ -798,6 +829,8 @@ function DraggableImageSticker({
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
+        if (!writingEnabled) return;
+        
         const dx = gestureState.dx;
         const dy = gestureState.dy;
         const moveDist = Math.sqrt(dx * dx + dy * dy);
@@ -814,7 +847,9 @@ function DraggableImageSticker({
 
         if (isTap && delta < 280) {
           onPositionChange(sticker.id, finalX, finalY);
-          onToggleEdit(sticker.id);
+          if (writingEnabled) {
+            onToggleEdit(sticker.id);
+          }
           return;
         }
 
@@ -822,6 +857,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderTerminate: (_evt, gestureState) => {
+        if (!writingEnabled) return;
         const scale = pageScaleRef.current || 1;
         const nx = startPosRef.current.x + gestureState.dx / scale;
         const ny = startPosRef.current.y + gestureState.dy / scale;
@@ -838,14 +874,17 @@ function DraggableImageSticker({
     signY: -1 | 0 | 1;
   }) => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // FIXED: Only allow resizing when writing is enabled
+      onStartShouldSetPanResponder: () => writingEnabled,
+      onMoveShouldSetPanResponder: () => writingEnabled,
 
       onPanResponderGrant: () => {
+        if (!writingEnabled) return;
         scaleStartRef.current = sticker.scale ?? 1;
       },
 
       onPanResponderMove: (_evt: GestureResponderEvent, gestureState) => {
+        if (!writingEnabled) return;
         const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_SCALE) newScale = MIN_SCALE;
@@ -855,6 +894,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
+        if (!writingEnabled) return;
         const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
         let newScale = scaleStartRef.current * factor;
         if (newScale < MIN_SCALE) newScale = MIN_SCALE;
@@ -867,6 +907,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderTerminate: () => {
+        if (!writingEnabled) return;
         const newWidth = DEFAULT_WIDTH * (sticker.scale ?? 1);
         const newHeight = DEFAULT_HEIGHT * (sticker.scale ?? 1);
         onSizeChange(sticker.id, newWidth, newHeight);
@@ -893,11 +934,13 @@ function DraggableImageSticker({
         },
       ]}
     >
-      {!isEditing && (
+      {/* FIXED: Only show delete button when writing is enabled */}
+      {!isEditing && writingEnabled && (
         <TouchableOpacity
           style={styles.stickerDeleteButton}
           onPress={() => onDelete(sticker.id)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          disabled={!writingEnabled}
         >
           <Ionicons name="close-circle" size={18} color="#0EA5A4" />
         </TouchableOpacity>
@@ -907,7 +950,8 @@ function DraggableImageSticker({
         {...dragPan.panHandlers}
         style={[
           styles.stickerHitBox,
-          isEditing && { borderWidth: 1, borderColor: '#0EA5A4' },
+          isEditing && writingEnabled && { borderWidth: 1, borderColor: '#0EA5A4' },
+          // FIXED: Removed opacity change when writing is disabled
         ]}
       >
         <Image
@@ -923,7 +967,8 @@ function DraggableImageSticker({
         />
       </View>
 
-      {isEditing && (
+      {/* FIXED: Only show resize handles when writing is enabled and editing */}
+      {isEditing && writingEnabled && (
         <>
           <View
             style={[
@@ -1031,6 +1076,8 @@ export default function FormImageEditor() {
     if (!writingEnabled) {
       setThicknessTool(null);
       setColorPanelOpen(false);
+      setEditingNoteId(null);
+      setEditingStickerId(null);
     }
   }, [writingEnabled]);
 
@@ -1225,22 +1272,32 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) => [...prev, newNote]);
   };
 
-  const addImageSticker = (stickerType: 'patient' | 'doctor') => {
-    const pageIndex = getCurrentPageIndex();
+const addImageSticker = (stickerType: 'patient' | 'doctor') => {
+  const pageIndex = getCurrentPageIndex();
 
-    const newSticker: ImageSticker = {
-      id: `${Date.now()}-${Math.random()}`,
-      pageIndex,
-      x: SCREEN_W * 0.2,
-      y: PAGE_HEIGHT * 0.2,
-      scale: 1,
-      width: 140,
-      height: 90,
-      stickerType, // Added sticker type
-    };
+  // Different default positions for patient vs doctor stickers
+  let x = SCREEN_W * 0.7; // Right side (70% from left)
+  let y;
+  
+  if (stickerType === 'patient') {
+    y = PAGE_HEIGHT * 0.05 + 20; // Top-right with more padding (5% from top)
+  } else {
+    y = PAGE_HEIGHT * 0.75 - 20; // Bottom-right with more padding (75% from top)
+  }
 
-    setImageStickers((prev) => [...prev, newSticker]);
+  const newSticker: ImageSticker = {
+    id: `${Date.now()}-${Math.random()}`,
+    pageIndex,
+    x,
+    y,
+    scale: 1,
+    width: 140,
+    height: 90,
+    stickerType,
   };
+
+  setImageStickers((prev) => [...prev, newSticker]);
+};
 
   const showEditingOffHint = () => {
     setEditingOffHintVisible(true);
@@ -1664,55 +1721,96 @@ export default function FormImageEditor() {
 
   const activePanPageRef = useRef<number | null>(null);
 
-  const pinchResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (evt) => {
-        if (editingNoteId || editingStickerId) return false;
+const pinchResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: (evt) => {
+      if (editingNoteId || editingStickerId) return false;
 
-        const touches = evt.nativeEvent.touches || [];
-        const count = touches.length;
-        const pageIndex = getCurrentPageIndex();
-        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+      const touches = evt.nativeEvent.touches || [];
+      const count = touches.length;
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-        if (count === 2) return true;
+      // Only allow pinch zoom when writing is enabled
+      if (count === 2 && writingEnabledRef.current) return true;
 
-        if (
-          !writingEnabledRef.current &&
-          count === 1 &&
-          currentScale > 1.01
-        ) {
-          return true;
+      // Don't allow panning when editing is off
+      if (!writingEnabledRef.current) return false;
+
+      if (count === 1 && currentScale > 1.01) {
+        return true;
+      }
+
+      return false;
+    },
+    onMoveShouldSetPanResponder: (evt) => {
+      if (editingNoteId || editingStickerId) return false;
+
+      const touches = evt.nativeEvent.touches || [];
+      const count = touches.length;
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      // Only allow pinch zoom when writing is enabled
+      if (count === 2 && writingEnabledRef.current) return true;
+
+      // Don't allow panning when editing is off
+      if (!writingEnabledRef.current) return false;
+
+      if (count === 1 && currentScale > 1.01) {
+        return true;
+      }
+
+      return false;
+    },
+
+    onPanResponderGrant: (evt) => {
+      if (saveStatus === 'saving') return;
+
+      const touches = evt.nativeEvent.touches || [];
+      const count = touches.length;
+      const pageIndex = getCurrentPageIndex();
+
+      if (count === 2 && writingEnabledRef.current) {
+        const [t1, t2] = touches;
+        const dx = t1.pageX - t2.pageX;
+        const dy = t1.pageY - t2.pageY;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        pinchStateRef.current = {
+          initialDistance: dist,
+          startScale: lastScalePerPageRef[pageIndex] ?? 1,
+          pageIndex,
+        };
+        activePanPageRef.current = null;
+      } else if (
+        writingEnabledRef.current &&
+        count === 1 &&
+        (lastScalePerPageRef[pageIndex] ?? 1) > 1.01
+      ) {
+        activePanPageRef.current = pageIndex;
+        try {
+          const currX = (pageTranslateXRef[pageIndex] as any).__getValue
+            ? (pageTranslateXRef[pageIndex] as any).__getValue()
+            : 0;
+          const currY = (pageTranslateYRef[pageIndex] as any).__getValue
+            ? (pageTranslateYRef[pageIndex] as any).__getValue()
+            : 0;
+          panStartPerPageRef[pageIndex] = { x: currX, y: currY };
+        } catch (e) {
+          panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
         }
+      }
+    },
 
-        return false;
-      },
-      onMoveShouldSetPanResponder: (evt) => {
-        const touches = evt.nativeEvent.touches || [];
-        const count = touches.length;
-        const pageIndex = getCurrentPageIndex();
-        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+    onPanResponderMove: (evt, gestureState) => {
+      if (saveStatus === 'saving') return;
 
-        if (count === 2) return true;
+      const touches = evt.nativeEvent.touches || [];
+      const count = touches.length;
 
-        if (
-          !writingEnabledRef.current &&
-          count === 1 &&
-          currentScale > 1.01
-        ) {
-          return true;
-        }
-
-        return false;
-      },
-
-      onPanResponderGrant: (evt) => {
-        if (saveStatus === 'saving') return;
-
-        const touches = evt.nativeEvent.touches || [];
-        const count = touches.length;
-        const pageIndex = getCurrentPageIndex();
-
-        if (count === 2) {
+      if (count === 2 && writingEnabledRef.current) {
+        if (!pinchStateRef.current) {
+          const pageIndex = getCurrentPageIndex();
           const [t1, t2] = touches;
           const dx = t1.pageX - t2.pageX;
           const dy = t1.pageY - t2.pageY;
@@ -1723,110 +1821,71 @@ export default function FormImageEditor() {
             pageIndex,
           };
           activePanPageRef.current = null;
-        } else if (
-          !writingEnabledRef.current &&
-          count === 1 &&
-          (lastScalePerPageRef[pageIndex] ?? 1) > 1.01
-        ) {
-          activePanPageRef.current = pageIndex;
-          try {
-            const currX = (pageTranslateXRef[pageIndex] as any).__getValue
-              ? (pageTranslateXRef[pageIndex] as any).__getValue()
-              : 0;
-            const currY = (pageTranslateYRef[pageIndex] as any).__getValue
-              ? (pageTranslateYRef[pageIndex] as any).__getValue()
-              : 0;
-            panStartPerPageRef[pageIndex] = { x: currX, y: currY };
-          } catch (e) {
-            panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
-          }
-        }
-      },
-
-      onPanResponderMove: (evt, gestureState) => {
-        if (saveStatus === 'saving') return;
-
-        const touches = evt.nativeEvent.touches || [];
-        const count = touches.length;
-
-        if (count === 2) {
-          if (!pinchStateRef.current) {
-            const pageIndex = getCurrentPageIndex();
-            const [t1, t2] = touches;
-            const dx = t1.pageX - t2.pageX;
-            const dy = t1.pageY - t2.pageY;
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            pinchStateRef.current = {
-              initialDistance: dist,
-              startScale: lastScalePerPageRef[pageIndex] ?? 1,
-              pageIndex,
-            };
-            activePanPageRef.current = null;
-          }
-
-          const { pageIndex, initialDistance, startScale } = pinchStateRef.current!;
-          const [t1, t2] = touches;
-          const dx = t1.pageX - t2.pageX;
-          const dy = t1.pageY - t2.pageY;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-          const factor = dist / Math.max(1, initialDistance);
-          let newScale = startScale * factor;
-          if (newScale < MIN_ZOOM) newScale = MIN_ZOOM;
-          if (newScale > MAX_ZOOM) newScale = MAX_ZOOM;
-
-          pageScaleAnimsRef[pageIndex].setValue(newScale);
-        } else if (
-          !writingEnabledRef.current &&
-          count === 1 &&
-          activePanPageRef.current !== null
-        ) {
-          const pageIndex = activePanPageRef.current;
-          if ((lastScalePerPageRef[pageIndex] ?? 1) <= 1.01) return;
-
-          const start = panStartPerPageRef[pageIndex];
-          const newX = start.x + gestureState.dx;
-          const newY = start.y + gestureState.dy;
-          pageTranslateXRef[pageIndex].setValue(newX);
-          pageTranslateYRef[pageIndex].setValue(newY);
-        }
-      },
-
-      onPanResponderRelease: () => {
-        if (pinchStateRef.current) {
-          const pageIndex = pinchStateRef.current.pageIndex;
-          let finalScale = lastScalePerPageRef[pageIndex] ?? 1;
-          try {
-            const v = (pageScaleAnimsRef[pageIndex] as any).__getValue
-              ? (pageScaleAnimsRef[pageIndex] as any).__getValue()
-              : 1;
-            if (typeof v === 'number') finalScale = v;
-          } catch (e) {
-            finalScale = 1;
-          }
-
-          lastScalePerPageRef[pageIndex] = finalScale;
-
-          if (finalScale <= 1.01) {
-            lastScalePerPageRef[pageIndex] = 1;
-            pageScaleAnimsRef[pageIndex].setValue(1);
-            pageTranslateXRef[pageIndex].setValue(0);
-            pageTranslateYRef[pageIndex].setValue(0);
-          }
-
-          pinchStateRef.current = null;
         }
 
-        activePanPageRef.current = null;
-      },
+        const { pageIndex, initialDistance, startScale } = pinchStateRef.current!;
+        const [t1, t2] = touches;
+        const dx = t1.pageX - t2.pageX;
+        const dy = t1.pageY - t2.pageY;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-      onPanResponderTerminationRequest: () => true,
-      onPanResponderTerminate: () => {
+        const factor = dist / Math.max(1, initialDistance);
+        let newScale = startScale * factor;
+        if (newScale < MIN_ZOOM) newScale = MIN_ZOOM;
+        if (newScale > MAX_ZOOM) newScale = MAX_ZOOM;
+
+        pageScaleAnimsRef[pageIndex].setValue(newScale);
+      } else if (
+        writingEnabledRef.current &&
+        count === 1 &&
+        activePanPageRef.current !== null
+      ) {
+        const pageIndex = activePanPageRef.current;
+        if ((lastScalePerPageRef[pageIndex] ?? 1) <= 1.01) return;
+
+        const start = panStartPerPageRef[pageIndex];
+        const newX = start.x + gestureState.dx;
+        const newY = start.y + gestureState.dy;
+        pageTranslateXRef[pageIndex].setValue(newX);
+        pageTranslateYRef[pageIndex].setValue(newY);
+      }
+    },
+
+    onPanResponderRelease: () => {
+      if (pinchStateRef.current) {
+        const pageIndex = pinchStateRef.current.pageIndex;
+        let finalScale = lastScalePerPageRef[pageIndex] ?? 1;
+        try {
+          const v = (pageScaleAnimsRef[pageIndex] as any).__getValue
+            ? (pageScaleAnimsRef[pageIndex] as any).__getValue()
+            : 1;
+          if (typeof v === 'number') finalScale = v;
+        } catch (e) {
+          finalScale = 1;
+        }
+
+        lastScalePerPageRef[pageIndex] = finalScale;
+
+        if (finalScale <= 1.01) {
+          lastScalePerPageRef[pageIndex] = 1;
+          pageScaleAnimsRef[pageIndex].setValue(1);
+          pageTranslateXRef[pageIndex].setValue(0);
+          pageTranslateYRef[pageIndex].setValue(0);
+        }
+
         pinchStateRef.current = null;
-        activePanPageRef.current = null;
-      },
-    })
-  ).current;
+      }
+
+      activePanPageRef.current = null;
+    },
+
+    onPanResponderTerminationRequest: () => true,
+    onPanResponderTerminate: () => {
+      pinchStateRef.current = null;
+      activePanPageRef.current = null;
+    },
+  })
+).current;
 
   const ZOOM_STEP = 0.25;
 
@@ -2055,13 +2114,16 @@ export default function FormImageEditor() {
             {/* ➕ Add Text icon (typed text) */}
             <TouchableOpacity
               onPress={handleAddTextIconPress}
-              style={styles.toolButton}
-              disabled={saveStatus === 'saving'}
+              style={[
+                styles.toolButton,
+                !writingEnabled && styles.toolsDisabled,
+              ]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
             >
               <MaterialCommunityIcons
                 name="format-text"
                 size={20}
-                color="#ffffff"
+                color={writingEnabled ? "#ffffff" : "rgba(255,255,255,0.6)"}
               />
               <Text style={styles.toolButtonText}>Text</Text>
             </TouchableOpacity>
@@ -2070,26 +2132,47 @@ export default function FormImageEditor() {
             <View style={styles.toolGroup}>
               <TouchableOpacity
                 onPress={performUndo}
-                style={styles.toolButton}
+                style={[
+                  styles.toolButton,
+                  !writingEnabled && styles.toolsDisabled,
+                ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <Ionicons name="arrow-undo" size={20} color="#fff" />
+                <Ionicons 
+                  name="arrow-undo" 
+                  size={20} 
+                  color={writingEnabled ? "#fff" : "rgba(255,255,255,0.6)"} 
+                />
                 <Text style={styles.toolButtonText}>Undo</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={performRedo}
-                style={styles.toolButton}
+                style={[
+                  styles.toolButton,
+                  !writingEnabled && styles.toolsDisabled,
+                ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <Ionicons name="arrow-redo" size={20} color="#fff" />
+                <Ionicons 
+                  name="arrow-redo" 
+                  size={20} 
+                  color={writingEnabled ? "#fff" : "rgba(255,255,255,0.6)"} 
+                />
                 <Text style={styles.toolButtonText}>Redo</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={performClear}
-                style={styles.toolButton}
+                style={[
+                  styles.toolButton,
+                  !writingEnabled && styles.toolsDisabled,
+                ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <MaterialCommunityIcons name="broom" size={20} color="#fff" />
+                <MaterialCommunityIcons 
+                  name="broom" 
+                  size={20} 
+                  color={writingEnabled ? "#fff" : "rgba(255,255,255,0.6)"} 
+                />
                 <Text style={styles.toolButtonText}>Clear</Text>
               </TouchableOpacity>
             </View>
@@ -2097,20 +2180,34 @@ export default function FormImageEditor() {
             {/* Patient Sticker */}
             <TouchableOpacity
               onPress={handlePatientStickerPress}
-              style={styles.toolButton}
-              disabled={saveStatus === 'saving'}
+              style={[
+                styles.toolButton,
+                !writingEnabled && styles.toolsDisabled,
+              ]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
             >
-              <Ionicons name="person" size={20} color="#ffffff" />
+              <Ionicons 
+                name="person" 
+                size={20} 
+                color={writingEnabled ? "#ffffff" : "rgba(255,255,255,0.6)"} 
+              />
               <Text style={styles.toolButtonText}>Patient Sticker</Text>
             </TouchableOpacity>
 
             {/* Doctor Sticker */}
             <TouchableOpacity
               onPress={handleDoctorStickerPress}
-              style={styles.toolButton}
-              disabled={saveStatus === 'saving'}
+              style={[
+                styles.toolButton,
+                !writingEnabled && styles.toolsDisabled,
+              ]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
             >
-              <FontAwesome6 name="user-doctor" size={20} color="#ffffff" />
+              <FontAwesome6 
+                name="user-doctor" 
+                size={20} 
+                color={writingEnabled ? "#ffffff" : "rgba(255,255,255,0.6)"} 
+              />
               <Text style={styles.toolButtonText}>Doctor Sticker</Text>
             </TouchableOpacity>
 
@@ -2122,17 +2219,19 @@ export default function FormImageEditor() {
                 style={[
                   styles.toolChip,
                   tool === 'pen' && styles.toolChipActive,
+                  !writingEnabled && styles.toolsDisabled,
                 ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
                 <MaterialCommunityIcons
                   name="pencil"
                   size={18}
-                  color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
+                  color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                 />
                 <Text style={[
                   styles.toolChipText,
-                  tool === 'pen' && styles.toolChipTextActive
+                  tool === 'pen' && styles.toolChipTextActive,
+                  !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
                 ]}>
                   Pen
                 </Text>
@@ -2150,7 +2249,7 @@ export default function FormImageEditor() {
                         : 'chevron-down'
                     }
                     size={16}
-                    color={tool === 'pen' ? '#0EA5A4' : '#ffffff'}
+                    color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                   />
                 </TouchableOpacity>
               </TouchableOpacity>
@@ -2161,17 +2260,19 @@ export default function FormImageEditor() {
                 style={[
                   styles.toolChip,
                   tool === 'eraser' && styles.toolChipActive,
+                  !writingEnabled && styles.toolsDisabled,
                 ]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
                 <MaterialCommunityIcons
                   name="eraser"
                   size={18}
-                  color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
+                  color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                 />
                 <Text style={[
                   styles.toolChipText,
-                  tool === 'eraser' && styles.toolChipTextActive
+                  tool === 'eraser' && styles.toolChipTextActive,
+                  !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
                 ]}>
                   Eraser
                 </Text>
@@ -2191,7 +2292,7 @@ export default function FormImageEditor() {
                         : 'chevron-down'
                     }
                     size={16}
-                    color={tool === 'eraser' ? '#0EA5A4' : '#ffffff'}
+                    color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                   />
                 </TouchableOpacity>
               </TouchableOpacity>
@@ -2311,6 +2412,7 @@ export default function FormImageEditor() {
                         resizeMode="stretch"
                       />
 
+                      {/* FIXED: Canvas container pointer events */}
                       <View
                         style={styles.canvasContainer}
                         pointerEvents={
@@ -2326,12 +2428,14 @@ export default function FormImageEditor() {
                         />
                       </View>
 
+                      {/* Voice notes with writingEnabled prop */}
                       {notesForPage.map((note) => (
                         <DraggableVoiceText
                           key={note.id}
                           note={note}
                           isEditing={editingNoteId === note.id}
                           onToggleEdit={(id) => {
+                            if (!writingEnabled) return;
                             setEditingNoteId((prev) =>
                               prev === id ? null : id
                             );
@@ -2343,15 +2447,18 @@ export default function FormImageEditor() {
                           onChangeText={handleVoiceNoteTextChange}
                           onChangeFontSize={handleVoiceNoteFontSizeChange}
                           pageScale={lastScalePerPageRef[pageIndex]}
+                          writingEnabled={writingEnabled}
                         />
                       ))}
 
+                      {/* Image stickers with writingEnabled prop */}
                       {stickersForPage.map((sticker) => (
                         <DraggableImageSticker
                           key={sticker.id}
                           sticker={sticker}
                           isEditing={editingStickerId === sticker.id}
                           onToggleEdit={(id) => {
+                            if (!writingEnabled) return;
                             setEditingStickerId((prev) =>
                               prev === id ? null : id
                             );
@@ -2361,6 +2468,7 @@ export default function FormImageEditor() {
                           onSizeChange={handleStickerSizeChange}
                           onDelete={handleStickerDelete}
                           pageScale={lastScalePerPageRef[pageIndex]}
+                          writingEnabled={writingEnabled}
                         />
                       ))}
                     </Animated.View>
@@ -2415,10 +2523,11 @@ export default function FormImageEditor() {
         style={[
           styles.voiceFab,
           { bottom: (insets.bottom ?? 0) + 24 },
+          !writingEnabled && styles.toolsDisabled,
         ]}
         activeOpacity={0.8}
         onPress={handleVoiceFabPress}
-        disabled={saveStatus === 'saving'}
+        disabled={saveStatus === 'saving' || !writingEnabled}
       >
         <Ionicons name="mic" size={24} color="#fff" />
       </TouchableOpacity>
@@ -3256,6 +3365,7 @@ const styles = StyleSheet.create({
     color: '#f9fafb',
     marginTop: 8,
   },
+
   voiceSubtitle: {
     marginTop: 8,
     fontSize: 16,

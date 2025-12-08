@@ -1,4 +1,5 @@
-// src/FormImageScreen.tsx
+// -------------------- FIXED VERSION --------------------
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -10,17 +11,11 @@ import {
   ActivityIndicator,
   BackHandler,
   Platform,
-  FlatList, // ⬅️ use FlatList instead of ScrollView
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  useRoute,
-  useNavigation,
-  useFocusEffect,
-} from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-
-// ---------- IMPORTANT ----------
 
 const IMAGES_BY_FORM: Record<string, any[]> = {
   emergency_nursing_assessment: [
@@ -46,17 +41,15 @@ const IMAGES_BY_FORM: Record<string, any[]> = {
     require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0004.jpg'),
   ],
 
-  doctors_handover_isbar: [
-    require('./Images/DoctorHandOverFromat.jpg'),
-  ],
+  doctors_handover_isbar: [require('./Images/DoctorHandOverFromat.jpg')],
 };
 
-const NAME_STICKER_IMAGE = require('./Images/NameStick.jpeg');
+const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75); // 🔥 SAME AS EDITOR
 
 const DEFAULT_IMAGES: any[] = [];
-
-const { width: W, height: H } = Dimensions.get('window');
-const PAGE_HEIGHT = Math.round(H * 0.72);
 
 type PageMeta = { bitmapPath?: string | null };
 
@@ -65,65 +58,49 @@ try {
   AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch (e) {
   AsyncStorage = null;
-  console.warn('[FormImageScreen] AsyncStorage not installed');
 }
 
-function FormImageScreenInternal() {
+function FormImageScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const params = (route.params as any) || {};
+  const params = route.params || {};
 
-  const formName: string | undefined = params.formName;
-  const formKey: string | undefined = params.formKey;
+  const formName = params.formName;
+  const formKey = params.formKey;
 
-  // 🔹 read patient info from params (passed from FormTypeScreen)
-  const patientName: string = params.patientName ?? 'Unknown Patient';
-  const patientId: string | undefined = params.patientId;
-  const patientIP: number | undefined = params.patientIP;
+  const patientName = params.patientName ?? 'Unknown Patient';
+  const patientId = params.patientId;
+  const patientIP = params.patientIP;
 
   const perFormStorageKey =
-    (params.storageKey as string | undefined) ?? `DoctorApp:pagesBitmaps:v1`;
+    params.storageKey ?? `DoctorApp:pagesBitmaps:v1`;
 
   const imagesForThisForm = IMAGES_BY_FORM[formKey ?? ''] ?? DEFAULT_IMAGES;
 
-  const [pageMeta, setPageMeta] = useState<PageMeta[]>(
-    () => imagesForThisForm.map(() => ({ bitmapPath: null }))
+  const [pageMeta, setPageMeta] = useState<PageMeta[]>(() =>
+    imagesForThisForm.map(() => ({ bitmapPath: null }))
   );
 
-  const [voiceNotes, setVoiceNotes] = useState<any[]>(
-    () => (Array.isArray(params.voiceNotes) ? params.voiceNotes : [])
+  const [voiceNotes, setVoiceNotes] = useState<any[]>(() =>
+    Array.isArray(params.voiceNotes) ? params.voiceNotes : []
   );
-  const [imageStickers, setImageStickers] = useState<any[]>(
-    () => (Array.isArray(params.imageStickers) ? params.imageStickers : [])
+
+  const [imageStickers, setImageStickers] = useState<any[]>(() =>
+    Array.isArray(params.imageStickers) ? params.imageStickers : []
   );
 
   const [reloadToken, setReloadToken] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [isReceivingFreshData, setIsReceivingFreshData] = useState(false);
 
+  // ---------- HANDLE SCREEN FOCUS ----------
   useFocusEffect(
     useCallback(() => {
-      console.log('[FormImageScreen] Focused, checking for fresh data...');
+      const p = route.params || {};
 
-      const freshParams = (route.params as any) || {};
-      if (freshParams.savedStrokes && Array.isArray(freshParams.savedStrokes)) {
-        console.log('[FormImageScreen] Fresh data detected on focus');
-        setIsReceivingFreshData(true);
-
-        const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
-          const m = freshParams.savedStrokes[idx];
-          return { bitmapPath: m?.bitmapPath ?? null };
-        });
-        setPageMeta(metaArr);
-
-        if (Array.isArray(freshParams.voiceNotes)) {
-          setVoiceNotes(freshParams.voiceNotes);
-        }
-
-        if (Array.isArray(freshParams.imageStickers)) {
-          setImageStickers(freshParams.imageStickers);
-        }
-
+      if (Array.isArray(p.savedStrokes)) {
+        setPageMeta(p.savedStrokes);
+        setVoiceNotes(p.voiceNotes || []);
+        setImageStickers(p.imageStickers || []);
         setReloadToken((t) => t + 1);
 
         setTimeout(() => {
@@ -136,319 +113,154 @@ function FormImageScreenInternal() {
       }
 
       const onBackPress = () => {
-        // 🔹 goBack instead of navigate('FormType')
         navigation.goBack();
         return true;
       };
 
-      const subscription = BackHandler.addEventListener(
-        'hardwareBackPress',
-        onBackPress
-      );
-
-      return () => {
-        subscription.remove();
-        setIsReceivingFreshData(false);
-      };
-    }, [navigation, route.params, imagesForThisForm])
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [route.params])
   );
 
+  // ---------- LOAD FROM STORAGE ----------
   useEffect(() => {
-    const p = (route.params as any) || {};
+    let mounted = true;
 
-    if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
-      console.log('[FormImageScreen] useEffect: Received savedStrokes from params');
-      const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
-        const m = p.savedStrokes[idx];
-        return { bitmapPath: m?.bitmapPath ?? null };
-      });
-      setPageMeta(metaArr);
-      setReloadToken((t) => t + 1);
-    }
+    if (!AsyncStorage) return;
 
-    if (Array.isArray(p.voiceNotes)) {
-      console.log('[FormImageScreen] useEffect: Received voiceNotes from params');
-      setVoiceNotes(p.voiceNotes);
-    }
+    const load = async () => {
+      setLoading(true);
 
-    if (Array.isArray(p.imageStickers)) {
-      console.log('[FormImageScreen] useEffect: Received imageStickers from params');
-      setImageStickers(p.imageStickers);
-    }
-  }, [route.params, imagesForThisForm]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (isReceivingFreshData) {
-      console.log('[FormImageScreen] Skipping storage load - receiving fresh data');
-      return;
-    }
-
-    const p = (route.params as any) || {};
-    if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
-      console.log(
-        '[FormImageScreen] Already have savedStrokes in params, skipping storage load'
-      );
-      return;
-    }
-
-    if (!AsyncStorage) {
-      console.log('[FormImageScreen] AsyncStorage not available');
-      return;
-    }
-
-    const loadFromStorage = async () => {
       try {
-        setLoading(true);
-        console.log('[FormImageScreen] Loading from storage key:', perFormStorageKey);
-        const json = await AsyncStorage.getItem(perFormStorageKey);
-        if (!isMounted) return;
+        const raw = await AsyncStorage.getItem(perFormStorageKey);
+        if (!mounted) return;
 
-        if (json) {
-          try {
-            const parsed = JSON.parse(json);
-            console.log('[FormImageScreen] Parsed storage data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
 
-            if (Array.isArray(parsed)) {
-              const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
-                const m = parsed[idx];
-                return { bitmapPath: m?.bitmapPath ?? null };
-              });
-              setPageMeta(metaArr);
-              setReloadToken((t) => t + 1);
-            } else if (parsed && typeof parsed === 'object') {
-              if (Array.isArray(parsed.bitmaps)) {
-                const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
-                  const m = parsed.bitmaps[idx];
-                  return { bitmapPath: m?.bitmapPath ?? null };
-                });
-                setPageMeta(metaArr);
-                setReloadToken((t) => t + 1);
-              }
-
-              if (Array.isArray(parsed.voiceNotes)) {
-                console.log(
-                  '[FormImageScreen] Setting voice notes from storage:',
-                  parsed.voiceNotes.length
-                );
-                setVoiceNotes(parsed.voiceNotes);
-              }
-
-              if (Array.isArray(parsed.imageStickers)) {
-                console.log(
-                  '[FormImageScreen] Setting image stickers from storage:',
-                  parsed.imageStickers.length
-                );
-                setImageStickers(parsed.imageStickers);
-              }
-            }
-          } catch (e) {
-            console.warn('[FormImageScreen] failed to parse stored data', e);
+          if (Array.isArray(parsed.bitmaps)) {
+            setPageMeta(parsed.bitmaps);
           }
-        } else {
-          console.log('[FormImageScreen] No data in storage');
+          if (Array.isArray(parsed.voiceNotes)) {
+            setVoiceNotes(parsed.voiceNotes);
+          }
+          if (Array.isArray(parsed.imageStickers)) {
+            setImageStickers(parsed.imageStickers);
+          }
+
+          setReloadToken((t) => t + 1);
         }
       } catch (e) {
-        console.warn('[FormImageScreen] error reading AsyncStorage', e);
+        console.warn("storage load error", e);
       } finally {
-        if (isMounted) setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    loadFromStorage();
+    load();
 
     return () => {
-      isMounted = false;
+      mounted = false;
     };
-  }, [perFormStorageKey, imagesForThisForm, isReceivingFreshData, route.params]);
+  }, [perFormStorageKey]);
 
-  const openEditorForPage = (pageIndex: number) => {
-    const localModule = imagesForThisForm[pageIndex] ?? null;
-
-    navigation.navigate('FormImageEditor', {
-      imageUri: null,
-      localImageModule: localModule,
-      formName: formName ?? `form-${pageIndex + 1}`,
-      singleImageMode: true,
-      storageKey: perFormStorageKey,
-      uiStorageKey: undefined,
-      pageIndex,
-      returnScreen: 'FormImageScreen',
-      savedStrokes: pageMeta,
-      voiceNotes,
-      imageStickers,
-      formKey: formKey,
-      // optional: pass patient info further if needed
-      patientName,
-      patientId,
-      patientIP,
-    });
-  };
-
+  // ---------- OPEN FULL EDITOR ----------
   const openFullEditor = () => {
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
       storageKey: perFormStorageKey,
-      uiStorageKey: undefined,
-      formName,
-      returnScreen: 'FormImageScreen',
       savedStrokes: pageMeta,
       voiceNotes,
       imageStickers,
-      formKey: formKey,
-      // optional: pass patient info further if needed
+      formKey,
+      formName,
       patientName,
       patientId,
       patientIP,
     });
   };
 
-  const ThumbCard = ({
-    idx,
-    source,
-    reloadToken,
-  }: {
-    idx: number;
-    source: any;
-    reloadToken: number;
-  }) => {
+  // ---------- THUMBNAIL PAGE ----------
+  const PageCard = ({ idx, source }: { idx: number; source: any }) => {
     const meta = pageMeta[idx];
     const savedPath = meta?.bitmapPath || null;
-    const isSaved = !!savedPath && savedPath.length > 0;
 
-    let overlaySource: any = null;
-    if (isSaved && savedPath) {
-      const baseUri = savedPath.startsWith('file://') ? savedPath : `file://${savedPath}`;
-      const stampedUri = `${baseUri}?t=${reloadToken}`;
-      overlaySource = { uri: stampedUri };
+    // Use real size: SAME AS EDITOR
+    const width = SCREEN_W;
+    const height = PAGE_HEIGHT;
+
+    let overlaySrc = null;
+    if (savedPath) {
+      const base = savedPath.startsWith('file://')
+        ? savedPath
+        : `file://${savedPath}`;
+      overlaySrc = { uri: `${base}?t=${reloadToken}` };
     }
 
-    const notesForPage = voiceNotes.filter((n) => n.pageIndex === idx);
-    const stickersForPage = imageStickers.filter((s) => s.pageIndex === idx);
-
-    const cardWidth = W;
-    const cardHeight = PAGE_HEIGHT;
-    const scaleX = cardWidth / W;
-    const scaleY = cardHeight / PAGE_HEIGHT;
-
     return (
-      <TouchableOpacity
-        activeOpacity={0.95}
-        onPress={() => openEditorForPage(idx)}
-        style={styles.card}
-      >
-        <View style={styles.cardImageContainer}>
-          <Image source={source} style={styles.cardImage} resizeMode="contain" />
-          {overlaySource && (
+      <TouchableOpacity activeOpacity={0.95} style={styles.pageCard}>
+        <View style={[styles.imageBox, { width, height }]}>
+          <Image source={source} style={{ width, height }} resizeMode="stretch" />
+
+          {overlaySrc && (
             <Image
-              key={`overlay-${idx}-${reloadToken}`}
-              source={overlaySource}
-              style={styles.cardOverlayImage}
-              resizeMode="contain"
+              source={overlaySrc}
+              style={{ width, height, position: 'absolute', left: 0, top: 0 }}
+              resizeMode="stretch"
             />
           )}
-          <View style={StyleSheet.absoluteFill}>
-            {/* Voice Notes */}
-            {notesForPage.map((note) => (
+
+          {/* ---------- VOICE NOTES (NO SCALING NEEDED) ---------- */}
+          {voiceNotes
+            .filter((n) => n.pageIndex === idx)
+            .map((n) => (
               <View
-                key={note.id}
+                key={n.id}
                 style={{
                   position: 'absolute',
-                  left: note.x * scaleX,
-                  top: note.y * scaleY,
+                  left: n.x,
+                  top: n.y,
                 }}
               >
                 <Text
                   style={{
-                    fontSize: Math.max(10, (note.fontSize || 14) * Math.min(scaleX, scaleY)),
+                    fontSize: n.fontSize || 14,
+                    color: n.color || '#000',
                     fontWeight: '500',
-                    color: note.color || '#000',
-                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                    backgroundColor: 'rgba(255,255,255,0.7)',
                     paddingHorizontal: 4,
                     paddingVertical: 2,
                     borderRadius: 2,
-                    includeFontPadding: false,
                   }}
-                  numberOfLines={2}
                 >
-                  {note.text}
+                  {n.text}
                 </Text>
               </View>
             ))}
 
-            {/* Image Stickers */}
-            {stickersForPage.map((sticker) => {
-              const stickerWidth = sticker.width || 140;
-              const stickerHeight = sticker.height || 90;
-              const scaledWidth = stickerWidth * scaleX;
-              const scaledHeight = stickerHeight * scaleY;
-
-              return (
-                <View
-                  key={sticker.id}
-                  style={{
-                    position: 'absolute',
-                    left: sticker.x * scaleX,
-                    top: sticker.y * scaleY,
-                    width: scaledWidth,
-                    height: scaledHeight,
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    borderWidth: 1,
-                    borderColor: '#0EA5A4',
-                    backgroundColor: 'rgba(14, 165, 164, 0.3)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Image
-                    source={NAME_STICKER_IMAGE}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                    }}
-                    resizeMode="contain"
-                  />
-                </View>
-              );
-            })}
-          </View>
+          {/* ---------- IMAGE STICKERS (NO SCALING) ---------- */}
+          {imageStickers
+            .filter((s) => s.pageIndex === idx)
+            .map((s) => (
+              <Image
+                key={s.id}
+                source={NAME_STICKER_IMAGE}
+                style={{
+                  position: 'absolute',
+                  left: s.x,
+                  top: s.y,
+                  width: s.width || 140,
+                  height: s.height || 90,
+                  resizeMode: 'contain',
+                }}
+              />
+            ))}
         </View>
 
-        <View style={styles.cardFooter}>
-          <Text style={styles.cardTitle}>
+        <View style={styles.footer}>
+          <Text style={styles.footerTxt}>
             Page {idx + 1} of {imagesForThisForm.length}
           </Text>
-
-          {(isSaved || notesForPage.length > 0 || stickersForPage.length > 0) && (
-            <View style={styles.contentIndicator}>
-              {isSaved && (
-                <Ionicons
-                  name="pencil"
-                  size={14}
-                  color="#0EA5A4"
-                  style={styles.indicatorIcon}
-                />
-              )}
-              {notesForPage.length > 0 && (
-                <Ionicons
-                  name="chatbubble-outline"
-                  size={14}
-                  color="#E4572E"
-                  style={styles.indicatorIcon}
-                />
-              )}
-              {stickersForPage.length > 0 && (
-                <Ionicons
-                  name="image-outline"
-                  size={14}
-                  color="#16a34a"
-                  style={styles.indicatorIcon}
-                />
-              )}
-            </View>
-          )}
         </View>
       </TouchableOpacity>
     );
@@ -456,260 +268,102 @@ function FormImageScreenInternal() {
 
   return (
     <View style={styles.container}>
-      {Platform.OS === 'android' && <View style={styles.statusBarSpacer} />}
-
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView edges={['top']} style={{ backgroundColor: '#0EA5A4' }}>
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()} // 🔹 goBack here
-            style={styles.backBtn}
-          >
-            <Ionicons name="arrow-back" size={24} color="#fff" />
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
 
-          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-            {formName || 'Form Images'}
-          </Text>
+          <Text style={styles.title}>{formName || 'Form Images'}</Text>
 
-          <View style={styles.headerPlaceholder} />
+          <View style={{ width: 30 }} />
         </View>
-
-        {imagesForThisForm.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="document-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>
-              No images available for this form
-            </Text>
-            <Text style={styles.emptySubText}>Form key: {String(formKey)}</Text>
-          </View>
-        ) : (
-          <View style={styles.pagerContainer}>
-            <FlatList
-              data={imagesForThisForm}
-              keyExtractor={(_, index) => `page-${index}`}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              renderItem={({ item, index }) => (
-                <View style={styles.pageWrapper}>
-                  <ThumbCard idx={index} source={item} reloadToken={reloadToken} />
-                </View>
-              )}
-            />
-          </View>
-        )}
-
-        <SafeAreaView style={styles.footerSafeArea} edges={['bottom', 'left', 'right']}>
-          <View style={styles.footerContainer}>
-            <TouchableOpacity
-              style={styles.openEditorBtn}
-              onPress={openFullEditor}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name="create-outline"
-                size={22}
-                color="#fff"
-                style={styles.buttonIcon}
-              />
-              <Text style={styles.openEditorBtnText}>Open Full Editor</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-
-        {loading && (
-          <View style={styles.loadingOverlay}>
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#0EA5A4" />
-              <Text style={styles.loadingText}>Loading form data...</Text>
-            </View>
-          </View>
-        )}
       </SafeAreaView>
+
+      <FlatList
+        data={imagesForThisForm}
+        keyExtractor={(_, i) => `p-${i}`}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        renderItem={({ item, index }) => (
+          <View style={{ width: SCREEN_W }}>
+            <PageCard idx={index} source={item} />
+          </View>
+        )}
+      />
+
+      <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
+        <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
+          <Ionicons name="create-outline" size={22} color="#fff" />
+          <Text style={styles.btnTxt}>Open Full Editor</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+
+      {loading && (
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color="#0EA5A4" />
+        </View>
+      )}
     </View>
   );
 }
 
+export default FormImageScreen;
+
+// ---------- STYLES ----------
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  statusBarSpacer: {
-    height: Platform.OS === 'android' ? 24 : 0,
-    backgroundColor: '#0EA5A4',
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+
   header: {
+    height: 52,
+    backgroundColor: '#0EA5A4',
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#0EA5A4',
     justifyContent: 'space-between',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
-  backBtn: {
-    padding: 4,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    flex: 1,
-    marginHorizontal: 12,
-  },
-  headerPlaceholder: {
-    width: 32,
-  },
-  pagerContainer: {
-    flex: 1,
-  },
-  pageWrapper: {
-    width: W,
-    flex: 1,
-  },
-  emptyContainer: {
-    flex: 1,
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 18,
-    fontWeight: '500',
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  emptySubText: {
-    textAlign: 'center',
-    color: '#999',
-    fontSize: 14,
-  },
-  card: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 0,
-    marginBottom: 0,
-    overflow: 'hidden',
-    borderWidth: 0,
-  },
-  cardImageContainer: {
-    flex: 1,
-    width: '100%',
+
+  title: { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  pageCard: { flex: 1, backgroundColor: '#fff' },
+
+  imageBox: {
     backgroundColor: '#f8fafc',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  cardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cardOverlayImage: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-  },
-  cardFooter: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f9fafb',
+
+  footer: {
+    padding: 12,
+    backgroundColor: '#f1f5f9',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
   },
-  cardTitle: {
-    fontWeight: '600',
-    fontSize: 15,
-    color: '#374151',
-  },
-  contentIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  indicatorIcon: {
-    marginLeft: 8,
-  },
-  footerSafeArea: {
-    backgroundColor: '#fff',
-  },
-  footerContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 4 : 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 8,
-  },
-  openEditorBtn: {
+
+  footerTxt: { fontSize: 14, fontWeight: '600', color: '#374151' },
+
+  bottomSafe: { padding: 16, backgroundColor: '#fff' },
+
+  btn: {
     backgroundColor: '#0EA5A4',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: 15,
+    borderRadius: 10,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    alignItems: 'center',
   },
-  buttonIcon: {
-    marginRight: 10,
-  },
-  openEditorBtnText: {
+
+  btnTxt: {
     color: '#fff',
+    marginLeft: 10,
+    fontSize: 16,
     fontWeight: '700',
-    fontSize: 17,
-    letterSpacing: 0.25,
   },
-  loadingOverlay: {
+
+  loading: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    left: 0, right: 0, top: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    padding: 30,
-    borderRadius: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#4b5563',
-    fontWeight: '500',
   },
 });
-
-export default FormImageScreenInternal;
-export { FormImageScreenInternal as FormImageScreen };

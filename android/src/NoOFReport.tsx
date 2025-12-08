@@ -44,7 +44,7 @@ const MOCK_REPORTS: ReportItem[] = [
     sampleNo: '18003995',
     cbp: 'STOOL EXAMINATION',
     date: '26 Mar 2018, 12:42 PM',
-    status: 'Pending',
+    status: 'In Progress',
     pdfFileName: 'File_2.pdf',
   },
   {
@@ -349,7 +349,7 @@ export default function NoOFReport({ navigation }: any) {
             <Icon name="search-outline" size={18} color="#64748B" />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search by sample no, Name"
+              placeholder="Search by Sample No, Name"
               placeholderTextColor="#94A3B8"
               value={search}
               onChangeText={setSearch}

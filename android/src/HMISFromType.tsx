@@ -15,8 +15,9 @@ import Icon from 'react-native-vector-icons/Ionicons';
 // NOTE: each item has title and key. key can be used later if needed
 const FORM_TYPES = [
   { title: 'LIS Report', key: 'initial_nursing_assessment' },
+    { title: 'Discharge Summary', key: 'emergency_nursing_assessment' },
   { title: 'Medical Report', key: 'neonatal_initial_nursing' },
-  { title: 'Discharge Summary', key: 'emergency_nursing_assessment' },
+
   { title: 'Other MRD Report', key: 'doctors_handover_isbar' },
 ];
 
@@ -159,7 +160,7 @@ export default function HMISFormType() {
             />
 
             <TextInput
-              placeholder="Search reports..."
+              placeholder="Search Reports"
               placeholderTextColor="#64748B"
               value={searchQuery}
               onChangeText={setSearchQuery}

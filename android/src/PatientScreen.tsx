@@ -130,7 +130,7 @@ const PATIENTS: Patient[] = [
     name: 'Kiara Oberoi',
     age: 29,
     gender: 'Female',
-    IP: 20054810,
+    IP: 2005490,
     room: 'Ward 2B - Bed 01',
     diagnosis: 'Pre-op assessment',
     doctorName: 'Dr. Sandeep Rao',
@@ -201,21 +201,18 @@ export default function PatientScreen() {
             <View style={styles.badge}>
               <View style={styles.badgeDot} />
               <Text style={styles.badgeText}>
-                {item.room.startsWith('OPD')
-                  ? 'OPD'
-                  : item.room.startsWith('ICU')
-                  ? 'Critical'
-                  : 'Inpatient'}
+                InPatient
               </Text>
             </View>
           </View>
 
           {/* Gender + Age on first line, IP on next line */}
           <View style={styles.metaRow}>
+            
+            <Text style={styles.metaText}>IP No: {item.IP}</Text>
             <Text style={styles.metaText}>
               {item.gender} • {item.age} yrs
             </Text>
-            <Text style={styles.metaText}>IP No: {item.IP}</Text>
           </View>
         </View>
       </View>
@@ -283,7 +280,7 @@ export default function PatientScreen() {
             />
             <TextInput
              multiline={false}
-              placeholder="Search by name, ward, doctor or IP No"
+              placeholder="Search by Name, Ward, Doctor or IP No"
               placeholderTextColor="#64748B"
               value={searchText}
               onChangeText={setSearchText}
@@ -306,7 +303,7 @@ export default function PatientScreen() {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={() => (
             <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#94A3B8' }}>
+              <Text style={{ color: 'white' }}>
                 No patients match your search.
               </Text>
             </View>

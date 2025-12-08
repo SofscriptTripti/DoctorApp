@@ -140,7 +140,7 @@ export default function FormTypeScreen() {
 
             <TextInput
               multiline={false}
-              placeholder="Search forms..."
+              placeholder="Search Forms"
               placeholderTextColor="#64748B"
               value={searchQuery}
               onChangeText={setSearchQuery}
