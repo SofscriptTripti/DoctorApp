@@ -26,10 +26,10 @@ type ReportItem = {
   cbp: string;
   date: string; // "12 Dec 2025"
   status: 'Completed' | 'Pending' | 'In Progress' | 'Rejected';
-  pdf: any;    // local pdf asset
+  pdfFileName: string;    // name of the pdf in android/app/src/main/assets/pdf
 };
 
-// 👇 link each id to your local PDF
+// 👇 link each id to your PDF file name (inside android/app/src/main/assets/pdf)
 const MOCK_REPORTS: ReportItem[] = [
   {
     id: '1',
@@ -37,7 +37,7 @@ const MOCK_REPORTS: ReportItem[] = [
     cbp: 'LIPID PROFILE',
     date: '3 Sep 2019, 4:33 PM',
     status: 'Completed',
-    pdf: require('./PDF/File_1.pdf'),
+    pdfFileName: 'File_1.pdf',
   },
   {
     id: '2',
@@ -45,7 +45,7 @@ const MOCK_REPORTS: ReportItem[] = [
     cbp: 'STOOL EXAMINATION',
     date: '26 Mar 2018, 12:42 PM',
     status: 'Pending',
-    pdf: require('./PDF/File_2.pdf'),
+    pdfFileName: 'File_2.pdf',
   },
   {
     id: '3',
@@ -53,7 +53,7 @@ const MOCK_REPORTS: ReportItem[] = [
     cbp: 'CBC',
     date: '26 Mar 2018, 12:42 PM',
     status: 'In Progress',
-    pdf: require('./PDF/File_3.pdf'),
+    pdfFileName: 'File_3.pdf',
   },
   {
     id: '4',
@@ -61,7 +61,7 @@ const MOCK_REPORTS: ReportItem[] = [
     cbp: 'URINE ANALYSIS',
     date: '26 Mar 2018, 12:42 PM',
     status: 'Completed',
-    pdf: require('./PDF/File_4.pdf'),
+    pdfFileName: 'File_4.pdf',
   },
 ];
 
@@ -188,11 +188,11 @@ export default function NoOFReport({ navigation }: any) {
   };
 
   const handleOpenReport = (item: ReportItem) => {
-    // Navigate to PDF viewer and pass the pdf source
-    console.log("hshshshshhs>>>>>", item)
+    // Navigate to PDF viewer and pass the pdf file name (for bundle-assets)
+    console.log('Opening report >>>', item);
     navigation.navigate('PdfViewer', {
       title: item.cbp,
-      pdfSource: item.pdf,
+      pdfFileName: item.pdfFileName,
     });
   };
 

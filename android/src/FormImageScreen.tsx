@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Platform,
-  FlatList,            // ⬅️ use FlatList instead of ScrollView
+  FlatList, // ⬅️ use FlatList instead of ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -45,6 +45,7 @@ const IMAGES_BY_FORM: Record<string, any[]> = {
     require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0003.jpg'),
     require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0004.jpg'),
   ],
+
   doctors_handover_isbar: [
     require('./Images/DoctorHandOverFromat.jpg'),
   ],
@@ -71,13 +72,20 @@ function FormImageScreenInternal() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const params = (route.params as any) || {};
+
   const formName: string | undefined = params.formName;
   const formKey: string | undefined = params.formKey;
+
+  // 🔹 read patient info from params (passed from FormTypeScreen)
+  const patientName: string = params.patientName ?? 'Unknown Patient';
+  const patientId: string | undefined = params.patientId;
+  const patientIP: number | undefined = params.patientIP;
 
   const perFormStorageKey =
     (params.storageKey as string | undefined) ?? `DoctorApp:pagesBitmaps:v1`;
 
   const imagesForThisForm = IMAGES_BY_FORM[formKey ?? ''] ?? DEFAULT_IMAGES;
+
   const [pageMeta, setPageMeta] = useState<PageMeta[]>(
     () => imagesForThisForm.map(() => ({ bitmapPath: null }))
   );
@@ -96,39 +104,40 @@ function FormImageScreenInternal() {
   useFocusEffect(
     useCallback(() => {
       console.log('[FormImageScreen] Focused, checking for fresh data...');
-      
+
       const freshParams = (route.params as any) || {};
       if (freshParams.savedStrokes && Array.isArray(freshParams.savedStrokes)) {
         console.log('[FormImageScreen] Fresh data detected on focus');
         setIsReceivingFreshData(true);
-        
+
         const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
           const m = freshParams.savedStrokes[idx];
           return { bitmapPath: m?.bitmapPath ?? null };
         });
         setPageMeta(metaArr);
-        
+
         if (Array.isArray(freshParams.voiceNotes)) {
           setVoiceNotes(freshParams.voiceNotes);
         }
-        
+
         if (Array.isArray(freshParams.imageStickers)) {
           setImageStickers(freshParams.imageStickers);
         }
-        
-        setReloadToken(t => t + 1);
-        
+
+        setReloadToken((t) => t + 1);
+
         setTimeout(() => {
           navigation.setParams({
             savedStrokes: undefined,
             voiceNotes: undefined,
-            imageStickers: undefined
+            imageStickers: undefined,
           });
         }, 100);
       }
 
       const onBackPress = () => {
-        navigation.navigate('FormType');
+        // 🔹 goBack instead of navigate('FormType')
+        navigation.goBack();
         return true;
       };
 
@@ -161,7 +170,7 @@ function FormImageScreenInternal() {
       console.log('[FormImageScreen] useEffect: Received voiceNotes from params');
       setVoiceNotes(p.voiceNotes);
     }
-    
+
     if (Array.isArray(p.imageStickers)) {
       console.log('[FormImageScreen] useEffect: Received imageStickers from params');
       setImageStickers(p.imageStickers);
@@ -178,7 +187,9 @@ function FormImageScreenInternal() {
 
     const p = (route.params as any) || {};
     if (p.savedStrokes && Array.isArray(p.savedStrokes)) {
-      console.log('[FormImageScreen] Already have savedStrokes in params, skipping storage load');
+      console.log(
+        '[FormImageScreen] Already have savedStrokes in params, skipping storage load'
+      );
       return;
     }
 
@@ -193,12 +204,12 @@ function FormImageScreenInternal() {
         console.log('[FormImageScreen] Loading from storage key:', perFormStorageKey);
         const json = await AsyncStorage.getItem(perFormStorageKey);
         if (!isMounted) return;
-        
+
         if (json) {
           try {
             const parsed = JSON.parse(json);
             console.log('[FormImageScreen] Parsed storage data');
-            
+
             if (Array.isArray(parsed)) {
               const metaArr: PageMeta[] = imagesForThisForm.map((_, idx) => {
                 const m = parsed[idx];
@@ -217,12 +228,18 @@ function FormImageScreenInternal() {
               }
 
               if (Array.isArray(parsed.voiceNotes)) {
-                console.log('[FormImageScreen] Setting voice notes from storage:', parsed.voiceNotes.length);
+                console.log(
+                  '[FormImageScreen] Setting voice notes from storage:',
+                  parsed.voiceNotes.length
+                );
                 setVoiceNotes(parsed.voiceNotes);
               }
 
               if (Array.isArray(parsed.imageStickers)) {
-                console.log('[FormImageScreen] Setting image stickers from storage:', parsed.imageStickers.length);
+                console.log(
+                  '[FormImageScreen] Setting image stickers from storage:',
+                  parsed.imageStickers.length
+                );
                 setImageStickers(parsed.imageStickers);
               }
             }
@@ -248,7 +265,7 @@ function FormImageScreenInternal() {
 
   const openEditorForPage = (pageIndex: number) => {
     const localModule = imagesForThisForm[pageIndex] ?? null;
-    
+
     navigation.navigate('FormImageEditor', {
       imageUri: null,
       localImageModule: localModule,
@@ -262,6 +279,10 @@ function FormImageScreenInternal() {
       voiceNotes,
       imageStickers,
       formKey: formKey,
+      // optional: pass patient info further if needed
+      patientName,
+      patientId,
+      patientIP,
     });
   };
 
@@ -276,6 +297,10 @@ function FormImageScreenInternal() {
       voiceNotes,
       imageStickers,
       formKey: formKey,
+      // optional: pass patient info further if needed
+      patientName,
+      patientId,
+      patientIP,
     });
   };
 
@@ -302,7 +327,7 @@ function FormImageScreenInternal() {
     const notesForPage = voiceNotes.filter((n) => n.pageIndex === idx);
     const stickersForPage = imageStickers.filter((s) => s.pageIndex === idx);
 
-    const cardWidth = W;           // full screen width
+    const cardWidth = W;
     const cardHeight = PAGE_HEIGHT;
     const scaleX = cardWidth / W;
     const scaleY = cardHeight / PAGE_HEIGHT;
@@ -358,7 +383,7 @@ function FormImageScreenInternal() {
               const stickerHeight = sticker.height || 90;
               const scaledWidth = stickerWidth * scaleX;
               const scaledHeight = stickerHeight * scaleY;
-              
+
               return (
                 <View
                   key={sticker.id}
@@ -395,7 +420,7 @@ function FormImageScreenInternal() {
           <Text style={styles.cardTitle}>
             Page {idx + 1} of {imagesForThisForm.length}
           </Text>
-          
+
           {(isSaved || notesForPage.length > 0 || stickersForPage.length > 0) && (
             <View style={styles.contentIndicator}>
               {isSaved && (
@@ -432,11 +457,11 @@ function FormImageScreenInternal() {
   return (
     <View style={styles.container}>
       {Platform.OS === 'android' && <View style={styles.statusBarSpacer} />}
-      
+
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FormType')}
+            onPress={() => navigation.goBack()} // 🔹 goBack here
             style={styles.backBtn}
           >
             <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -449,16 +474,13 @@ function FormImageScreenInternal() {
           <View style={styles.headerPlaceholder} />
         </View>
 
-        {/* 🔥 Full-screen pager: one page per screen */}
         {imagesForThisForm.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="document-outline" size={64} color="#ccc" />
             <Text style={styles.emptyText}>
               No images available for this form
             </Text>
-            <Text style={styles.emptySubText}>
-              Form key: {String(formKey)}
-            </Text>
+            <Text style={styles.emptySubText}>Form key: {String(formKey)}</Text>
           </View>
         ) : (
           <View style={styles.pagerContainer}>
@@ -470,26 +492,26 @@ function FormImageScreenInternal() {
               showsHorizontalScrollIndicator={false}
               renderItem={({ item, index }) => (
                 <View style={styles.pageWrapper}>
-                  <ThumbCard
-                    idx={index}
-                    source={item}
-                    reloadToken={reloadToken}
-                  />
+                  <ThumbCard idx={index} source={item} reloadToken={reloadToken} />
                 </View>
               )}
             />
           </View>
         )}
 
-        {/* Fixed bottom button */}
         <SafeAreaView style={styles.footerSafeArea} edges={['bottom', 'left', 'right']}>
           <View style={styles.footerContainer}>
-            <TouchableOpacity 
-              style={styles.openEditorBtn} 
+            <TouchableOpacity
+              style={styles.openEditorBtn}
               onPress={openFullEditor}
               activeOpacity={0.8}
             >
-              <Ionicons name="create-outline" size={22} color="#fff" style={styles.buttonIcon} />
+              <Ionicons
+                name="create-outline"
+                size={22}
+                color="#fff"
+                style={styles.buttonIcon}
+              />
               <Text style={styles.openEditorBtnText}>Open Full Editor</Text>
             </TouchableOpacity>
           </View>
@@ -548,16 +570,13 @@ const styles = StyleSheet.create({
   headerPlaceholder: {
     width: 32,
   },
-
-  // 🔥 New pager container
   pagerContainer: {
     flex: 1,
   },
   pageWrapper: {
-    width: W,         // One item = full screen width
+    width: W,
     flex: 1,
   },
-
   emptyContainer: {
     flex: 1,
     padding: 40,
@@ -578,8 +597,6 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
   },
-
-  // Card is now a full "page"
   card: {
     flex: 1,
     backgroundColor: '#fff',
@@ -626,7 +643,6 @@ const styles = StyleSheet.create({
   indicatorIcon: {
     marginLeft: 8,
   },
-
   footerSafeArea: {
     backgroundColor: '#fff',
   },

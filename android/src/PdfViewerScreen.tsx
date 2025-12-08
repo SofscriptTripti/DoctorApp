@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -16,7 +17,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type PdfRouteParams = {
   title?: string;
-  pdfSource: any; // require('./PDF/File_1.pdf') etc.
+  pdfFileName: string;   // 👈 comes from NoOFReport
 };
 
 type Props = {
@@ -26,10 +27,15 @@ type Props = {
 
 export default function PdfViewerScreen({ route, navigation }: Props) {
   const params = (route?.params || {}) as PdfRouteParams;
-  const { title = 'Report', pdfSource } = params;
+  const { title = 'Report', pdfFileName } = params;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // For Android assets in android/app/src/main/assets/pdf
+  const pdfSource = pdfFileName
+    ? { uri: `bundle-assets://pdf/${pdfFileName}` }
+    : undefined;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -58,8 +64,8 @@ export default function PdfViewerScreen({ route, navigation }: Props) {
         {pdfSource && (
           <>
             <Pdf
-              source={pdfSource}        // <- require('./PDF/File_1.pdf')
-              trustAllCerts={false}     // 🔥 IMPORTANT FIX FOR YOUR ERROR (Android)
+              source={pdfSource}
+              trustAllCerts={false}
               style={styles.pdf}
               onLoadComplete={(pages, filePath) => {
                 setLoading(false);
@@ -71,8 +77,11 @@ export default function PdfViewerScreen({ route, navigation }: Props) {
               }}
               onError={(err) => {
                 console.log('PDF ERROR', err);
+                const msg = String(err);
                 setLoading(false);
-                setError(String(err));
+                setError(msg);
+                // Show actual error even in release
+                Alert.alert('PDF Error', msg);
               }}
             />
 

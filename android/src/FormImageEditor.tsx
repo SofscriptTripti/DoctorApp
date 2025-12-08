@@ -1524,7 +1524,6 @@ export default function FormImageEditor() {
     '#C39CFF',
     '#BDBDBD',
     '#000000',
-    '#FFFFFF',
   ];
 
   const RIGHT_HANDLE_WIDTH = 36;

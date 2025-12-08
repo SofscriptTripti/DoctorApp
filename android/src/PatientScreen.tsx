@@ -11,13 +11,14 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/Ionicons';  // ← BACK ICON / search icon
+import Icon from 'react-native-vector-icons/Ionicons';
 
 type Patient = {
   id: string;
   name: string;
   age: number;
   gender: 'Male' | 'Female' | 'Other';
+  IP: number;
   room: string;
   diagnosis: string;
   doctorName: string;
@@ -30,6 +31,7 @@ const PATIENTS: Patient[] = [
     name: 'Aarav Malhotra',
     age: 28,
     gender: 'Male',
+    IP: 2005481,
     room: 'Ward 3B - Bed 12',
     diagnosis: 'Post-op observation',
     doctorName: 'Dr. Sandeep Rao',
@@ -40,6 +42,7 @@ const PATIENTS: Patient[] = [
     name: 'Ishita Kulkarni',
     age: 34,
     gender: 'Female',
+    IP: 2005482,
     room: 'Ward 2A - Bed 05',
     diagnosis: 'Diabetes follow-up',
     doctorName: 'Dr. Meera Joshi',
@@ -50,6 +53,7 @@ const PATIENTS: Patient[] = [
     name: 'Kabir Narang',
     age: 19,
     gender: 'Male',
+    IP: 2005483,
     room: 'OPD - 07',
     diagnosis: 'Sports injury (knee)',
     doctorName: 'Dr. Aman Verma',
@@ -60,6 +64,7 @@ const PATIENTS: Patient[] = [
     name: "Myra D’Souza",
     age: 25,
     gender: 'Female',
+    IP: 2005484,
     room: 'Ward 1C - Bed 02',
     diagnosis: 'Anemia workup',
     doctorName: 'Dr. Lata Fernandes',
@@ -70,6 +75,7 @@ const PATIENTS: Patient[] = [
     name: 'Vihaan Suri',
     age: 42,
     gender: 'Male',
+    IP: 2005485,
     room: 'ICU - Bed 04',
     diagnosis: 'Chest pain evaluation',
     doctorName: 'Dr. Rohit Bedi',
@@ -80,6 +86,7 @@ const PATIENTS: Patient[] = [
     name: 'Anaya Bansal',
     age: 31,
     gender: 'Female',
+    IP: 2005486,
     room: 'Ward 4A - Bed 09',
     diagnosis: 'High-risk pregnancy',
     doctorName: 'Dr. Nisha Kapoor',
@@ -90,6 +97,7 @@ const PATIENTS: Patient[] = [
     name: 'Reyansh Chawla',
     age: 37,
     gender: 'Male',
+    IP: 2005487,
     room: 'OPD - 03',
     diagnosis: 'Migraine follow-up',
     doctorName: 'Dr. Arjun Mal',
@@ -100,6 +108,7 @@ const PATIENTS: Patient[] = [
     name: 'Siya Khurana',
     age: 22,
     gender: 'Female',
+    IP: 2005488,
     room: 'Day Care - 02',
     diagnosis: 'IV iron therapy',
     doctorName: 'Dr. Meera Joshi',
@@ -110,6 +119,7 @@ const PATIENTS: Patient[] = [
     name: 'Advait Reddy',
     age: 55,
     gender: 'Male',
+    IP: 2005489,
     room: 'Ward 5D - Bed 11',
     diagnosis: 'Hypertension management',
     doctorName: 'Dr. Kavita Rao',
@@ -120,6 +130,7 @@ const PATIENTS: Patient[] = [
     name: 'Kiara Oberoi',
     age: 29,
     gender: 'Female',
+    IP: 20054810,
     room: 'Ward 2B - Bed 01',
     diagnosis: 'Pre-op assessment',
     doctorName: 'Dr. Sandeep Rao',
@@ -150,7 +161,8 @@ export default function PatientScreen() {
         p.name.toLowerCase().includes(q) ||
         p.room.toLowerCase().includes(q) ||
         p.doctorName.toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q)
+        p.id.toLowerCase().includes(q) ||
+        String(p.IP).toLowerCase().includes(q) // 🔍 also filter by IP
       );
     });
   }, [searchText]);
@@ -173,6 +185,7 @@ export default function PatientScreen() {
         navigation.navigate('FormType', {
           patientName: item.name,
           patientId: item.id,
+          patientIP: item.IP,
         })
       }
     >
@@ -185,7 +198,6 @@ export default function PatientScreen() {
         <View style={styles.nameBlock}>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{item.name}</Text>
-            {/* <Text style={styles.idText}>{item.id}</Text> */}
             <View style={styles.badge}>
               <View style={styles.badgeDot} />
               <Text style={styles.badgeText}>
@@ -198,11 +210,12 @@ export default function PatientScreen() {
             </View>
           </View>
 
+          {/* Gender + Age on first line, IP on next line */}
           <View style={styles.metaRow}>
             <Text style={styles.metaText}>
               {item.gender} • {item.age} yrs
             </Text>
-
+            <Text style={styles.metaText}>IP No: {item.IP}</Text>
           </View>
         </View>
       </View>
@@ -239,34 +252,37 @@ export default function PatientScreen() {
     <SafeAreaView
       style={[styles.container, { paddingTop: insets.top }]}
     >
-      {/* Header with Back Icon + Title + Circular Logo   */}
+      {/* Header with Logo + Title */}
       <View style={styles.header}>
-        {/* Back Button */}
         <Image
-            source={require('./Images/Sofscript.png')}
+          source={require('./Images/Sofscript.png')}
           style={styles.logo}
         />
 
-        {/* Center Title */}
-        <View style={{ flex: 1 ,justifyContent: 'center', alignItems: 'center', right:40}}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            right: 40,
+          }}
+        >
           <Text style={styles.headerTitle}>Patients List</Text>
         </View>
-
-        {/* Circular Logo */}
-        {/* <Image
-            source={require('./Images/Sofscript.png')}
-          style={styles.logo}
-        /> */}
       </View>
 
       {/* Content */}
       <View style={styles.contentWrapper}>
-        {/* SEARCH moved here (replaces the previous section header placement)
-            Search is now shown at the top of the content area above the list */}
         <View style={styles.sectionHeader}>
-          <View style={styles.searchWrapperContent}> 
-            <Icon name="search" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
+          <View style={styles.searchWrapperContent}>
+            <Icon
+              name="search"
+              size={18}
+              color="#94A3B8"
+              style={{ marginRight: 8 }}
+            />
             <TextInput
+             multiline={false}
               placeholder="Search by name, ward, doctor or IP No"
               placeholderTextColor="#64748B"
               value={searchText}
@@ -280,7 +296,6 @@ export default function PatientScreen() {
               </TouchableOpacity>
             )}
           </View>
-
         </View>
 
         <FlatList
@@ -291,7 +306,9 @@ export default function PatientScreen() {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={() => (
             <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#94A3B8' }}>No patients match your search.</Text>
+              <Text style={{ color: '#94A3B8' }}>
+                No patients match your search.
+              </Text>
             </View>
           )}
         />
@@ -331,46 +348,47 @@ const styles = StyleSheet.create({
     width: 60,
     height: 45,
     marginLeft: 10,
-    borderRadius: 10, // Explicitly set to 0 for rectangle
+    borderRadius: 10,
     backgroundColor: '#fff',
   },
 
   headerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
   headerSub: { color: '#E0FFFC', fontSize: 12, marginTop: 2 },
 
-  /* Container for the main content area (was missing) */
   contentWrapper: {
     flex: 1,
-    // backgroundColor: '#F1F5F9',
   },
 
-  /* NEW: search inside content area */
   sectionHeader: {
     paddingHorizontal: 16,
     paddingTop: 14,
-    // paddingBottom: 8,
     backgroundColor: '#F1F5F9',
   },
 
   searchWrapperContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
-    marginBottom: 10,
-  },
-  searchInputContent: {
-    flex: 1,
-    height: 36,
-    color: '#0F172A',
-    fontSize: 14,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#FFFFFF',
+  paddingHorizontal: 10,
+  // paddingVertical: 8,          ❌ remove this
+  borderRadius: 10,
+  shadowColor: '#000',
+  shadowOpacity: 0.03,
+  shadowRadius: 4,
+  elevation: 1,
+  marginBottom: 10,
+  minHeight: 40,                // ✅ optional: keep a nice height
+},
+
+searchInputContent: {
+  flex: 1,
+  height: 36,
+  paddingVertical: 0,           // ✅ important for Android
+  color: '#0F172A',
+  fontSize: 14,
+  textAlignVertical: 'center',  // ✅ Android-only (ignored on iOS)
+},
+
 
   sectionTitle: {
     fontSize: 16,
@@ -389,7 +407,6 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
 
-  // Card styles unchanged...
   card: {
     width: '100%',
     borderRadius: 14,
@@ -437,10 +454,7 @@ const styles = StyleSheet.create({
   idText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
 
   metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginTop: 4,
-    alignItems: 'center',
   },
 
   metaText: { fontSize: 13, color: '#475569' },
