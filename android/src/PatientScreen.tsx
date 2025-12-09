@@ -177,6 +177,14 @@ export default function PatientScreen() {
     }
   };
 
+  const handleLogout = () => {
+    // Reset navigation stack and go to Login screen
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'CareScribeLogin' }],
+    });
+  };
+
   const renderItem = ({ item }: { item: Patient }) => (
     <TouchableOpacity
       style={styles.card}
@@ -200,15 +208,12 @@ export default function PatientScreen() {
             <Text style={styles.name}>{item.name}</Text>
             <View style={styles.badge}>
               <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>
-                InPatient
-              </Text>
+              <Text style={styles.badgeText}>InPatient</Text>
             </View>
           </View>
 
-          {/* Gender + Age on first line, IP on next line */}
+          {/* Gender + Age, IP */}
           <View style={styles.metaRow}>
-            
             <Text style={styles.metaText}>IP No: {item.IP}</Text>
             <Text style={styles.metaText}>
               {item.gender} • {item.age} yrs
@@ -246,31 +251,31 @@ export default function PatientScreen() {
   );
 
   return (
-    <SafeAreaView
-      style={[styles.container, { paddingTop: insets.top }]}
-    >
-      {/* Header with Logo + Title */}
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header with Logo + Title + Logout */}
       <View style={styles.header}>
         <Image
           source={require('./Images/Sofscript.png')}
           style={styles.logo}
         />
 
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            right: 40,
-          }}
-        >
+        <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Patients List</Text>
         </View>
+
+        <TouchableOpacity
+          style={styles.logoutButton}
+          activeOpacity={0.7}
+          onPress={handleLogout}
+        >
+          <Icon name="log-out-outline" size={20} color="#0EA5A4" />
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
       <View style={styles.contentWrapper}>
-        <View style={styles.sectionHeader}>
+        <View className="sectionHeader" style={styles.sectionHeader}>
           <View style={styles.searchWrapperContent}>
             <Icon
               name="search"
@@ -279,7 +284,7 @@ export default function PatientScreen() {
               style={{ marginRight: 8 }}
             />
             <TextInput
-             multiline={false}
+              multiline={false}
               placeholder="Search by Name, Ward, Doctor or IP No"
               placeholderTextColor="#64748B"
               value={searchText}
@@ -331,26 +336,21 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    marginRight: 12,
-  },
-
   logo: {
     width: 60,
     height: 45,
-    marginLeft: 10,
+    marginRight: 12,
     borderRadius: 10,
     backgroundColor: '#fff',
   },
 
+  headerCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   headerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  headerSub: { color: '#E0FFFC', fontSize: 12, marginTop: 2 },
 
   contentWrapper: {
     flex: 1,
@@ -363,39 +363,26 @@ const styles = StyleSheet.create({
   },
 
   searchWrapperContent: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  backgroundColor: '#FFFFFF',
-  paddingHorizontal: 10,
-  // paddingVertical: 8,          ❌ remove this
-  borderRadius: 10,
-  shadowColor: '#000',
-  shadowOpacity: 0.03,
-  shadowRadius: 4,
-  elevation: 1,
-  marginBottom: 10,
-  minHeight: 40,                // ✅ optional: keep a nice height
-},
-
-searchInputContent: {
-  flex: 1,
-  height: 36,
-  paddingVertical: 0,           // ✅ important for Android
-  color: '#0F172A',
-  fontSize: 14,
-  textAlignVertical: 'center',  // ✅ Android-only (ignored on iOS)
-},
-
-
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F172A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+    marginBottom: 10,
+    minHeight: 40,
   },
-  sectionSub: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
+
+  searchInputContent: {
+    flex: 1,
+    height: 36,
+    paddingVertical: 0,
+    color: '#0F172A',
+    fontSize: 14,
+    textAlignVertical: 'center',
   },
 
   listContent: {
@@ -448,8 +435,6 @@ searchInputContent: {
     paddingRight: 8,
   },
 
-  idText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-
   metaRow: {
     marginTop: 4,
   },
@@ -489,4 +474,19 @@ searchInputContent: {
   diagnosisText: { fontSize: 13, color: '#1E293B' },
 
   smallText: { fontSize: 13, color: '#0F172A', fontWeight: '600' },
+
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  logoutText: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0EA5A4',
+  },
 });
