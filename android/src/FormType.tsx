@@ -14,6 +14,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 
 // NOTE: each item has title and key. key maps to a folder in ./Images
 const FORM_TYPES = [
+   { title: 'Diabetic Chart',key: 'doctor_chart' },
   { title: 'Initial Nursing Assessment - ADULTS', key: 'initial_nursing_assessment' },
   { title: 'Neonatal Initial Nursing Assessment Form', key: 'neonatal_initial_nursing' },
   { title: 'Emergency Nursing Assessment', key: 'emergency_nursing_assessment' },

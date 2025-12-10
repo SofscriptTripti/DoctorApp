@@ -1,4 +1,3 @@
-// -------------------- FIXED VERSION --------------------
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -42,9 +41,11 @@ const IMAGES_BY_FORM: Record<string, any[]> = {
   ],
 
   doctors_handover_isbar: [require('./Images/DoctorHandOverFromat.jpg')],
+    doctor_chart: [ require('./Images/17 Diabetic Chart 2.jpg')],
 };
 
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
+const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75); // 🔥 SAME AS EDITOR
@@ -178,6 +179,7 @@ function FormImageScreen() {
       patientId,
       patientIP,
     });
+    console.log("hshsshsgshgs>>>>>>>>>>>",imageStickers);
   };
 
   // ---------- THUMBNAIL PAGE ----------
