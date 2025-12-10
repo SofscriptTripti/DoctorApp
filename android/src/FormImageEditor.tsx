@@ -156,9 +156,6 @@ const clamp = (val: number, min: number, max: number) =>
 /**
  * 📝 Draggable + resizable voice/typed text WITH IMAGE BOUNDARIES
  */
-/**
- * 📝 Draggable + resizable voice/typed text WITH IMAGE BOUNDARIES
- */
 function DraggableVoiceText({
   note,
   isEditing,
@@ -1936,7 +1933,7 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
   };
 
   const MIN_ZOOM = 1;
-  const MAX_ZOOM = 3;
+  const MAX_ZOOM = 5;
 
   const pageScaleAnimsRef = useRef(
     IMAGES.map(() => new Animated.Value(1))
@@ -1951,64 +1948,191 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
   const lastScalePerPageRef = useRef(IMAGES.map(() => 1)).current;
   const panStartPerPageRef = useRef(
     IMAGES.map(() => ({ x: 0, y: 0 }))
-  ).current;
+  );
 
+  // Simplified pinch state
   const pinchStateRef = useRef<{
     initialDistance: number;
-    startScale: number;
+    initialScale: number;
     pageIndex: number;
+    initialCenter: { x: number; y: number };
+    initialTouches: Array<{ x: number; y: number }>;
   } | null>(null);
 
   const activePanPageRef = useRef<number | null>(null);
 
-const pinchResponder = useRef(
-  PanResponder.create({
-    onStartShouldSetPanResponder: (evt) => {
-      // Don't capture if editing notes or stickers
-      if (editingNoteId || editingStickerId) return false;
-
-      const touches = evt.nativeEvent.touches || [];
-      const count = touches.length;
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-
-      // Only allow pinch zoom when writing is enabled
-      if (count === 2 && writingEnabledRef.current) return true;
-
-      // Don't allow panning when editing is off
-      if (!writingEnabledRef.current) return false;
-
-      if (count === 1 && currentScale > 1.01) {
-        return true;
+  // ----- SIMPLIFIED PINCH ZOOM IMPLEMENTATION -----
+  const pinchResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      
+      onPanResponderGrant: (evt) => {
+        if (editingNoteId || editingStickerId) return;
+        
+        const touches = evt.nativeEvent.touches || [];
+        const count = touches.length;
+        const pageIndex = getCurrentPageIndex();
+        
+        if (count === 2) {
+          // Start pinch zoom
+          const t1 = touches[0];
+          const t2 = touches[1];
+          
+          const dx = t2.pageX - t1.pageX;
+          const dy = t2.pageY - t1.pageY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          const centerX = (t1.pageX + t2.pageX) / 2;
+          const centerY = (t1.pageY + t2.pageY) / 2;
+          
+          const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+          let currentTx = 0;
+          let currentTy = 0;
+          
+          try {
+            currentTx = (pageTranslateXRef[pageIndex] as any).__getValue?.() || 0;
+            currentTy = (pageTranslateYRef[pageIndex] as any).__getValue?.() || 0;
+          } catch (e) {
+            currentTx = 0;
+            currentTy = 0;
+          }
+          
+          pinchStateRef.current = {
+            initialDistance: distance,
+            initialScale: currentScale,
+            pageIndex,
+            initialCenter: { x: centerX, y: centerY },
+            initialTouches: [
+              { x: t1.pageX, y: t1.pageY },
+              { x: t2.pageX, y: t2.pageY }
+            ]
+          };
+          
+          activePanPageRef.current = pageIndex;
+        } else if (count === 1) {
+          // Start pan
+          const pageIndex = getCurrentPageIndex();
+          const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+          
+          if (currentScale > 1.05) {
+            // Only pan if zoomed in
+            activePanPageRef.current = pageIndex;
+            let currentTx = 0;
+            let currentTy = 0;
+            
+            try {
+              currentTx = (pageTranslateXRef[pageIndex] as any).__getValue?.() || 0;
+              currentTy = (pageTranslateYRef[pageIndex] as any).__getValue?.() || 0;
+            } catch (e) {
+              currentTx = 0;
+              currentTy = 0;
+            }
+            
+            panStartPerPageRef.current[pageIndex] = { 
+              x: currentTx, 
+              y: currentTy 
+            };
+          }
+        }
+      },
+      
+      onPanResponderMove: (evt, gestureState) => {
+        const touches = evt.nativeEvent.touches || [];
+        const count = touches.length;
+        
+        if (activePanPageRef.current === null) return;
+        const pageIndex = activePanPageRef.current;
+        
+        if (count === 2 && pinchStateRef.current) {
+          // Pinch zoom
+          const t1 = touches[0];
+          const t2 = touches[1];
+          
+          const currentDx = t2.pageX - t1.pageX;
+          const currentDy = t2.pageY - t1.pageY;
+          const currentDistance = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
+          
+          const { initialDistance, initialScale } = pinchStateRef.current;
+          
+          if (initialDistance > 0) {
+            // Calculate scale factor
+            const scaleFactor = currentDistance / initialDistance;
+            let newScale = initialScale * scaleFactor;
+            newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+            
+            // Calculate current center
+            const currentCenterX = (t1.pageX + t2.pageX) / 2;
+            const currentCenterY = (t1.pageY + t2.pageY) / 2;
+            
+            // Get current transform
+            let currentTx = 0;
+            let currentTy = 0;
+            try {
+              currentTx = (pageTranslateXRef[pageIndex] as any).__getValue?.() || 0;
+              currentTy = (pageTranslateYRef[pageIndex] as any).__getValue?.() || 0;
+            } catch (e) {
+              currentTx = 0;
+              currentTy = 0;
+            }
+            
+            // Calculate center movement
+            const centerDx = currentCenterX - pinchStateRef.current.initialCenter.x;
+            const centerDy = currentCenterY - pinchStateRef.current.initialCenter.y;
+            
+            // Update transform
+            const maxX = (SCREEN_W * (newScale - 1)) / 2;
+            const maxY = (PAGE_HEIGHT * (newScale - 1)) / 2;
+            
+            let newTx = currentTx + centerDx * (1 - (newScale / initialScale));
+            let newTy = currentTy + centerDy * (1 - (newScale / initialScale));
+            
+            newTx = clamp(newTx, -maxX, maxX);
+            newTy = clamp(newTy, -maxY, maxY);
+            
+            // Apply immediately
+            lastScalePerPageRef[pageIndex] = newScale;
+            pageScaleAnimsRef[pageIndex].setValue(newScale);
+            pageTranslateXRef[pageIndex].setValue(newTx);
+            pageTranslateYRef[pageIndex].setValue(newTy);
+          }
+        } else if (count === 1) {
+          // Pan
+          const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+          
+          if (currentScale > 1.05) {
+            const start = panStartPerPageRef.current[pageIndex];
+            const dx = gestureState.dx / currentScale;
+            const dy = gestureState.dy / currentScale;
+            
+            const maxX = (SCREEN_W * (currentScale - 1)) / 2;
+            const maxY = (PAGE_HEIGHT * (currentScale - 1)) / 2;
+            
+            let newX = start.x + dx;
+            let newY = start.y + dy;
+            
+            newX = clamp(newX, -maxX, maxX);
+            newY = clamp(newY, -maxY, maxY);
+            
+            pageTranslateXRef[pageIndex].setValue(newX);
+            pageTranslateYRef[pageIndex].setValue(newY);
+          }
+        }
+      },
+      
+      onPanResponderRelease: () => {
+        // Reset state
+        pinchStateRef.current = null;
+        activePanPageRef.current = null;
+      },
+      
+      onPanResponderTerminate: () => {
+        // Reset state
+        pinchStateRef.current = null;
+        activePanPageRef.current = null;
       }
-
-      return false;
-    },
-    onMoveShouldSetPanResponder: (evt) => {
-      // Don't capture if editing notes or stickers
-      if (editingNoteId || editingStickerId) return false;
-
-      const touches = evt.nativeEvent.touches || [];
-      const count = touches.length;
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-
-      // Only allow pinch zoom when writing is enabled
-      if (count === 2 && writingEnabledRef.current) return true;
-
-      // Don't allow panning when editing is off
-      if (!writingEnabledRef.current) return false;
-
-      if (count === 1 && currentScale > 1.01) {
-        return true;
-      }
-
-      return false;
-    },
-    
-    // ... rest of the pinch responder code remains the same
-  })
-).current;
+    })
+  ).current;
 
   const ZOOM_STEP = 0.25;
 
@@ -2019,12 +2143,31 @@ const pinchResponder = useRef(
 
     lastScalePerPageRef[pageIndex] = newScale;
 
-    if (newScale <= 1.01) {
+    if (newScale <= 1.05) {
+      // Reset to original
       lastScalePerPageRef[pageIndex] = 1;
-      pageScaleAnimsRef[pageIndex].setValue(1);
-      pageTranslateXRef[pageIndex].setValue(0);
-      pageTranslateYRef[pageIndex].setValue(0);
+      Animated.parallel([
+        Animated.spring(pageScaleAnimsRef[pageIndex], {
+          toValue: 1,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.spring(pageTranslateXRef[pageIndex], {
+          toValue: 0,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.spring(pageTranslateYRef[pageIndex], {
+          toValue: 0,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }),
+      ]).start();
     } else {
+      // Apply new scale
       pageScaleAnimsRef[pageIndex].setValue(newScale);
     }
   };
