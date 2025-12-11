@@ -1,5 +1,5 @@
 // src/FormTypeScreen.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,28 @@ import {
   TextInput,
   TouchableOpacity,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // NOTE: each item has title and key. key maps to a folder in ./Images
 const FORM_TYPES = [
-   { title: 'Diabetic Chart',key: 'doctor_chart' },
   { title: 'Initial Nursing Assessment - ADULTS', key: 'initial_nursing_assessment' },
   { title: 'Neonatal Initial Nursing Assessment Form', key: 'neonatal_initial_nursing' },
+  { title: 'Diabetic Chart', key: 'doctor_chart' },
   { title: 'Emergency Nursing Assessment', key: 'emergency_nursing_assessment' },
   { title: 'Doctors Handover Format ISBAR', key: 'doctors_handover_isbar' },
 ];
+
+// Define total pages per form (update numbers as appropriate)
+const FORM_TOTAL_PAGES: Record<string, number> = {
+  initial_nursing_assessment: 6,
+  neonatal_initial_nursing: 4,
+  doctor_chart: 1,
+  emergency_nursing_assessment: 4,
+  doctors_handover_isbar: 1,
+};
 
 function makeStorageKey(patientName: string, formType: string) {
   const safePatient = patientName.replace(/\s+/g, '_');
@@ -33,6 +43,7 @@ export default function FormTypeScreen() {
   const insets = useSafeAreaInsets();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [filledCounts, setFilledCounts] = useState<Record<string, number>>({});
 
   const patientName: string = route.params?.patientName ?? 'Unknown Patient';
   const patientId: string | undefined = route.params?.patientId;
@@ -43,6 +54,58 @@ export default function FormTypeScreen() {
     if (!q) return FORM_TYPES;
     return FORM_TYPES.filter((f) => f.title.toLowerCase().includes(q));
   }, [searchQuery]);
+
+  const loadAllCounts = useCallback(async () => {
+    try {
+      const result: Record<string, number> = {};
+
+      for (const f of FORM_TYPES) {
+        const storageKey = makeStorageKey(patientName, f.title);
+        const saved = await AsyncStorage.getItem(storageKey);
+
+        if (!saved) {
+          result[f.key] = 0;
+          continue;
+        }
+
+        try {
+          const parsed = JSON.parse(saved);
+          // Expecting an array of page bitmaps or similar. Count length if array.
+          if (Array.isArray(parsed)) {
+            result[f.key] = parsed.length;
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            // If stored as object with pages, try to count keys
+            result[f.key] = Object.keys(parsed).length;
+          } else {
+            // fallback
+            result[f.key] = 0;
+          }
+        } catch (err) {
+          // corrupt JSON -> treat as 0
+          result[f.key] = 0;
+        }
+      }
+
+      setFilledCounts(result);
+    } catch (err) {
+      // if something goes wrong, don't crash — keep counts empty
+      console.warn('Failed to load form counts', err);
+      setFilledCounts({});
+    }
+  }, [patientName]);
+
+  // load on mount
+  useEffect(() => {
+    loadAllCounts();
+  }, [loadAllCounts]);
+
+  // reload when screen is focused (so counts update when returning)
+  useFocusEffect(
+    useCallback(() => {
+      loadAllCounts();
+      // no cleanup needed
+    }, [loadAllCounts])
+  );
 
   const handlePress = (form: { title: string; key: string }) => {
     const storageKey = makeStorageKey(patientName, form.title);
@@ -69,7 +132,16 @@ export default function FormTypeScreen() {
         </View>
 
         <View style={styles.cardTextBlock}>
-          <Text style={styles.formName}>{item.title}</Text>
+          <Text style={styles.formName} numberOfLines={2}>
+            {item.title}
+          </Text>
+        </View>
+
+        {/* Filled / Total */}
+        <View style={styles.pageInfoWrap}>
+          <Text style={styles.pageInfoText}>
+            {filledCounts[item.key] ?? 0}/{FORM_TOTAL_PAGES[item.key] ?? 0}
+          </Text>
         </View>
 
         <View style={styles.chevronWrap}>
@@ -120,15 +192,6 @@ export default function FormTypeScreen() {
                 {patientName} / {patientIP}
               </Text>
             </View>
-
-            {/* {patientIP != null && (
-              <View style={styles.patientInfoColRight}>
-                <Text style={styles.patientLabel}>IP No</Text>
-                <Text style={styles.patientValue} numberOfLines={1}>
-                  {patientIP}
-                </Text>
-              </View>
-            )} */}
           </View>
 
           <View style={styles.searchWrapperContent}>
@@ -279,30 +342,29 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF', // bright white
   },
-searchWrapperContent: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  backgroundColor: '#FFFFFF',
-  paddingHorizontal: 10,
-  // paddingVertical: 8,        // ❌ remove this
-  borderRadius: 10,
-  shadowColor: '#000',
-  shadowOpacity: 0.03,
-  shadowRadius: 4,
-  elevation: 1,
-  marginBottom: 10,
-  minHeight: 40,               // ✅ optional: keeps nice height
-},
 
-searchInputContent: {
-  flex: 1,
-  height: 36,
-  paddingVertical: 0,          // ✅ important on Android
-  color: '#0F172A',
-  fontSize: 14,
-  textAlignVertical: 'center', // ✅ Android: centers text without scroll
-},
+  searchWrapperContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+    marginBottom: 10,
+    minHeight: 40,
+  },
 
+  searchInputContent: {
+    flex: 1,
+    height: 36,
+    paddingVertical: 0,
+    color: '#0F172A',
+    fontSize: 14,
+    textAlignVertical: 'center',
+  },
 
   card: {
     width: '100%',
@@ -347,6 +409,18 @@ searchInputContent: {
     fontSize: 16,
     fontWeight: '600',
     color: '#0F172A',
+  },
+
+  pageInfoWrap: {
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  pageInfoText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0EA5A4',
   },
 
   chevronWrap: { marginLeft: 8 },

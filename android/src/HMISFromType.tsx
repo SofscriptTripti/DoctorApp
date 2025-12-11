@@ -1,4 +1,4 @@
-// src/HMISFormType.tsx (or src/FormTypeScreen.tsx if that's how you keep it)
+// src/HMISFormType.tsx
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -12,12 +12,19 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 
-// NOTE: each item has title and key. key can be used later if needed
+// 🔹 Total page count for each report
+const FORM_TOTAL_PAGES: Record<string, number> = {
+  initial_nursing_assessment: 3, // LIS Report
+  emergency_nursing_assessment: 1, // Discharge Summary
+  neonatal_initial_nursing: 0, // Medical Report disabled
+  doctors_handover_isbar: 0, // MRD Report disabled
+};
+
+// 🔹 Reports
 const FORM_TYPES = [
   { title: 'LIS Report', key: 'initial_nursing_assessment' },
-    { title: 'Discharge Summary', key: 'emergency_nursing_assessment' },
+  { title: 'Discharge Summary', key: 'emergency_nursing_assessment' },
   { title: 'Medical Report', key: 'neonatal_initial_nursing' },
-
   { title: 'Other MRD Report', key: 'doctors_handover_isbar' },
 ];
 
@@ -34,9 +41,24 @@ export default function HMISFormType() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  const patientName: string = route.params?.patientName ?? 'Unknown Patient';
-  const patientId: string | undefined = route.params?.patientId;
-  const patientIP: number | undefined = route.params?.patientIP;
+  // 🔹 Robust parameter extraction — FIXED
+  const params = route.params ?? {};
+
+  const patientName: string =
+    params.patientName ??
+    params.name ??
+    params.patient ??
+    'Unknown Patient';
+
+  const patientIP: string =
+    params.patientIP !== undefined && params.patientIP !== null
+      ? String(params.patientIP)
+      : params.ip !== undefined
+      ? String(params.ip)
+      : '';
+
+  const patientId: string | undefined =
+    params.patientId ?? params.id ?? params.patient_id;
 
   const filteredForms = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -45,12 +67,8 @@ export default function HMISFormType() {
   }, [searchQuery]);
 
   const handlePress = (form: { title: string; key: string }) => {
-    // STOP navigation for Medical Report and Other MRD Report
-    if (form.title === 'Medical Report' || form.title === 'Other MRD Report') {
-      return;
-    }
+    if (form.title === 'Medical Report' || form.title === 'Other MRD Report') return;
 
-    // LIS Report -> go to NoOFReport
     if (form.title === 'LIS Report') {
       navigation.navigate('NoOFReport', {
         patientName,
@@ -63,7 +81,6 @@ export default function HMISFormType() {
       return;
     }
 
-    // Discharge Summary -> open NST003.pdf directly
     if (form.title === 'Discharge Summary') {
       navigation.navigate('PdfViewer', {
         title: 'Discharge Summary',
@@ -79,6 +96,8 @@ export default function HMISFormType() {
   const renderItem = ({ item }: { item: { title: string; key: string } }) => {
     const isDisabled =
       item.title === 'Medical Report' || item.title === 'Other MRD Report';
+
+    const totalPages = FORM_TOTAL_PAGES[item.key] ?? 0;
 
     return (
       <TouchableOpacity
@@ -96,8 +115,13 @@ export default function HMISFormType() {
             <Text style={styles.formName}>{item.title}</Text>
           </View>
 
+          {/* 🔹 Page Count */}
+          <View style={styles.pageInfoWrap}>
+            <Text style={styles.pageInfoText}>0/{totalPages}</Text>
+          </View>
+
           <View style={styles.chevronWrap}>
-            <Text style={styles.chevron}>{'›'}</Text>
+            <Text style={styles.chevron}>›</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -126,31 +150,20 @@ export default function HMISFormType() {
           <Text style={styles.headerTitle}>Reports</Text>
         </View>
 
-        {/* right spacer to balance header layout */}
         <View style={{ width: 38 }} />
       </View>
 
-      {/* MAIN CONTENT */}
+      {/* CONTENT */}
       <View style={styles.contentWrapper}>
         <View style={styles.sectionHeader}>
-          {/* 🔹 SAME COLORED PATIENT + IP CARD AS FormType */}
+          {/* 🔹 Patient Display — FIXED */}
           <View style={styles.patientInfoCard}>
-            <View style={styles.patientInfoCol}>
-              <Text style={styles.patientValue} numberOfLines={1}>
-                {patientName} / {patientIP}
-              </Text>
-            </View>
-
-            {/* {patientIP != null && (
-              <View style={styles.patientInfoColRight}>
-                <Text style={styles.patientLabel}>IP No</Text>
-                <Text style={styles.patientValue} numberOfLines={1}>
-                  {patientIP}
-                </Text>
-              </View>
-            )} */}
+            <Text style={styles.patientValue} numberOfLines={1}>
+              {patientName} {patientIP ? ` / ${patientIP}` : ''}
+            </Text>
           </View>
 
+          {/* SEARCH */}
           <View style={styles.searchWrapperContent}>
             <Icon
               name="search"
@@ -166,7 +179,6 @@ export default function HMISFormType() {
               onChangeText={setSearchQuery}
               style={styles.searchInputContent}
               returnKeyType="search"
-              multiline={false}
             />
 
             {searchQuery.length > 0 && (
@@ -190,9 +202,7 @@ export default function HMISFormType() {
           }}
           ListEmptyComponent={() => (
             <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#94A3B8' }}>
-                No reports match your search.
-              </Text>
+              <Text style={{ color: '#94A3B8' }}>No reports match your search.</Text>
             </View>
           )}
         />
@@ -201,7 +211,7 @@ export default function HMISFormType() {
   );
 }
 
-/* ===================== STYLES ======================= */
+/* ---------- STYLES ---------- */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9' },
@@ -229,85 +239,51 @@ const styles = StyleSheet.create({
 
   headerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
 
-  contentWrapper: {
-    flex: 1,
-    backgroundColor: '#F1F5F9',
-  },
+  contentWrapper: { flex: 1 },
 
   sectionHeader: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    backgroundColor: '#F1F5F9',
   },
 
-  /* 🔹 Colored Patient + IP card (same as FormType) */
   patientInfoCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     backgroundColor: '#0EA5A4',
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-
-  patientInfoCol: {
-    flex: 1,
-    paddingRight: 8,
-  },
-
-  patientInfoColRight: {
-    flexShrink: 0,
-    alignItems: 'flex-end',
-    paddingLeft: 8,
-  },
-
-  patientLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    textTransform: 'uppercase',
-    marginBottom: 3,
-    fontWeight: '500',
   },
 
   patientValue: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#fff',
   },
 
- searchWrapperContent: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  backgroundColor: '#FFFFFF',
-  paddingHorizontal: 10,
-  // paddingVertical: 8,        // ❌ remove this
-  borderRadius: 10,
-  shadowColor: '#000',
-  shadowOpacity: 0.03,
-  shadowRadius: 4,
-  elevation: 1,
-  marginBottom: 10,
-  minHeight: 40,               // ✅ optional: keeps nice height
-},
+  searchWrapperContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+    marginBottom: 10,
+    minHeight: 40,
+  },
 
-searchInputContent: {
-  flex: 1,
-  height: 36,
-  paddingVertical: 0,          // ✅ important on Android
-  color: '#0F172A',
-  fontSize: 14,
-  textAlignVertical: 'center', // ✅ Android: centers text without scroll
-},
+  searchInputContent: {
+    flex: 1,
+    height: 36,
+    paddingVertical: 0,
+    color: '#0F172A',
+    fontSize: 14,
+    textAlignVertical: 'center',
+  },
 
   card: {
-    width: '100%',
     borderRadius: 14,
     backgroundColor: '#ffffff',
     marginBottom: 12,
@@ -320,10 +296,7 @@ searchInputContent: {
     elevation: 3,
   },
 
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  cardRow: { flexDirection: 'row', alignItems: 'center' },
 
   iconCircle: {
     width: 38,
@@ -335,27 +308,25 @@ searchInputContent: {
     marginRight: 12,
   },
 
-  iconText: {
-    fontSize: 17,
+  iconText: { fontSize: 17, fontWeight: '700', color: '#0EA5A4' },
+
+  cardTextBlock: { flex: 1 },
+
+  formName: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
+
+  pageInfoWrap: {
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  pageInfoText: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#0EA5A4',
   },
 
-  cardTextBlock: {
-    flex: 1,
-  },
-
-  formName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-
   chevronWrap: { marginLeft: 8 },
 
-  chevron: {
-    fontSize: 22,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
+  chevron: { fontSize: 22, color: '#94A3B8' },
 });

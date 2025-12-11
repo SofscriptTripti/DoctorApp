@@ -1020,7 +1020,7 @@ const styles = StyleSheet.create({
 
   modalArrowOuter: {
     position: 'absolute',
-    top: '30%',
+    top: '20%',
     right: 15,
     marginTop: -24,
     justifyContent: 'center',
@@ -1029,8 +1029,8 @@ const styles = StyleSheet.create({
   },
 
   modalArrowButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 20,
     backgroundColor: '#0EA5A4',
     justifyContent: 'center',
