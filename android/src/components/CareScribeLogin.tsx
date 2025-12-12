@@ -113,13 +113,17 @@ export default function CareScribeLogin({ navigation }: any) {
           >
             {/* Logo Header */}
             <View style={styles.logoContainer}>
-            <View style={styles.logoBadge}>
+            {/* <View style={styles.logoBadge}> */}
   <Image
-    source={require('../Images/CareScrib.png')}
+    source={require('../Images/Carescribe_logo with text-01.png')}
     style={styles.logo}
     resizeMode="contain"
   />
-</View>
+  <Text style={styles.logoTagline}>
+  Turning data into compassionate care ...
+</Text>
+
+{/* </View> */}
 
 
            
@@ -142,7 +146,7 @@ export default function CareScribeLogin({ navigation }: any) {
 
               {/* Welcome Section */}
               <View style={styles.welcomeSection}>
-                <Text style={[styles.h1, bg.text]}>Welcome Back</Text>
+                <Text style={[styles.h1, bg.text]}>Welcome</Text>
                 <Text style={[styles.sub, bg.subText]}>
                   Sign in to continue to {BRAND.name}
                 </Text>
@@ -231,27 +235,35 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 24,
   },
+logoContainer: {
+  width: '100%',
+  alignItems: 'center',
+  paddingTop: 0,
+  paddingBottom: 20,
+   paddingHorizontal: 20, 
+},
+logoTagline: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#010e0eff',       // CareScribe primary color
+  // marginTop: 8,
+  textAlign: 'center',
+  letterSpacing: 0.3,
+  bottom:75
+},
 
-  // Logo Header Styles
-  logoContainer: {
-    alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 10,
-  },
   logoBadge: {
-    width: 140,
-    height: 140,
-    borderRadius: 140 / 2,   // full circle
-    backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',       // ensures image stays inside circle
+     // ensures image stays inside circle
   },
   
-  logo: {
-    width: 110,
-    height: 110,
-  },
+ logo: {
+   width: Dimensions.get('window').width -140,
+  height: Dimensions.get('window').width * 0.35, // keep aspect ratio (adjust as needed)
+  resizeMode: 'contain', // or 'contain'
+  padding:10,
+  color:"#0EA5A4",
+  
+},
   
 
   logoText: {

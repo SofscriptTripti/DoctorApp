@@ -220,14 +220,20 @@ function DraggableVoiceText({
   const isUserResizingRef = useRef(false);
   const [isTextInputFocused, setIsTextInputFocused] = useState(false);
   const [manualResizeFlag, setManualResizeFlag] = useState(0);
+  // Add near other useState declarations in FormImageEditor
+
+
 
   const startPosRef = useRef({ x: note.x, y: note.y });
   const lastTapRef = useRef(0);
 
-  const sizeStartRef = useRef<{ width: number; height: number }>({
-    width: currentWidthRef.current,
-    height: currentHeightRef.current,
-  });
+  const sizeStartRef = useRef<{ width: number; height: number }>(
+    {
+      width: currentWidthRef.current,
+      height: currentHeightRef.current,
+    }
+  );
+  
 
   const currentFontSize = note.fontSize ?? DEFAULT_FONT_SIZE;
 
@@ -313,6 +319,8 @@ function DraggableVoiceText({
     }
   }, [measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
 
+
+  
   // Handle content layout measurement
   const handleContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = { 
@@ -330,102 +338,132 @@ function DraggableVoiceText({
   };
 
   // Drag handlers with boundary checking
-  const dragPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (evt) => {
-        if (!writingEnabled) return false;
-        // Don't start drag if we're resizing
-        if (isResizingRef.current) return false;
-        return true;
-      },
-      onMoveShouldSetPanResponder: (evt) => {
-        if (!writingEnabled) return false;
-        // Don't move if we're resizing
-        if (isResizingRef.current) return false;
-        return true;
-      },
+const dragPan = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: (evt: GestureResponderEvent) => {
+      // Only allow drag when there's exactly one touch and writing is enabled
+      if (!writingEnabled) return false;
+      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+      if (touches.length !== 1) return false;
+      // Don't start drag if we're resizing
+      if (isResizingRef.current) return false;
+      return true;
+    },
 
-      onPanResponderGrant: () => {
-        if (!writingEnabled) return;
-        try {
-          const v = (pan as any).__getValue?.();
-          if (v && typeof v.x === 'number' && typeof v.y === 'number') {
-            startPosRef.current = { x: v.x, y: v.y };
-          } else {
-            startPosRef.current = { ...currentPosRef.current };
-          }
-        } catch (e) {
+    onMoveShouldSetPanResponder: (evt: GestureResponderEvent) => {
+      // Only allow movement when there's exactly one touch and writing is enabled
+      if (!writingEnabled) return false;
+      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+      if (touches.length !== 1) return false;
+      // Don't move if we're resizing
+      if (isResizingRef.current) return false;
+      return true;
+    },
+
+    onPanResponderGrant: (evt: GestureResponderEvent) => {
+      if (!writingEnabled) return;
+      // only set start if this is a single-touch grant
+      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+      if (touches.length !== 1) return;
+
+      try {
+        const v = (pan as any).__getValue?.();
+        if (v && typeof v.x === 'number' && typeof v.y === 'number') {
+          startPosRef.current = { x: v.x, y: v.y };
+        } else {
           startPosRef.current = { ...currentPosRef.current };
         }
-      },
+      } catch (e) {
+        startPosRef.current = { ...currentPosRef.current };
+      }
+    },
 
-      onPanResponderMove: (
-        _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
-      ) => {
-        if (!writingEnabled) return;
-        const scale = pageScaleRef.current || 1;
-        
-        // Calculate new position
-        let nx = startPosRef.current.x + gestureState.dx / scale;
-        let ny = startPosRef.current.y + gestureState.dy / scale;
-        
-        // Apply boundaries - ensure text box stays within image
-        const maxX = IMAGE_WIDTH - currentWidthRef.current - 5; // 5px margin from right
-        const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5; // 5px margin from bottom
-        
-        nx = clamp(nx, 5, maxX); // Minimum 5px from left
-        ny = clamp(ny, 5, maxY); // Minimum 5px from top
-        
-        pan.setValue({ x: nx, y: ny });
-        currentPosRef.current = { x: nx, y: ny };
-      },
+    onPanResponderMove: (
+      evt: GestureResponderEvent,
+      gestureState: PanResponderGestureState
+    ) => {
+      if (!writingEnabled) return;
+      // ignore multi-touch move events (pinch/pan handled globally)
+      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+      if (touches.length !== 1) return;
 
-      onPanResponderRelease: (_evt, gestureState) => {
-        if (!writingEnabled) return;
-        
-        const dx = gestureState.dx;
-        const dy = gestureState.dy;
-        const moveDist = Math.sqrt(dx * dx + dy * dy);
+      const scale = pageScaleRef.current || 1;
 
-        const now = Date.now();
-        const delta = now - lastTapRef.current;
-        lastTapRef.current = now;
+      // Calculate new position
+      let nx = startPosRef.current.x + gestureState.dx / scale;
+      let ny = startPosRef.current.y + gestureState.dy / scale;
 
-        const isTap = moveDist < 5 &&
-          Math.abs(gestureState.vx) < 0.3 &&
-          Math.abs(gestureState.vy) < 0.3;
+      // Apply boundaries - ensure text box stays within image
+      const maxX = IMAGE_WIDTH - currentWidthRef.current - 5; // 5px margin from right
+      const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5; // 5px margin from bottom
 
-        const { x: finalX, y: finalY } = currentPosRef.current;
+      nx = clamp(nx, 5, maxX); // Minimum 5px from left
+      ny = clamp(ny, 5, maxY); // Minimum 5px from top
 
-        if (isTap && delta < 280) {
-          onPositionChange(note.id, finalX, finalY);
-          onToggleEdit(note.id);
-          return;
-        }
+      pan.setValue({ x: nx, y: ny });
+      currentPosRef.current = { x: nx, y: ny };
+    },
 
+    onPanResponderRelease: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+      if (!writingEnabled) return;
+      // If multi-touch ended here, ignore
+      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+      if (touches.length > 1) {
+        // do not treat as a finished single-finger drag/tap
+        return;
+      }
+
+      const dx = gestureState.dx;
+      const dy = gestureState.dy;
+      const moveDist = Math.sqrt(dx * dx + dy * dy);
+
+      const now = Date.now();
+      const delta = now - lastTapRef.current;
+      lastTapRef.current = now;
+
+      const isTap = moveDist < 5 &&
+        Math.abs(gestureState.vx) < 0.3 &&
+        Math.abs(gestureState.vy) < 0.3;
+
+      const { x: finalX, y: finalY } = currentPosRef.current;
+
+      if (isTap && delta < 280) {
         onPositionChange(note.id, finalX, finalY);
-      },
+        onToggleEdit(note.id);
+        return;
+      }
 
-      onPanResponderTerminate: (_evt, gestureState) => {
-        if (!writingEnabled) return;
-        const scale = pageScaleRef.current || 1;
-        let nx = startPosRef.current.x + gestureState.dx / scale;
-        let ny = startPosRef.current.y + gestureState.dy / scale;
-        
-        // Apply boundaries
-        const maxX = IMAGE_WIDTH - currentWidthRef.current - 5;
-        const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5;
-        
-        nx = clamp(nx, 5, maxX);
-        ny = clamp(ny, 5, maxY);
-        
-        pan.setValue({ x: nx, y: ny });
-        currentPosRef.current = { x: nx, y: ny };
-        onPositionChange(note.id, nx, ny);
-      },
-    })
-  ).current;
+      onPositionChange(note.id, finalX, finalY);
+    },
+
+    onPanResponderTerminate: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+      if (!writingEnabled) return;
+      // Guard multi-touch termination
+      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+      if (touches.length !== 1) {
+        // If multiple touches present (or termination was due to multitouch), still compute final from gesture values
+        // but prefer startPosRef as base (this avoids accidental large moves)
+      }
+
+      const scale = pageScaleRef.current || 1;
+      let nx = startPosRef.current.x + gestureState.dx / scale;
+      let ny = startPosRef.current.y + gestureState.dy / scale;
+
+      // Apply boundaries
+      const maxX = IMAGE_WIDTH - currentWidthRef.current - 5;
+      const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5;
+
+      nx = clamp(nx, 5, maxX);
+      ny = clamp(ny, 5, maxY);
+
+      pan.setValue({ x: nx, y: ny });
+      currentPosRef.current = { x: nx, y: ny };
+      onPositionChange(note.id, nx, ny);
+    },
+  })
+).current;
+
+
 
   // Enhanced resize pan handlers with image boundaries
   const createResizePan = (opts: {
@@ -905,6 +943,7 @@ function DraggableVoiceText({
     </Animated.View>
   );
 }
+
 /**
  * 🧩 Draggable + resizable image sticker
  */
@@ -936,10 +975,12 @@ function DraggableImageSticker({
   const IMAGE_WIDTH = SCREEN_W;
   const IMAGE_HEIGHT = PAGE_HEIGHT;
 
-  const currentPosRef = useRef<{ x: number; y: number }>({
-    x: sticker.x,
-    y: sticker.y,
-  });
+  const currentPosRef = useRef<{ x: number; y: number }>(
+    {
+      x: sticker.x,
+      y: sticker.y,
+    }
+  );
 
   const pan = useRef(
     new Animated.ValueXY({ x: sticker.x, y: sticker.y })
@@ -947,10 +988,12 @@ function DraggableImageSticker({
 
   const scaleAnim = useRef(new Animated.Value(sticker.scale ?? 1)).current;
 
-  const currentSizeRef = useRef<{ width: number; height: number }>({
-    width: sticker.width ?? DEFAULT_WIDTH,
-    height: sticker.height ?? DEFAULT_HEIGHT,
-  });
+  const currentSizeRef = useRef<{ width: number; height: number }>(
+    {
+      width: sticker.width ?? DEFAULT_WIDTH,
+      height: sticker.height ?? DEFAULT_HEIGHT,
+    }
+  );
 
   const startPosRef = useRef({ x: sticker.x, y: sticker.y });
   const lastTapRef = useRef(0);
@@ -1272,7 +1315,7 @@ export default function FormImageEditor() {
     ? route.params.imageStickers
     : [];
 
-  const [color, setColor] = useState('#0EA5A4');
+  const [color, setColor] = useState('#073694ff');
   const [penWidth, setPenWidth] = useState(4);
   const [eraserWidth, setEraserWidth] = useState(20);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
@@ -1282,6 +1325,8 @@ export default function FormImageEditor() {
 
   const [writingEnabled, setWritingEnabled] = useState(true);
   const writingEnabledRef = useRef(writingEnabled);
+  const multiTouchActiveRef = useRef(false);
+  const [multiTouchActive, setMultiTouchActive] = useState(false);
   useEffect(() => {
     writingEnabledRef.current = writingEnabled;
   }, [writingEnabled]);
@@ -1470,7 +1515,7 @@ export default function FormImageEditor() {
     };
 
     loadPersisted();
-  }, [STORAGE_KEY, STORAGE_UI_KEY, route.params, initialStrokesFromParams]);
+  }, [STORAGE_KEY, STORAGE_UI_KEY, route.params, initialStrokesFromParams, IMAGES.length]);
 
   function getCurrentPageIndex() {
     const CONTENT_TOP_PADDING = Math.max(
@@ -1506,32 +1551,32 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) => [...prev, newNote]);
   };
 
-const addImageSticker = (stickerType: 'patient' | 'doctor') => {
-  const pageIndex = getCurrentPageIndex();
+  const addImageSticker = (stickerType: 'patient' | 'doctor') => {
+    const pageIndex = getCurrentPageIndex();
 
-  // Different default positions for patient vs doctor stickers
-  let x = SCREEN_W * 0.7; // Right side (70% from left)
-  let y;
-  
-  if (stickerType === 'patient') {
-    y = PAGE_HEIGHT * 0.05 + 20; // Top-right with more padding (5% from top)
-  } else {
-    y = PAGE_HEIGHT * 0.75 - 20; // Bottom-right with more padding (75% from top)
-  }
+    // Different default positions for patient vs doctor stickers
+    let x = SCREEN_W * 0.7; // Right side (70% from left)
+    let y;
+    
+    if (stickerType === 'patient') {
+      y = PAGE_HEIGHT * 0.05 + 20; // Top-right with more padding (5% from top)
+    } else {
+      y = PAGE_HEIGHT * 0.75 - 20; // Bottom-right with more padding (75% from top)
+    }
 
-  const newSticker: ImageSticker = {
-    id: `${Date.now()}-${Math.random()}`,
-    pageIndex,
-    x,
-    y,
-    scale: 1,
-    width: 140,
-    height: 90,
-    stickerType,
+    const newSticker: ImageSticker = {
+      id: `${Date.now()}-${Math.random()}`,
+      pageIndex,
+      x,
+      y,
+      scale: 1,
+      width: 140,
+      height: 90,
+      stickerType,
+    };
+
+    setImageStickers((prev) => [...prev, newSticker]);
   };
-
-  setImageStickers((prev) => [...prev, newSticker]);
-};
 
   const showEditingOffHint = () => {
     setEditingOffHintVisible(true);
@@ -1802,23 +1847,22 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
   const CONTENT_BOTTOM_PADDING = Math.max(160, SCREEN_H - PAGE_HEIGHT + PAGE_SPACING + 24);
 
   const PALETTE = [
-  '#073694ff', // Pen Ink Blue (new, main writing color)
+    '#073694ff', // Pen Ink Blue (new, main writing color)
 
-  '#066666', // Dark Teal (darker of #0EA5A4)
-  '#B13120', // Dark Brick Red (darker of #E4572E)
-  '#CC3F5C', // Deep Pink-Red (darker of #FF8A80)
-  '#B45A73', // Dusty Rose (darker of #FFB6C1)
-  '#C97A3A', // Burnt Orange (darker of #FFC79C)
-  '#C8A31F', // Deep Mustard Yellow (darker of #FFEB7A)
-  '#4F8B45', // Dark Leaf Green (darker of #7EE07A)
-  '#008080', // Dark Cyan (darker of #3FE0D0)
-  '#0069A8', // Deep Sky Blue (darker of #00B0FF)
-  '#5870C2', // Steel Blue (darker of #9CC6FF)
-  '#7A52B3', // Deep Violet (darker of #C39CFF)
-  '#555555', // Dark Grey (darker of #BDBDBD)
-  '#000000', // Black
-];
-
+    '#066666', // Dark Teal (darker of #0EA5A4)
+    '#B13120', // Dark Brick Red (darker of #E4572E)
+    '#CC3F5C', // Deep Pink-Red (darker of #FF8A80)
+    '#B45A73', // Dusty Rose (darker of #FFB6C1)
+    '#C97A3A', // Burnt Orange (darker of #FFC79C)
+    '#C8A31F', // Deep Mustard Yellow (darker of #FFEB7A)
+    '#4F8B45', // Dark Leaf Green (darker of #7EE07A)
+    '#008080', // Dark Cyan (darker of #3FE0D0)
+    '#0069A8', // Deep Sky Blue (darker of #00B0FF)
+    '#5870C2', // Steel Blue (darker of #9CC6FF)
+    '#7A52B3', // Deep Violet (darker of #C39CFF)
+    '#555555', // Dark Grey (darker of #BDBDBD)
+    '#000000', // Black
+  ];
 
   const RIGHT_HANDLE_WIDTH = 36;
   const RIGHT_HANDLE_HEIGHT = 100;
@@ -1933,7 +1977,7 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
   };
 
   const MIN_ZOOM = 1;
-  const MAX_ZOOM = 5;
+  const MAX_ZOOM = 3;
 
   const pageScaleAnimsRef = useRef(
     IMAGES.map(() => new Animated.Value(1))
@@ -1948,191 +1992,280 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
   const lastScalePerPageRef = useRef(IMAGES.map(() => 1)).current;
   const panStartPerPageRef = useRef(
     IMAGES.map(() => ({ x: 0, y: 0 }))
-  );
+  ).current;
 
-  // Simplified pinch state
   const pinchStateRef = useRef<{
     initialDistance: number;
-    initialScale: number;
+    startScale: number;
     pageIndex: number;
-    initialCenter: { x: number; y: number };
-    initialTouches: Array<{ x: number; y: number }>;
   } | null>(null);
 
   const activePanPageRef = useRef<number | null>(null);
 
-  // ----- SIMPLIFIED PINCH ZOOM IMPLEMENTATION -----
-  const pinchResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      
-      onPanResponderGrant: (evt) => {
-        if (editingNoteId || editingStickerId) return;
-        
-        const touches = evt.nativeEvent.touches || [];
-        const count = touches.length;
-        const pageIndex = getCurrentPageIndex();
-        
-        if (count === 2) {
-          // Start pinch zoom
-          const t1 = touches[0];
-          const t2 = touches[1];
-          
-          const dx = t2.pageX - t1.pageX;
-          const dy = t2.pageY - t1.pageY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          const centerX = (t1.pageX + t2.pageX) / 2;
-          const centerY = (t1.pageY + t2.pageY) / 2;
-          
-          const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-          let currentTx = 0;
-          let currentTy = 0;
-          
-          try {
-            currentTx = (pageTranslateXRef[pageIndex] as any).__getValue?.() || 0;
-            currentTy = (pageTranslateYRef[pageIndex] as any).__getValue?.() || 0;
-          } catch (e) {
-            currentTx = 0;
-            currentTy = 0;
-          }
-          
+  const clampPanForPage = (pageIndex: number, tx: number, ty: number, scale: number) => {
+    if (scale <= 1.01) {
+      return { clampedX: 0, clampedY: 0 };
+    }
+    const maxOffsetX = (SCREEN_W * (scale - 1)) / 2;
+    const maxOffsetY = (PAGE_HEIGHT * (scale - 1)) / 2;
+
+    const clampedX = clamp(tx, -maxOffsetX, maxOffsetX);
+    const clampedY = clamp(ty, -maxOffsetY, maxOffsetY);
+    return { clampedX, clampedY };
+  };
+  const disableDrawingImmediately = (disable: boolean) => {
+  try {
+    // flip ref first for synchronous reads
+    multiTouchActiveRef.current = disable;
+    // call any native methods available on the drawing refs to stop current stroke
+    canvasRefs.current.forEach((c) => {
+      if (!c) return;
+      // Preferred API: if the native module exposes a direct boolean setter
+      if (typeof (c as any).setDrawingEnabled === 'function') {
+        (c as any).setDrawingEnabled(!disable ? true : false);
+      }
+      // Common cancel/finish methods that native drawing libs sometimes provide
+      if (disable) {
+        if (typeof (c as any).cancelStroke === 'function') {
+          (c as any).cancelStroke();
+        }
+        if (typeof (c as any).endStroke === 'function') {
+          (c as any).endStroke();
+        }
+        if (typeof (c as any).finishStroke === 'function') {
+          (c as any).finishStroke();
+        }
+        if (typeof (c as any).abortCurrentStroke === 'function') {
+          (c as any).abortCurrentStroke();
+        }
+      } else {
+        // If re-enabling, ensure drawing mode restored if API exists
+        if (typeof (c as any).setDrawingEnabled === 'function') {
+          (c as any).setDrawingEnabled(true);
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('[FormImageEditor] disableDrawingImmediately error', e);
+  }
+
+  // update React state too (for pointerEvents / drawingEnabled prop)
+  setMultiTouchActive(disable);
+};
+
+
+const pinchResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: (evt) => {
+      if (editingNoteId || editingStickerId) return false;
+
+      const touches = evt.nativeEvent.touches || [];
+      const count = touches.length;
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      if (count === 2) return true;
+      if (count === 1 && currentScale > 1.01) return !writingEnabled;
+      return false;
+    },
+
+    onMoveShouldSetPanResponder: (evt) => {
+      if (editingNoteId || editingStickerId) return false;
+
+      const touches = evt.nativeEvent.touches || [];
+      const count = touches.length;
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      if (count === 2) return true;
+      if (count === 1 && currentScale > 1.01) return !writingEnabled;
+      return false;
+    },
+
+    onPanResponderGrant: (evt) => {
+      const touches = evt.nativeEvent.touches || [];
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      // If two fingers — mark multitouch active so drawing is disabled
+      if (touches.length === 2) {
+        setMultiTouchActive(true);
+      }
+
+      if (touches.length === 2) {
+        const [t1, t2] = touches;
+        const dx = t1.pageX - t2.pageX;
+        const dy = t1.pageY - t2.pageY;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const midX = (t1.pageX + t2.pageX) / 2;
+        const midY = (t1.pageY + t2.pageY) / 2;
+
+        pinchStateRef.current = {
+          initialDistance: distance,
+          startScale: currentScale,
+          pageIndex,
+          startMidpoint: { x: midX, y: midY },
+        };
+
+        try {
+          panStartPerPageRef[pageIndex] = {
+            x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
+            y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
+          };
+        } catch (e) {
+          panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
+        }
+
+        activePanPageRef.current = null;
+      } else if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
+        // one-finger pan when zoomed and writing disabled
+        activePanPageRef.current = pageIndex;
+        try {
+          panStartPerPageRef[pageIndex] = {
+            x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
+            y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
+          };
+        } catch (e) {
+          panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
+        }
+      } else {
+        activePanPageRef.current = null;
+        // For single-finger start we don't modify multiTouchActive
+      }
+    },
+
+    onPanResponderMove: (evt, gestureState) => {
+      const touches = evt.nativeEvent.touches || [];
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      // TWO-FINGER: handle pinch scale AND two-finger pan via midpoint delta
+      if (touches.length === 2) {
+        const [t1, t2] = touches;
+        const dx = t1.pageX - t2.pageX;
+        const dy = t1.pageY - t2.pageY;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const midX = (t1.pageX + t2.pageX) / 2;
+        const midY = (t1.pageY + t2.pageY) / 2;
+
+        if (!pinchStateRef.current || pinchStateRef.current.pageIndex !== pageIndex) {
           pinchStateRef.current = {
             initialDistance: distance,
-            initialScale: currentScale,
+            startScale: currentScale,
             pageIndex,
-            initialCenter: { x: centerX, y: centerY },
-            initialTouches: [
-              { x: t1.pageX, y: t1.pageY },
-              { x: t2.pageX, y: t2.pageY }
-            ]
+            startMidpoint: { x: midX, y: midY },
           };
-          
-          activePanPageRef.current = pageIndex;
-        } else if (count === 1) {
-          // Start pan
-          const pageIndex = getCurrentPageIndex();
-          const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-          
-          if (currentScale > 1.05) {
-            // Only pan if zoomed in
-            activePanPageRef.current = pageIndex;
-            let currentTx = 0;
-            let currentTy = 0;
-            
-            try {
-              currentTx = (pageTranslateXRef[pageIndex] as any).__getValue?.() || 0;
-              currentTy = (pageTranslateYRef[pageIndex] as any).__getValue?.() || 0;
-            } catch (e) {
-              currentTx = 0;
-              currentTy = 0;
-            }
-            
-            panStartPerPageRef.current[pageIndex] = { 
-              x: currentTx, 
-              y: currentTy 
+          try {
+            panStartPerPageRef[pageIndex] = {
+              x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
+              y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
             };
+          } catch (e) {
+            panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
           }
         }
-      },
-      
-      onPanResponderMove: (evt, gestureState) => {
-        const touches = evt.nativeEvent.touches || [];
-        const count = touches.length;
-        
-        if (activePanPageRef.current === null) return;
-        const pageIndex = activePanPageRef.current;
-        
-        if (count === 2 && pinchStateRef.current) {
-          // Pinch zoom
-          const t1 = touches[0];
-          const t2 = touches[1];
-          
-          const currentDx = t2.pageX - t1.pageX;
-          const currentDy = t2.pageY - t1.pageY;
-          const currentDistance = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
-          
-          const { initialDistance, initialScale } = pinchStateRef.current;
-          
-          if (initialDistance > 0) {
-            // Calculate scale factor
-            const scaleFactor = currentDistance / initialDistance;
-            let newScale = initialScale * scaleFactor;
-            newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
-            
-            // Calculate current center
-            const currentCenterX = (t1.pageX + t2.pageX) / 2;
-            const currentCenterY = (t1.pageY + t2.pageY) / 2;
-            
-            // Get current transform
-            let currentTx = 0;
-            let currentTy = 0;
-            try {
-              currentTx = (pageTranslateXRef[pageIndex] as any).__getValue?.() || 0;
-              currentTy = (pageTranslateYRef[pageIndex] as any).__getValue?.() || 0;
-            } catch (e) {
-              currentTx = 0;
-              currentTy = 0;
-            }
-            
-            // Calculate center movement
-            const centerDx = currentCenterX - pinchStateRef.current.initialCenter.x;
-            const centerDy = currentCenterY - pinchStateRef.current.initialCenter.y;
-            
-            // Update transform
-            const maxX = (SCREEN_W * (newScale - 1)) / 2;
-            const maxY = (PAGE_HEIGHT * (newScale - 1)) / 2;
-            
-            let newTx = currentTx + centerDx * (1 - (newScale / initialScale));
-            let newTy = currentTy + centerDy * (1 - (newScale / initialScale));
-            
-            newTx = clamp(newTx, -maxX, maxX);
-            newTy = clamp(newTy, -maxY, maxY);
-            
-            // Apply immediately
-            lastScalePerPageRef[pageIndex] = newScale;
-            pageScaleAnimsRef[pageIndex].setValue(newScale);
-            pageTranslateXRef[pageIndex].setValue(newTx);
-            pageTranslateYRef[pageIndex].setValue(newTy);
-          }
-        } else if (count === 1) {
-          // Pan
-          const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-          
-          if (currentScale > 1.05) {
-            const start = panStartPerPageRef.current[pageIndex];
-            const dx = gestureState.dx / currentScale;
-            const dy = gestureState.dy / currentScale;
-            
-            const maxX = (SCREEN_W * (currentScale - 1)) / 2;
-            const maxY = (PAGE_HEIGHT * (currentScale - 1)) / 2;
-            
-            let newX = start.x + dx;
-            let newY = start.y + dy;
-            
-            newX = clamp(newX, -maxX, maxX);
-            newY = clamp(newY, -maxY, maxY);
-            
-            pageTranslateXRef[pageIndex].setValue(newX);
-            pageTranslateYRef[pageIndex].setValue(newY);
-          }
+
+        const { initialDistance, startScale, startMidpoint } = pinchStateRef.current;
+        // scale
+        const scaleFactor = distance / (initialDistance || 1);
+        let requestedScale = startScale * scaleFactor;
+        if (requestedScale < MIN_ZOOM) requestedScale = MIN_ZOOM;
+        if (requestedScale > MAX_ZOOM) requestedScale = MAX_ZOOM;
+        lastScalePerPageRef[pageIndex] = requestedScale;
+
+        if (requestedScale <= 1.01) {
+          lastScalePerPageRef[pageIndex] = 1;
+          pageScaleAnimsRef[pageIndex].setValue(1);
+          pageTranslateXRef[pageIndex].setValue(0);
+          pageTranslateYRef[pageIndex].setValue(0);
+        } else {
+          pageScaleAnimsRef[pageIndex].setValue(requestedScale);
         }
-      },
-      
-      onPanResponderRelease: () => {
-        // Reset state
-        pinchStateRef.current = null;
-        activePanPageRef.current = null;
-      },
-      
-      onPanResponderTerminate: () => {
-        // Reset state
-        pinchStateRef.current = null;
-        activePanPageRef.current = null;
+
+        // two-finger pan using midpoint delta (relative to start)
+        const panStart = panStartPerPageRef[pageIndex] ?? { x: 0, y: 0 };
+        const deltaX = midX - (startMidpoint?.x ?? midX);
+        const deltaY = midY - (startMidpoint?.y ?? midY);
+
+        // apply delta to starting translate
+        const rawTx = panStart.x + deltaX;
+        const rawTy = panStart.y + deltaY;
+
+        const { clampedX, clampedY } = clampPanForPage(pageIndex, rawTx, rawTy, requestedScale);
+        pageTranslateXRef[pageIndex].setValue(clampedX);
+        pageTranslateYRef[pageIndex].setValue(clampedY);
+
+        return;
       }
-    })
-  ).current;
+
+      // ONE-FINGER PAN when zoomed (only allowed when writing disabled)
+      if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
+        const pIndex = activePanPageRef.current ?? pageIndex;
+        const start = panStartPerPageRef[pIndex];
+        const rawTx = start.x + gestureState.dx;
+        const rawTy = start.y + gestureState.dy;
+        const { clampedX, clampedY } = clampPanForPage(pIndex, rawTx, rawTy, currentScale);
+        pageTranslateXRef[pIndex].setValue(clampedX);
+        pageTranslateYRef[pIndex].setValue(clampedY);
+      }
+    },
+
+    onPanResponderRelease: () => {
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      // Turn off multitouch flag when gesture ends
+      setMultiTouchActive(false);
+
+      if (currentScale <= 1.01) {
+        lastScalePerPageRef[pageIndex] = 1;
+        pageScaleAnimsRef[pageIndex].setValue(1);
+        pageTranslateXRef[pageIndex].setValue(0);
+        pageTranslateYRef[pageIndex].setValue(0);
+      } else {
+        try {
+          const tx = (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0;
+          const ty = (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0;
+          const { clampedX, clampedY } = clampPanForPage(pageIndex, tx, ty, currentScale);
+          pageTranslateXRef[pageIndex].setValue(clampedX);
+          pageTranslateYRef[pageIndex].setValue(clampedY);
+        } catch (e) {}
+      }
+
+      pinchStateRef.current = null;
+      activePanPageRef.current = null;
+    },
+
+    onPanResponderTerminationRequest: () => true,
+
+    onPanResponderTerminate: () => {
+      const pageIndex = getCurrentPageIndex();
+      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+      // Also clear multitouch flag on termination
+      setMultiTouchActive(false);
+
+      if (currentScale <= 1.01) {
+        lastScalePerPageRef[pageIndex] = 1;
+        pageScaleAnimsRef[pageIndex].setValue(1);
+        pageTranslateXRef[pageIndex].setValue(0);
+        pageTranslateYRef[pageIndex].setValue(0);
+      } else {
+        try {
+          const tx = (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0;
+          const ty = (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0;
+          const { clampedX, clampedY } = clampPanForPage(pageIndex, tx, ty, currentScale);
+          pageTranslateXRef[pageIndex].setValue(clampedX);
+          pageTranslateYRef[pageIndex].setValue(clampedY);
+        } catch (e) {}
+      }
+
+      pinchStateRef.current = null;
+      activePanPageRef.current = null;
+    },
+  })
+).current;
+
 
   const ZOOM_STEP = 0.25;
 
@@ -2143,35 +2276,15 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
 
     lastScalePerPageRef[pageIndex] = newScale;
 
-    if (newScale <= 1.05) {
-      // Reset to original
+    if (newScale <= 1.01) {
       lastScalePerPageRef[pageIndex] = 1;
-      Animated.parallel([
-        Animated.spring(pageScaleAnimsRef[pageIndex], {
-          toValue: 1,
-          useNativeDriver: false,
-          tension: 50,
-          friction: 7,
-        }),
-        Animated.spring(pageTranslateXRef[pageIndex], {
-          toValue: 0,
-          useNativeDriver: false,
-          tension: 50,
-          friction: 7,
-        }),
-        Animated.spring(pageTranslateYRef[pageIndex], {
-          toValue: 0,
-          useNativeDriver: false,
-          tension: 50,
-          friction: 7,
-        }),
-      ]).start();
+      pageScaleAnimsRef[pageIndex].setValue(1);
+      pageTranslateXRef[pageIndex].setValue(0);
+      pageTranslateYRef[pageIndex].setValue(0);
     } else {
-      // Apply new scale
       pageScaleAnimsRef[pageIndex].setValue(newScale);
     }
-  };
-
+  }
   const handleZoomInPress = () => {
     if (saveStatus === 'saving') return;
     const pageIndex = getCurrentPageIndex();
@@ -2272,33 +2385,34 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
   };
 
   const handleSaveOk = () => {
-  const payload =
-    lastPayloadRef.current || {
+    const payload =
+      lastPayloadRef.current || {
+        savedStrokes: savedMeta,
+        editorUI: {
+          color,
+          penWidth,
+          eraserWidth,
+        },
+        editorSavedAt: Date.now(),
+        storageKey: STORAGE_KEY,
+        formName: route.params?.formName,
+        voiceNotes,
+        imageStickers, // This already includes stickerType for each sticker
+      };
+
+    setSaveStatus('idle');
+    
+    // Navigate only when user clicks OK
+    navigation.navigate('FormImageScreen', {
       savedStrokes: savedMeta,
-      editorUI: {
-        color,
-        penWidth,
-        eraserWidth,
-      },
-      editorSavedAt: Date.now(),
+      voiceNotes,
+      imageStickers, // ✅ stickerType is included here
       storageKey: STORAGE_KEY,
       formName: route.params?.formName,
-      voiceNotes,
-      imageStickers, // This already includes stickerType for each sticker
-    };
+      formKey: formKeyParam,
+    });
+  };
 
-  setSaveStatus('idle');
-  
-  // Navigate only when user clicks OK
-  navigation.navigate('FormImageScreen', {
-    savedStrokes: savedMeta,
-    voiceNotes,
-    imageStickers, // ✅ stickerType is included here
-    storageKey: STORAGE_KEY,
-    formName: route.params?.formName,
-    formKey: formKeyParam,
-  });
-};
   const handleSaveErrorOk = () => {
     setSaveStatus('idle');
   };
@@ -2338,6 +2452,8 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.toolsScrollContent}
+  
+
           >
             {/* Writing ON/OFF toggle */}
             <TouchableOpacity
@@ -2678,22 +2794,26 @@ const addImageSticker = (stickerType: 'patient' | 'doctor') => {
                       />
 
                       {/* Canvas container - CRITICAL FIX: Prevent drawing when interacting with UI elements */}
-                     <View
-  style={styles.canvasContainer}
-  pointerEvents={
-    editingNoteId || editingStickerId || !writingEnabled
-      ? 'none'
-      : 'box-none'
-  }
->
-  <DrawingCanvas
-    index={pageIndex}
-    savedPath={savedPath}
-    ref={(r) => refSetters.current[pageIndex](r)}
-    // IMPORTANT: Pass drawingEnabled prop to prevent drawing when resizing
-    drawingEnabled={!(editingNoteId || editingStickerId)}
-  />
-</View>
+                      <View
+                        style={styles.canvasContainer}
+                       pointerEvents={
+  editingNoteId ||
+  editingStickerId ||
+  !writingEnabled ||
+  multiTouchActive
+    ? 'none'
+    : 'box-none'
+}
+                      >
+          <DrawingCanvas
+  index={pageIndex}
+  savedPath={savedPath}
+  ref={(r) => refSetters.current[pageIndex](r)}
+  drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
+/>
+
+
+                      </View>
 
                       {/* Voice notes with writingEnabled prop */}
                       {notesForPage.map((note) => (
