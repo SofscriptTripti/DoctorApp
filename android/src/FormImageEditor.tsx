@@ -29,6 +29,8 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from 'react-native';
+import Feather from "react-native-vector-icons/Feather";
+
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -1821,6 +1823,23 @@ export default function FormImageEditor() {
       prev.filter((s) => s.pageIndex !== pageIndex)
     );
   };
+  // confirmation modal for clearing page
+const [confirmClearVisible, setConfirmClearVisible] = useState(false);
+
+const performClearConfirmed = () => {
+  // close modal first for immediate feedback
+  setConfirmClearVisible(false);
+
+  // existing performClear behaviour (call the same internal code)
+  const idx = getCurrentPageIndex();
+  const c = canvasRefs.current[idx];
+  if (c && typeof c.clear === 'function') c.clear();
+
+  clearNotesForPage(idx);
+  setEditingNoteId(null);
+  setEditingStickerId(null);
+};
+
 
   const performClear = () => {
     if (!writingEnabled) return;
@@ -2422,794 +2441,616 @@ const pinchResponder = useRef(
   };
 
   return (
-    <SafeAreaView style={styles.root}>
-      {/* Combined Header - Back + Tools + SAVE */}
-      <View style={styles.combinedHeader}>
-        {/* Top row: Back button on left, SAVE on right */}
-        <View style={styles.topRow}>
-          {/* Back button on left */}
+
+  <SafeAreaView style={styles.root}>
+    {/* Combined Header - Back + Tools + SAVE */}
+    <View style={styles.combinedHeader}>
+      {/* Top row: Back button on left, SAVE on right */}
+      <View style={styles.topRow}>
+        {/* Back button on left */}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          disabled={saveStatus === 'saving'}
+        >
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </TouchableOpacity>
+
+        {/* SAVE button on right */}
+        <TouchableOpacity
+          onPress={onSaveAll}
+          style={styles.saveButton}
+          disabled={saveStatus === 'saving'}
+        >
+          <Text style={styles.saveButtonText}>SAVE</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Bottom row: Tools */}
+      <View style={styles.toolsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolsScrollContent}
+        >
+          {/* Writing ON/OFF toggle */}
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
+            onPress={() => setWritingEnabled((prev) => !prev)}
+            style={[
+              styles.toolButton,
+              !writingEnabled && styles.writeToggleActive,
+            ]}
             disabled={saveStatus === 'saving'}
           >
-            <Ionicons name="arrow-back" size={22} color="#fff" />
+            <FontAwesome
+              name="pencil-square-o"
+              size={20}
+              color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
+            />
+            <Text style={styles.toolButtonText}>
+              {writingEnabled ? 'ON' : 'OFF'}
+            </Text>
           </TouchableOpacity>
 
-          {/* SAVE button on right */}
+          {/* Color picker circle */}
           <TouchableOpacity
-            onPress={onSaveAll}
-            style={styles.saveButton}
-            disabled={saveStatus === 'saving'}
+            onPress={() => setColorPanelOpen((v) => !v)}
+            style={[
+              styles.toolButton,
+              !writingEnabled && styles.toolsDisabled,
+            ]}
+            disabled={saveStatus === 'saving' || !writingEnabled}
           >
-            <Text style={styles.saveButtonText}>SAVE</Text>
+            <View style={[styles.colorCircle, { backgroundColor: color }]} />
+            <Text style={styles.toolButtonText}>Color</Text>
           </TouchableOpacity>
-        </View>
 
-        {/* Bottom row: Tools */}
-        <View style={styles.toolsRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.toolsScrollContent}
-  
-
+          {/* ➕ Add Text icon (typed text) */}
+          <TouchableOpacity
+            onPress={handleAddTextIconPress}
+            style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+            disabled={saveStatus === 'saving' || !writingEnabled}
           >
-            {/* Writing ON/OFF toggle */}
-            <TouchableOpacity
-              onPress={() => setWritingEnabled((prev) => !prev)}
-              style={[
-                styles.toolButton,
-                !writingEnabled && styles.writeToggleActive,
-              ]}
-              disabled={saveStatus === 'saving'}
-            >
-              <FontAwesome
-                name="pencil-square-o"
-                size={20}
-                color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
-              />
-              <Text style={styles.toolButtonText}>
-                {writingEnabled ? 'ON' : 'OFF'}
-              </Text>
-            </TouchableOpacity>
+            <MaterialCommunityIcons
+              name="format-text"
+              size={20}
+              color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+            />
+            <Text style={styles.toolButtonText}>Text</Text>
+          </TouchableOpacity>
 
-            {/* Color picker circle */}
+          {/* Undo / Redo / Clear group */}
+          <View style={styles.toolGroup}>
             <TouchableOpacity
-              onPress={() => setColorPanelOpen((v) => !v)}
-              style={[
-                styles.toolButton,
-                !writingEnabled && styles.toolsDisabled,
-              ]}
+              onPress={performUndo}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
-              <View
-                style={[
-                  styles.colorCircle,
-                  { backgroundColor: color },
-                ]}
+              <Ionicons
+                name="arrow-undo"
+                size={20}
+                color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
               />
-              <Text style={styles.toolButtonText}>Color</Text>
+              <Text style={styles.toolButtonText}>Undo</Text>
             </TouchableOpacity>
 
-            {/* ➕ Add Text icon (typed text) */}
             <TouchableOpacity
-              onPress={handleAddTextIconPress}
-              style={[
-                styles.toolButton,
-                !writingEnabled && styles.toolsDisabled,
-              ]}
+              onPress={performRedo}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <Ionicons
+                name="arrow-redo"
+                size={20}
+                color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+              />
+              <Text style={styles.toolButtonText}>Redo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (saveStatus === 'saving') return;
+                if (!writingEnabled) {
+                  showEditingOffHint();
+                  return;
+                }
+                setConfirmClearVisible(true);
+              }}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
               <MaterialCommunityIcons
-                name="format-text"
+                name="broom"
                 size={20}
-                color={writingEnabled ? "#ffffff" : "rgba(255,255,255,0.6)"}
+                color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
               />
-              <Text style={styles.toolButtonText}>Text</Text>
+              <Text style={styles.toolButtonText}>Clear</Text>
             </TouchableOpacity>
+          </View>
 
-            {/* Undo / Redo / Clear group */}
-            <View style={styles.toolGroup}>
-              <TouchableOpacity
-                onPress={performUndo}
-                style={[
-                  styles.toolButton,
-                  !writingEnabled && styles.toolsDisabled,
-                ]}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <Ionicons 
-                  name="arrow-undo" 
-                  size={20} 
-                  color={writingEnabled ? "#fff" : "rgba(255,255,255,0.6)"} 
-                />
-                <Text style={styles.toolButtonText}>Undo</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={performRedo}
-                style={[
-                  styles.toolButton,
-                  !writingEnabled && styles.toolsDisabled,
-                ]}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <Ionicons 
-                  name="arrow-redo" 
-                  size={20} 
-                  color={writingEnabled ? "#fff" : "rgba(255,255,255,0.6)"} 
-                />
-                <Text style={styles.toolButtonText}>Redo</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={performClear}
-                style={[
-                  styles.toolButton,
-                  !writingEnabled && styles.toolsDisabled,
-                ]}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <MaterialCommunityIcons 
-                  name="broom" 
-                  size={20} 
-                  color={writingEnabled ? "#fff" : "rgba(255,255,255,0.6)"} 
-                />
-                <Text style={styles.toolButtonText}>Clear</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Patient Sticker */}
+          <TouchableOpacity
+            onPress={handlePatientStickerPress}
+            style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+            disabled={saveStatus === 'saving' || !writingEnabled}
+          >
+            <Ionicons
+              name="person"
+              size={20}
+              color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+            />
+            <Text style={styles.toolButtonText}>Patient Sticker</Text>
+          </TouchableOpacity>
 
-            {/* Patient Sticker */}
+          {/* Doctor Sticker */}
+          <TouchableOpacity
+            onPress={handleDoctorStickerPress}
+            style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+            disabled={saveStatus === 'saving' || !writingEnabled}
+          >
+            <FontAwesome6
+              name="user-doctor"
+              size={20}
+              color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+            />
+            <Text style={styles.toolButtonText}>Doctor Sticker</Text>
+          </TouchableOpacity>
+
+          {/* Pen / Eraser group */}
+          <View style={styles.toolGroup}>
+            {/* Pen */}
             <TouchableOpacity
-              onPress={handlePatientStickerPress}
-              style={[
-                styles.toolButton,
-                !writingEnabled && styles.toolsDisabled,
-              ]}
+              onPress={activatePen}
+              style={[styles.toolChip, tool === 'pen' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
-              <Ionicons 
-                name="person" 
-                size={20} 
-                color={writingEnabled ? "#ffffff" : "rgba(255,255,255,0.6)"} 
+              <MaterialCommunityIcons
+                name="pencil"
+                size={18}
+                color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
               />
-              <Text style={styles.toolButtonText}>Patient Sticker</Text>
-            </TouchableOpacity>
-
-            {/* Doctor Sticker */}
-            <TouchableOpacity
-              onPress={handleDoctorStickerPress}
-              style={[
-                styles.toolButton,
-                !writingEnabled && styles.toolsDisabled,
-              ]}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <FontAwesome6 
-                name="user-doctor" 
-                size={20} 
-                color={writingEnabled ? "#ffffff" : "rgba(255,255,255,0.6)"} 
-              />
-              <Text style={styles.toolButtonText}>Doctor Sticker</Text>
-            </TouchableOpacity>
-
-            {/* Pen / Eraser group */}
-            <View style={styles.toolGroup}>
-              {/* Pen */}
+              <Text style={[
+                styles.toolChipText,
+                tool === 'pen' && styles.toolChipTextActive,
+                !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
+              ]}>
+                Pen
+              </Text>
               <TouchableOpacity
-                onPress={activatePen}
-                style={[
-                  styles.toolChip,
-                  tool === 'pen' && styles.toolChipActive,
-                  !writingEnabled && styles.toolsDisabled,
-                ]}
+                onPress={() => setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))}
+                style={styles.thicknessToggle}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <MaterialCommunityIcons
-                  name="pencil"
-                  size={18}
+                <Ionicons
+                  name={thicknessPanelOpen && thicknessTool === 'pen' ? 'chevron-up' : 'chevron-down'}
+                  size={16}
                   color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                 />
-                <Text style={[
-                  styles.toolChipText,
-                  tool === 'pen' && styles.toolChipTextActive,
-                  !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
-                ]}>
-                  Pen
-                </Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))
-                  }
-                  style={styles.thicknessToggle}
-                  disabled={saveStatus === 'saving' || !writingEnabled}
-                >
-                  <Ionicons
-                    name={
-                      thicknessPanelOpen && thicknessTool === 'pen'
-                        ? 'chevron-up'
-                        : 'chevron-down'
-                    }
-                    size={16}
-                    color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
-                  />
-                </TouchableOpacity>
               </TouchableOpacity>
+            </TouchableOpacity>
 
-              {/* Eraser */}
+            {/* Eraser */}
+            <TouchableOpacity
+              onPress={activateEraser}
+              style={[styles.toolChip, tool === 'eraser' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <MaterialCommunityIcons
+                name="eraser"
+                size={18}
+                color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
+              />
+              <Text style={[
+                styles.toolChipText,
+                tool === 'eraser' && styles.toolChipTextActive,
+                !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
+              ]}>
+                Eraser
+              </Text>
               <TouchableOpacity
-                onPress={activateEraser}
-                style={[
-                  styles.toolChip,
-                  tool === 'eraser' && styles.toolChipActive,
-                  !writingEnabled && styles.toolsDisabled,
-                ]}
+                onPress={() => setThicknessTool((prev) => (prev === 'eraser' ? null : 'eraser'))}
+                style={styles.thicknessToggle}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <MaterialCommunityIcons
-                  name="eraser"
-                  size={18}
+                <Ionicons
+                  name={thicknessPanelOpen && thicknessTool === 'eraser' ? 'chevron-up' : 'chevron-down'}
+                  size={16}
                   color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                 />
-                <Text style={[
-                  styles.toolChipText,
-                  tool === 'eraser' && styles.toolChipTextActive,
-                  !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
-                ]}>
-                  Eraser
-                </Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    setThicknessTool((prev) =>
-                      prev === 'eraser' ? null : 'eraser'
-                    )
-                  }
-                  style={styles.thicknessToggle}
-                  disabled={saveStatus === 'saving' || !writingEnabled}
-                >
-                  <Ionicons
-                    name={
-                      thicknessPanelOpen && thicknessTool === 'eraser'
-                        ? 'chevron-up'
-                        : 'chevron-down'
-                    }
-                    size={16}
-                    color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
-                  />
-                </TouchableOpacity>
               </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      </View>
-
-      {/* Color palette panel */}
-      {colorPanelOpen && (
-        <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }]}>
-          <View style={styles.paletteGrid}>
-            {PALETTE.map((c) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => {
-                  setColor(c);
-                  setColorPanelOpen(false);
-                  
-                  if (tool === 'eraser') {
-                    setTool('pen');
-                    
-                    canvasRefs.current.forEach((canvas) => {
-                      if (!canvas) return;
-                      
-                      if (typeof canvas.setEraser === 'function') {
-                        canvas.setEraser(false);
-                      }
-                      
-                      if (typeof canvas.setColor === 'function') {
-                        canvas.setColor(c);
-                      }
-                    });
-                  } else {
-                    canvasRefs.current.forEach((canvas) => {
-                      if (!canvas || typeof canvas.setColor !== 'function') return;
-                      canvas.setColor(c);
-                    });
-                  }
-                }}
-                style={[
-                  styles.gridSwatchWrap,
-                  c.toUpperCase() === color.toUpperCase()
-                    ? styles.gridSwatchActive
-                    : undefined,
-                ]}
-                disabled={saveStatus === 'saving' || !writingEnabled}
-              >
-                <View style={[styles.gridSwatch, { backgroundColor: c }]} />
-                {c.toUpperCase() === '#FFFFFF' && (
-                  <View style={styles.whiteSwatchBorder} />
-                )}
-              </TouchableOpacity>
-            ))}
+            </TouchableOpacity>
           </View>
-        </Animated.View>
-      )}
-
-      {/* Wrapper that handles pinch zoom / pan */}
-      <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
-        <ScrollView
-          ref={(r) => (scrollRef.current = r)}
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            alignItems: 'center',
-            paddingTop: 8,
-          }}
-          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            scrollY.current = e.nativeEvent.contentOffset.y;
-            syncRightHandleToScroll(scrollY.current);
-          }}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled={true}
-          decelerationRate="fast"
-          overScrollMode="always"
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={!writingEnabled ? true : scrollEnabled}
-        >
-          {IMAGES.length === 0 ? (
-            <View style={styles.noImagesContainer}>
-              <Text style={styles.noImagesText}>
-                No images found for form: {formKeyParam || 'Unknown'}
-              </Text>
-              <Text style={styles.noImagesSubText}>
-                Available forms: {Object.keys(IMAGES_BY_FORM).join(', ')}
-              </Text>
-            </View>
-          ) : (
-            IMAGES.map((src, pageIndex) => {
-              const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
-              const notesForPage = voiceNotes.filter(
-                (n) => n.pageIndex === pageIndex
-              );
-              const stickersForPage = imageStickers.filter(
-                (s) => s.pageIndex === pageIndex
-              );
-
-              return (
-                <View key={`page-${pageIndex}`} style={styles.pageWrap}>
-                  <View style={styles.pageInner}>
-                    <Animated.View
-                      style={[
-                        styles.zoomGroup,
-                        {
-                          transform: [
-                            { translateX: pageTranslateXRef[pageIndex] },
-                            { translateY: pageTranslateYRef[pageIndex] },
-                            { scale: pageScaleAnimsRef[pageIndex] },
-                          ],
-                        },
-                      ]}
-                    >
-                      <Image
-                        source={src}
-                        style={styles.pageImage}
-                        resizeMode="stretch"
-                      />
-
-                      {/* Canvas container - CRITICAL FIX: Prevent drawing when interacting with UI elements */}
-                      <View
-                        style={styles.canvasContainer}
-                       pointerEvents={
-  editingNoteId ||
-  editingStickerId ||
-  !writingEnabled ||
-  multiTouchActive
-    ? 'none'
-    : 'box-none'
-}
-                      >
-          <DrawingCanvas
-  index={pageIndex}
-  savedPath={savedPath}
-  ref={(r) => refSetters.current[pageIndex](r)}
-  drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
-/>
-
-
-                      </View>
-
-                      {/* Voice notes with writingEnabled prop */}
-                      {notesForPage.map((note) => (
-                        <DraggableVoiceText
-                          key={note.id}
-                          note={note}
-                          isEditing={editingNoteId === note.id}
-                          onToggleEdit={(id) => {
-                            if (!writingEnabled) return;
-                            setEditingNoteId((prev) =>
-                              prev === id ? null : id
-                            );
-                            setEditingStickerId(null);
-                          }}
-                          onPositionChange={handleVoiceNotePositionChange}
-                          onBoxSizeChange={handleVoiceNoteBoxChange}
-                          onDelete={handleVoiceNoteDelete}
-                          onChangeText={handleVoiceNoteTextChange}
-                          onChangeFontSize={handleVoiceNoteFontSizeChange}
-                          pageScale={lastScalePerPageRef[pageIndex]}
-                          writingEnabled={writingEnabled}
-                        />
-                      ))}
-
-                      {/* Image stickers with writingEnabled prop */}
-                      {stickersForPage.map((sticker) => (
-                        <DraggableImageSticker
-                          key={sticker.id}
-                          sticker={sticker}
-                          isEditing={editingStickerId === sticker.id}
-                          onToggleEdit={(id) => {
-                            if (!writingEnabled) return;
-                            setEditingStickerId((prev) =>
-                              prev === id ? null : id
-                            );
-                            setEditingNoteId(null);
-                          }}
-                          onPositionChange={handleStickerPositionChange}
-                          onSizeChange={handleStickerSizeChange}
-                          onDelete={handleStickerDelete}
-                          pageScale={lastScalePerPageRef[pageIndex]}
-                          writingEnabled={writingEnabled}
-                        />
-                      ))}
-                    </Animated.View>
-                  </View>
-
-                  <View style={styles.pageLabelCompact} />
-                </View>
-              );
-            })
-          )}
         </ScrollView>
       </View>
+    </View>
 
-      {/* Right scroll handle */}
-      <Animated.View
-        style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]}
-        {...rightPanResponder.panHandlers}
-        pointerEvents="auto"
-      >
-        <View style={styles.rightHandleInner}>
-          <View style={styles.rightGrip} />
-        </View>
-      </Animated.View>
+    {/* Color palette panel */}
+ {colorPanelOpen && (
+  <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }]}>
 
-      {/* 🔍 Zoom +/- buttons */}
-      <View
-        style={[
-          styles.zoomFabContainer,
-          { bottom: (insets.bottom ?? 0) + 24 + 72 },
-        ]}
-      >
+    {/* Close Icon */}
+    <TouchableOpacity
+      onPress={() => setColorPanelOpen(false)}
+      style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        padding: 6,
+        zIndex: 50,
+      }}
+    >
+      <Feather name="x" size={22} color="#333" />
+    </TouchableOpacity>
+
+    <View style={styles.paletteGrid}>
+      {PALETTE.map((c) => (
         <TouchableOpacity
-          style={styles.zoomFabButton}
-          activeOpacity={0.8}
-          onPress={handleZoomInPress}
-          disabled={saveStatus === 'saving'}
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.zoomFabButton, { marginTop: 8 }]}
-          activeOpacity={0.8}
-          onPress={handleZoomOutPress}
-          disabled={saveStatus === 'saving'}
-        >
-          <Ionicons name="remove" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
+          key={c}
+          onPress={() => {
+            setColor(c);
+            setColorPanelOpen(false);
 
-      {/* 🔊 floating mic FAB */}
-      <TouchableOpacity
-        style={[
-          styles.voiceFab,
-          { bottom: (insets.bottom ?? 0) + 24 },
-          !writingEnabled && styles.toolsDisabled,
-        ]}
-        activeOpacity={0.8}
-        onPress={handleVoiceFabPress}
-        disabled={saveStatus === 'saving' || !writingEnabled}
-      >
-        <Ionicons name="mic" size={24} color="#fff" />
-      </TouchableOpacity>
+            if (tool === 'eraser') {
+              setTool('pen');
 
-      {/* "Editing mode Off" bubble */}
-      {editingOffHintVisible && (
-        <View
-          style={[
-            styles.writingOffBanner,
-            { bottom: (insets.bottom ?? 0) + 24 + 56 + 8 },
-          ]}
-        >
-          <Text style={styles.writingOffText}>Editing mode Off</Text>
-        </View>
-      )}
+              canvasRefs.current.forEach((canvas) => {
+                if (!canvas) return;
 
-      {/* Sticker modal */}
-      <Modal
-        visible={stickerModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setStickerModalVisible(false)}
-      >
-        <View style={styles.stickerModalBackdrop}>
-          <View style={styles.stickerModalContent}>
-            <Text style={styles.stickerModalTitle}>
-              Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker
-            </Text>
-            <Image
-              source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE}
-              style={styles.stickerModalImage}
-              resizeMode="contain"
-            />
-            <View style={styles.stickerModalButtonsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.stickerModalButton,
-                  { backgroundColor: '#e5e7eb' },
-                ]}
-                onPress={() => setStickerModalVisible(false)}
-              >
-                <Text
-                  style={[
-                    styles.stickerModalButtonText,
-                    { color: '#111827' },
-                  ]}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.stickerModalButton,
-                  { backgroundColor: '#0EA5A4' },
-                ]}
-                onPress={() => {
-                  if (selectedStickerType) {
-                    addImageSticker(selectedStickerType);
-                  }
-                  setStickerModalVisible(false);
-                  setSelectedStickerType(null);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.stickerModalButtonText,
-                    { color: '#ffffff' },
-                  ]}
-                >
-                  Add
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* 📝 Typed Text Modal */}
-      <Modal
-        visible={textModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTextModalVisible(false)}
-      >
-        <View style={styles.stickerModalBackdrop}>
-          <View style={styles.stickerModalContent}>
-            <Text style={styles.stickerModalTitle}>Add text</Text>
-            <TextInput
-              style={styles.textModalInput}
-              placeholder="Type text to add on image"
-              placeholderTextColor="#9ca3af"
-              multiline
-              value={typedText}
-              onChangeText={setTypedText}
-              autoFocus
-            />
-            <View style={styles.stickerModalButtonsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.stickerModalButton,
-                  { backgroundColor: '#e5e7eb' },
-                ]}
-                onPress={() => {
-                  setTextModalVisible(false);
-                  setTypedText('');
-                }}
-              >
-                <Text
-                  style={[
-                    styles.stickerModalButtonText,
-                    { color: '#111827' },
-                  ]}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.stickerModalButton,
-                  { backgroundColor: '#0EA5A4' },
-                ]}
-                onPress={handleTextModalAdd}
-              >
-                <Text
-                  style={[
-                    styles.stickerModalButtonText,
-                    { color: '#ffffff' },
-                  ]}
-                >
-                  Add
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* 🔽 Thickness dropdown panel */}
-      {thicknessPanelOpen && thicknessTool && writingEnabled && (
-        <View
-          style={[
-            styles.thicknessPanel,
-            { top: topPadding + 150 },
-          ]}
-        >
-          <View style={styles.thicknessHeaderRow}>
-            <Text style={styles.thicknessTitle}>
-              {thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}
-            </Text>
-            <TouchableOpacity onPress={() => setThicknessTool(null)}>
-              <Ionicons name="chevron-up" size={18} color="#111827" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.thicknessContentRow}>
-            <Text style={styles.thicknessBigValue}>
-              {thicknessTool === 'pen' ? penWidth : eraserWidth}px
-            </Text>
-
-            <Slider
-              style={styles.thicknessSlider}
-              minimumValue={thicknessTool === 'pen' ? 1 : 4}
-              maximumValue={thicknessTool === 'pen' ? 40 : 50}
-              step={1}
-              value={thicknessTool === 'pen' ? penWidth : eraserWidth}
-              onValueChange={(v) => {
-                const val = Math.round(v);
-                if (thicknessTool === 'pen') {
-                  setPenWidth(val);
-                } else {
-                  setEraserWidth(val);
-                  canvasRefs.current.forEach((c) => {
-                    if (!c) return;
-                    if (typeof c.setEraser === 'function') {
-                      c.setEraser(true);
-                    }
-                    if (typeof c.setBrushSize === 'function') {
-                      c.setBrushSize(val);
-                    }
-                  });
+                if (typeof canvas.setEraser === 'function') {
+                  canvas.setEraser(false);
                 }
-              }}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            />
-          </View>
-        </View>
-      )}
 
-      {/* Voice overlay */}
-      {voiceVisible && (
-        <View style={styles.voiceOverlay}>
-          <View style={styles.voiceDialog}>
+                if (typeof canvas.setColor === 'function') {
+                  canvas.setColor(c);
+                }
+              });
+            } else {
+              canvasRefs.current.forEach((canvas) => {
+                if (!canvas || typeof canvas.setColor !== 'function') return;
+                canvas.setColor(c);
+              });
+            }
+          }}
+          style={[
+            styles.gridSwatchWrap,
+            c.toUpperCase() === color.toUpperCase() ? styles.gridSwatchActive : undefined,
+          ]}
+          disabled={saveStatus === 'saving' || !writingEnabled}
+        >
+          <View style={[styles.gridSwatch, { backgroundColor: c }]} />
+          {c.toUpperCase() === '#FFFFFF' && <View style={styles.whiteSwatchBorder} />}
+        </TouchableOpacity>
+      ))}
+    </View>
+  </Animated.View>
+)}
+
+
+    {/* Wrapper that handles pinch zoom / pan */}
+    <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
+      <ScrollView
+        ref={(r) => (scrollRef.current = r)}
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          alignItems: 'center',
+          paddingTop: 8,
+        }}
+        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+          syncRightHandleToScroll(scrollY.current);
+        }}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={true}
+        decelerationRate="fast"
+        overScrollMode="always"
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!writingEnabled ? true : scrollEnabled}
+      >
+        {IMAGES.length === 0 ? (
+          <View style={styles.noImagesContainer}>
+            <Text style={styles.noImagesText}>No images found for form: {formKeyParam || 'Unknown'}</Text>
+            <Text style={styles.noImagesSubText}>Available forms: {Object.keys(IMAGES_BY_FORM).join(', ')}</Text>
+          </View>
+        ) : (
+          IMAGES.map((src, pageIndex) => {
+            const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
+            const notesForPage = voiceNotes.filter((n) => n.pageIndex === pageIndex);
+            const stickersForPage = imageStickers.filter((s) => s.pageIndex === pageIndex);
+
+            return (
+              <View key={`page-${pageIndex}`} style={styles.pageWrap}>
+                <View style={styles.pageInner}>
+                  <Animated.View
+                    style={[
+                      styles.zoomGroup,
+                      {
+                        transform: [
+                          { translateX: pageTranslateXRef[pageIndex] },
+                          { translateY: pageTranslateYRef[pageIndex] },
+                          { scale: pageScaleAnimsRef[pageIndex] },
+                        ],
+                      },
+                    ]}
+                  >
+                    <Image source={src} style={styles.pageImage} resizeMode="stretch" />
+
+                    {/* Canvas container - CRITICAL FIX: Prevent drawing when interacting with UI elements */}
+                    <View
+                      style={styles.canvasContainer}
+                      pointerEvents={
+                        editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
+                          ? 'none'
+                          : 'box-none'
+                      }
+                    >
+                      <DrawingCanvas
+                        index={pageIndex}
+                        savedPath={savedPath}
+                        ref={(r) => refSetters.current[pageIndex](r)}
+                        drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
+                      />
+                    </View>
+
+                    {/* Voice notes with writingEnabled prop */}
+                    {notesForPage.map((note) => (
+                      <DraggableVoiceText
+                        key={note.id}
+                        note={note}
+                        isEditing={editingNoteId === note.id}
+                        onToggleEdit={(id) => {
+                          if (!writingEnabled) return;
+                          setEditingNoteId((prev) => (prev === id ? null : id));
+                          setEditingStickerId(null);
+                        }}
+                        onPositionChange={handleVoiceNotePositionChange}
+                        onBoxSizeChange={handleVoiceNoteBoxChange}
+                        onDelete={handleVoiceNoteDelete}
+                        onChangeText={handleVoiceNoteTextChange}
+                        onChangeFontSize={handleVoiceNoteFontSizeChange}
+                        pageScale={lastScalePerPageRef[pageIndex]}
+                        writingEnabled={writingEnabled}
+                      />
+                    ))}
+
+                    {/* Image stickers with writingEnabled prop */}
+                    {stickersForPage.map((sticker) => (
+                      <DraggableImageSticker
+                        key={sticker.id}
+                        sticker={sticker}
+                        isEditing={editingStickerId === sticker.id}
+                        onToggleEdit={(id) => {
+                          if (!writingEnabled) return;
+                          setEditingStickerId((prev) => (prev === id ? null : id));
+                          setEditingNoteId(null);
+                        }}
+                        onPositionChange={handleStickerPositionChange}
+                        onSizeChange={handleStickerSizeChange}
+                        onDelete={handleStickerDelete}
+                        pageScale={lastScalePerPageRef[pageIndex]}
+                        writingEnabled={writingEnabled}
+                      />
+                    ))}
+                  </Animated.View>
+                </View>
+
+                <View style={styles.pageLabelCompact} />
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+    </View>
+
+    {/* Right scroll handle */}
+    <Animated.View style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]} {...rightPanResponder.panHandlers} pointerEvents="auto">
+      <View style={styles.rightHandleInner}>
+        <View style={styles.rightGrip} />
+      </View>
+    </Animated.View>
+
+    {/* 🔍 Zoom +/- buttons */}
+    <View style={[styles.zoomFabContainer, { bottom: (insets.bottom ?? 0) + 24 + 72 }]}>
+      <TouchableOpacity style={styles.zoomFabButton} activeOpacity={0.8} onPress={handleZoomInPress} disabled={saveStatus === 'saving'}>
+        <Ionicons name="add" size={20} color="#fff" />
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.zoomFabButton, { marginTop: 8 }]} activeOpacity={0.8} onPress={handleZoomOutPress} disabled={saveStatus === 'saving'}>
+        <Ionicons name="remove" size={20} color="#fff" />
+      </TouchableOpacity>
+    </View>
+
+    {/* 🔊 floating mic FAB */}
+    <TouchableOpacity
+      style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled]}
+      activeOpacity={0.8}
+      onPress={handleVoiceFabPress}
+      disabled={saveStatus === 'saving' || !writingEnabled}
+    >
+      <Ionicons name="mic" size={24} color="#fff" />
+    </TouchableOpacity>
+
+    {/* "Editing mode Off" bubble */}
+    {editingOffHintVisible && (
+      <View style={[styles.writingOffBanner, { bottom: (insets.bottom ?? 0) + 24 + 56 + 8 }]}>
+        <Text style={styles.writingOffText}>Editing mode Off</Text>
+      </View>
+    )}
+
+    {/* Clear confirmation modal */}
+    <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
+      <View style={styles.confirmModalBackdrop}>
+        <View style={styles.confirmModalCard}>
+          {/* <Text style={styles.confirmModalTitle}>Are you sure?</Text> */}
+          <Text style={styles.confirmModalMessage}>Are you sure you want to clear everything?</Text>
+
+          <View style={styles.confirmModalButtonsRow}>
             <TouchableOpacity
-              style={styles.voiceCloseButton}
-              onPress={handleVoiceClose}
+              style={[styles.confirmModalButton, styles.confirmModalCancel]}
+              onPress={() => setConfirmClearVisible(false)}
             >
-              <Ionicons name="close" size={24} color="#9ca3af" />
+              <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>No</Text>
             </TouchableOpacity>
 
-            <Text style={styles.voiceTitle}>Google</Text>
-            <Text style={styles.voiceSubtitle}>
-              {voiceListening ? voiceText || 'Listening...' : 'Processing...'}
-            </Text>
+            <TouchableOpacity
+              style={[styles.confirmModalButton, styles.confirmModalConfirm]}
+              onPress={performClearConfirmed}
+            >
+              <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Yes</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
 
-            <View style={styles.voiceMicContainer}>
-              {voiceListening && (
-                <View
-                  style={[
-                    styles.voiceMicPulse,
-                    { borderColor: '#2563eb' },
-                  ]}
-                />
-              )}
-              <TouchableOpacity
-                style={[
-                  styles.voiceMicButton,
-                  voiceListening && styles.voiceMicButtonActive,
-                ]}
-                onPress={handleVoiceStopPress}
-                activeOpacity={0.8}
-              >
-                <Ionicons
-                  name={voiceListening ? 'mic' : 'mic-off'}
-                  size={32}
-                  color="#fff"
-                />
+    {/* Sticker modal */}
+    <Modal visible={stickerModalVisible} transparent animationType="fade" onRequestClose={() => setStickerModalVisible(false)}>
+      <View style={styles.stickerModalBackdrop}>
+        <View style={styles.stickerModalContent}>
+          <Text style={styles.stickerModalTitle}>Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker</Text>
+          <Image source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE} style={styles.stickerModalImage} resizeMode="contain" />
+          <View style={styles.stickerModalButtonsRow}>
+            <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => setStickerModalVisible(false)}>
+              <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]}
+              onPress={() => {
+                if (selectedStickerType) {
+                  addImageSticker(selectedStickerType);
+                }
+                setStickerModalVisible(false);
+                setSelectedStickerType(null);
+              }}
+            >
+              <Text style={[styles.stickerModalButtonText, { color: '#ffffff' }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    {/* 📝 Typed Text Modal */}
+    <Modal visible={textModalVisible} transparent animationType="fade" onRequestClose={() => setTextModalVisible(false)}>
+      <View style={styles.stickerModalBackdrop}>
+        <View style={styles.stickerModalContent}>
+          <Text style={styles.stickerModalTitle}>Add text</Text>
+          <TextInput style={styles.textModalInput} placeholder="Type text to add on image" placeholderTextColor="#9ca3af" multiline value={typedText} onChangeText={setTypedText} autoFocus />
+          <View style={styles.stickerModalButtonsRow}>
+            <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => { setTextModalVisible(false); setTypedText(''); }}>
+              <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]} onPress={handleTextModalAdd}>
+              <Text style={[styles.stickerModalButtonText, { color: '#ffffff' }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    {/* 🔽 Thickness dropdown panel */}
+    {thicknessPanelOpen && thicknessTool && writingEnabled && (
+      <View style={[styles.thicknessPanel, { top: topPadding + 150 }]}>
+        <View style={styles.thicknessHeaderRow}>
+          <Text style={styles.thicknessTitle}>{thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}</Text>
+          <TouchableOpacity onPress={() => setThicknessTool(null)}>
+            <Ionicons name="chevron-up" size={18} color="#111827" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.thicknessContentRow}>
+          <Text style={styles.thicknessBigValue}>{thicknessTool === 'pen' ? penWidth : eraserWidth}px</Text>
+
+          <Slider
+            style={styles.thicknessSlider}
+            minimumValue={thicknessTool === 'pen' ? 1 : 4}
+            maximumValue={thicknessTool === 'pen' ? 40 : 50}
+            step={1}
+            value={thicknessTool === 'pen' ? penWidth : eraserWidth}
+            onValueChange={(v) => {
+              const val = Math.round(v);
+              if (thicknessTool === 'pen') {
+                setPenWidth(val);
+              } else {
+                setEraserWidth(val);
+                canvasRefs.current.forEach((c) => {
+                  if (!c) return;
+                  if (typeof c.setEraser === 'function') {
+                    c.setEraser(true);
+                  }
+                  if (typeof c.setBrushSize === 'function') {
+                    c.setBrushSize(val);
+                  }
+                });
+              }
+            }}
+            disabled={saveStatus === 'saving' || !writingEnabled}
+          />
+        </View>
+      </View>
+    )}
+
+    {/* Voice overlay */}
+    {voiceVisible && (
+      <View style={styles.voiceOverlay}>
+        <View style={styles.voiceDialog}>
+          <TouchableOpacity style={styles.voiceCloseButton} onPress={handleVoiceClose}>
+            <Ionicons name="close" size={24} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <Text style={styles.voiceTitle}>Google</Text>
+          <Text style={styles.voiceSubtitle}>{voiceListening ? voiceText || 'Listening...' : 'Processing...'}</Text>
+
+          <View style={styles.voiceMicContainer}>
+            {voiceListening && <View style={[styles.voiceMicPulse, { borderColor: '#2563eb' }]} />}
+            <TouchableOpacity style={[styles.voiceMicButton, voiceListening && styles.voiceMicButtonActive]} onPress={handleVoiceStopPress} activeOpacity={0.8}>
+              <Ionicons name={voiceListening ? 'mic' : 'mic-off'} size={32} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {voiceError ? <Text style={styles.voiceErrorText}>{voiceError}</Text> : null}
+        </View>
+      </View>
+    )}
+
+    {/* Saving / Saved overlay */}
+    {saveStatus !== 'idle' && (
+      <View style={styles.saveOverlay}>
+        <View style={styles.saveDialog}>
+          {saveStatus === 'saving' && (
+            <>
+              <ActivityIndicator size="large" />
+              <Text style={styles.saveTitle}>Saving...</Text>
+              <Text style={styles.saveMessage}>Please wait while we save your changes.</Text>
+            </>
+          )}
+
+          {saveStatus === 'success' && (
+            <>
+              <Ionicons name="checkmark-circle" size={52} color="#16a34a" style={{ marginBottom: 8 }} />
+              <Text style={styles.saveTitle}>Changes saved</Text>
+              <Text style={styles.saveMessage}>Your changes have been saved successfully.</Text>
+              <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveOk}>
+                <Text style={styles.saveOkButtonText}>OK</Text>
               </TouchableOpacity>
-            </View>
+            </>
+          )}
 
-            {voiceError ? (
-              <Text style={styles.voiceErrorText}>{voiceError}</Text>
-            ) : null}
-          </View>
+          {saveStatus === 'error' && (
+            <>
+              <Ionicons name="alert-circle" size={52} color="#dc2626" style={{ marginBottom: 8 }} />
+              <Text style={styles.saveTitle}>Save failed</Text>
+              <Text style={styles.saveMessage}>Could not save changes. Please try again.</Text>
+              <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveErrorOk}>
+                <Text style={styles.saveOkButtonText}>OK</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
-      )}
+      </View>
+    )}
+  </SafeAreaView>
 
-      {/* Saving / Saved overlay */}
-      {saveStatus !== 'idle' && (
-        <View style={styles.saveOverlay}>
-          <View style={styles.saveDialog}>
-            {saveStatus === 'saving' && (
-              <>
-                <ActivityIndicator size="large" />
-                <Text style={styles.saveTitle}>Saving...</Text>
-                <Text style={styles.saveMessage}>
-                  Please wait while we save your changes.
-                </Text>
-              </>
-            )}
 
-            {saveStatus === 'success' && (
-              <>
-                <Ionicons
-                  name="checkmark-circle"
-                  size={52}
-                  color="#16a34a"
-                  style={{ marginBottom: 8 }}
-                />
-                <Text style={styles.saveTitle}>Changes saved</Text>
-                <Text style={styles.saveMessage}>
-                  Your changes have been saved successfully.
-                </Text>
-                <TouchableOpacity
-                  style={styles.saveOkButton}
-                  onPress={handleSaveOk}
-                >
-                  <Text style={styles.saveOkButtonText}>OK</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {saveStatus === 'error' && (
-              <>
-                <Ionicons
-                  name="alert-circle"
-                  size={52}
-                  color="#dc2626"
-                  style={{ marginBottom: 8 }}
-                />
-                <Text style={styles.saveTitle}>Save failed</Text>
-                <Text style={styles.saveMessage}>
-                  Could not save changes. Please try again.
-                </Text>
-                <TouchableOpacity
-                  style={styles.saveOkButton}
-                  onPress={handleSaveErrorOk}
-                >
-                  <Text style={styles.saveOkButtonText}>OK</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      )}
-    </SafeAreaView>
   );
 }
 
@@ -3898,4 +3739,66 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+  confirmModalBackdrop: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.45)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 28,
+},
+confirmModalCard: {
+  width: '100%',
+  maxWidth: 420,
+  backgroundColor: '#fff',
+  borderRadius: 12,
+  padding: 20,
+  alignItems: 'center',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.12,
+  shadowRadius: 18,
+  elevation: 10,
+},
+confirmModalTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  color: '#111827',
+  marginBottom: 8,
+},
+confirmModalMessage: {
+  fontSize: 16,
+  color: '#374151',
+  textAlign: 'center',
+  marginBottom: 18,
+},
+confirmModalButtonsRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  width: '100%',
+},
+confirmModalButton: {
+  flex: 1,
+  paddingVertical: 10,
+  borderRadius: 10,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginHorizontal: 6,
+},
+confirmModalCancel: {
+  backgroundColor: '#eef2f7',
+},
+confirmModalConfirm: {
+  backgroundColor: '#0EA5A4', // your accent color
+},
+confirmModalButtonText: {
+  fontSize: 15,
+  fontWeight: '600',
+},
+confirmModalCancelText: {
+  color: '#111827',
+},
+confirmModalConfirmText: {
+  color: '#ffffff',
+},
+
 });

@@ -249,7 +249,7 @@ logoTagline: {
   // marginTop: 8,
   textAlign: 'center',
   letterSpacing: 0.3,
-  bottom:75
+  // bottom:75
 },
 
   logoBadge: {
@@ -258,10 +258,11 @@ logoTagline: {
   
  logo: {
    width: Dimensions.get('window').width -140,
-  height: Dimensions.get('window').width * 0.35, // keep aspect ratio (adjust as needed)
+  height: Dimensions.get('window').width * 0.25, // keep aspect ratio (adjust as needed)
   resizeMode: 'contain', // or 'contain'
   padding:10,
   color:"#0EA5A4",
+  // backgroundColor:"red"
   
 },
   

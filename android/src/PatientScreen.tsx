@@ -17,6 +17,8 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import FA5 from 'react-native-vector-icons/FontAwesome5';
+import Feather from "react-native-vector-icons/Feather";
+
 
 type Patient = {
   id: string;
@@ -34,6 +36,7 @@ type FilterKey = 'name' | 'ward' | 'doctor' | 'ip';
 
 const ALL_FILTER_KEYS: FilterKey[] = ['name', 'ward', 'doctor', 'ip'];
 
+// (patients list unchanged — omitted here to keep snippet short in explanation; include it in the file)
 const PATIENTS: Patient[] = [
   {
     id: 'P-001',
@@ -164,11 +167,18 @@ export default function PatientScreen() {
     'ip',
   ]);
 
+  // vitals mini-card visibility (toggled by clicking the Beat icon)
+  const [vitalsVisible, setVitalsVisible] = useState(false);
+
   const scaleAnim = useRef(new Animated.Value(0.96)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const translateYAnim = useRef(new Animated.Value(16)).current;
   const heroPulse = useRef(new Animated.Value(1)).current;
   const activeCardScale = useRef(new Animated.Value(1)).current;
+
+  // small animation for vitals card
+  const vitalsScale = useRef(new Animated.Value(0.96)).current;
+  const vitalsOpacity = useRef(new Animated.Value(0)).current;
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ');
@@ -289,10 +299,62 @@ export default function PatientScreen() {
     }
   }, [modalVisible]);
 
+  // Animations specifically for vitals show/hide
+  const showVitals = () => {
+    setVitalsVisible(true);
+    vitalsScale.setValue(0.96);
+    vitalsOpacity.setValue(0);
+    Animated.parallel([
+      Animated.spring(vitalsScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 70,
+      }),
+      Animated.timing(vitalsOpacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+    ]).start();
+  };
+
+  const hideVitals = (cb?: () => void) => {
+    Animated.parallel([
+      Animated.timing(vitalsScale, {
+        toValue: 0.96,
+        duration: 140,
+        useNativeDriver: true,
+        easing: Easing.in(Easing.ease),
+      }),
+      Animated.timing(vitalsOpacity, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setVitalsVisible(false);
+      if (cb) cb();
+    });
+  };
+
+  // Toggle vitals — called when user clicks the Beat icon
+  const toggleVitals = () => {
+    if (vitalsVisible) {
+      hideVitals();
+    } else {
+      showVitals();
+    }
+  };
+
   const openPatientModal = (patient: Patient) => {
     setSelectedPatient(patient);
+
+    // Do NOT auto-show vitals on open anymore — user must click Beat to toggle
     setModalVisible(true);
 
+    // patient detail anim
     scaleAnim.setValue(0.96);
     opacityAnim.setValue(0);
     translateYAnim.setValue(16);
@@ -320,28 +382,37 @@ export default function PatientScreen() {
   };
 
   const closePatientModal = () => {
-    Animated.parallel([
-      Animated.timing(scaleAnim, {
-        toValue: 0.96,
-        duration: 160,
-        useNativeDriver: true,
-        easing: Easing.in(Easing.ease),
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateYAnim, {
-        toValue: 16,
-        duration: 150,
-        useNativeDriver: true,
-        easing: Easing.in(Easing.ease),
-      }),
-    ]).start(() => {
-      setModalVisible(false);
-      setSelectedPatient(null);
-    });
+    // Hide vitals first (if visible) then hide modal
+    const finish = () => {
+      Animated.parallel([
+        Animated.timing(scaleAnim, {
+          toValue: 0.96,
+          duration: 160,
+          useNativeDriver: true,
+          easing: Easing.in(Easing.ease),
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateYAnim, {
+          toValue: 16,
+          duration: 150,
+          useNativeDriver: true,
+          easing: Easing.in(Easing.ease),
+        }),
+      ]).start(() => {
+        setModalVisible(false);
+        setSelectedPatient(null);
+      });
+    };
+
+    if (vitalsVisible) {
+      hideVitals(finish);
+    } else {
+      finish();
+    }
   };
 
   const goToFormType = () => {
@@ -446,6 +517,23 @@ export default function PatientScreen() {
     );
   };
 
+  // Simple static vitals for now (replace with live values later)
+  const getVitalsForPatient = (p: Patient | null) => {
+    // using static values provided by user
+    return {
+      temperature: '99.9 °F',
+      spo2: '98 %',
+      bp: '160 / 90 mmHg',
+      respiration: '35 /min',
+      heartRate: '67 bpm',
+    };
+  };
+
+  const vitals = getVitalsForPatient(selectedPatient);
+
+  // modal shift value when vitals are visible — you can tune this number
+  const modalExtraShiftWhenVitals = vitalsVisible ? 50: 24;
+
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header with Logo + Title + Logout */}
@@ -546,12 +634,75 @@ export default function PatientScreen() {
             onPress={closePatientModal}
           />
 
+          {/* Vitals mini-card (shows only when vitalsVisible true) */}
+          {vitalsVisible && selectedPatient && (
+            <Animated.View
+              style={[
+                styles.vitalsCard,
+                {
+                  opacity: vitalsOpacity,
+                  transform: [{ scale: vitalsScale }],
+                },
+              ]}
+            >
+                <TouchableOpacity
+      onPress={toggleVitals}   // <-- your open/close function
+      style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        padding: 6,
+        zIndex: 20,
+      }}
+    >
+      <Feather name="x" size={22} color="#444" />
+    </TouchableOpacity>
+              <View style={styles.vitalsHeaderRow}>
+                <FA5 name="stethoscope" size={18} color="#0EA5A4" />
+                <Text style={styles.vitalsHeaderText}>Recent Vitals</Text>
+              </View>
+
+              <View style={styles.vitalsGrid}>
+                <View style={styles.vitalTile}>
+                  <Text style={styles.vitalLabel}>Temperature</Text>
+                  <Text style={styles.vitalValue}>{vitals.temperature}</Text>
+                </View>
+
+                <View style={styles.vitalTile}>
+                  <Text style={styles.vitalLabel}>SPO₂</Text>
+                  <Text style={styles.vitalValue}>{vitals.spo2}</Text>
+                </View>
+
+                <View style={styles.vitalTile}>
+                  <Text style={styles.vitalLabel}>Blood Pressure</Text>
+                  <Text style={styles.vitalValue}>{vitals.bp}</Text>
+                </View>
+
+                <View style={styles.vitalTile}>
+                  <Text style={styles.vitalLabel}>Respiration</Text>
+                  <Text style={styles.vitalValue}>{vitals.respiration}</Text>
+                </View>
+
+                {/* Last tile full-width */}
+                <View style={[styles.vitalTile, { width: '100%', marginTop: 6 }]}>
+                  <Text style={styles.vitalLabel}>Heart Rate</Text>
+                  <Text style={styles.vitalValue}>{vitals.heartRate}</Text>
+                </View>
+              </View>
+            </Animated.View>
+          )}
+
           <Animated.View
             style={[
               styles.modalCard,
               {
                 opacity: opacityAnim,
-                transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
+                transform: [
+                  { scale: scaleAnim },
+                  { translateY: translateYAnim },
+                  // extra numeric translate to push patient details down when vitals are visible
+                  { translateY: modalExtraShiftWhenVitals },
+                ],
               },
             ]}
           >
@@ -565,9 +716,18 @@ export default function PatientScreen() {
                 { transform: [{ scale: heroPulse }] },
               ]}
             >
-              <View style={styles.modalHeroInnerCircle}>
-                <FA5 name="heartbeat" size={42} color="#0EA5A4" />
-              </View>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  // Toggle vitals only when user taps the heartbeat icon (Beat)
+                  toggleVitals();
+                }}
+                style={styles.modalHeroInnerTouchable}
+              >
+                <View style={styles.modalHeroInnerCircle}>
+                  <FA5 name="heartbeat" size={42} color="#0EA5A4" />
+                </View>
+              </TouchableOpacity>
             </Animated.View>
 
             {/* Floating arrow with border (60% in, 40% out) */}
@@ -983,8 +1143,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'visible', // allow icons to be half outside
     height: '25%',
-    borderColor:"#0EA5A4",
-    borderWidth:5,
+    borderColor: '#0EA5A4',
+    borderWidth: 5,
+    zIndex: 20,
   },
 
   modalAccentStrip: {
@@ -1004,6 +1165,15 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: '#0EA5A433',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalHeroInnerTouchable: {
+    // Provide a touchable hit area for the heartbeat "Beat" icon
+    width: 54,
+    height: 54,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1138,6 +1308,71 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0F172A',
     fontWeight: '500',
+  },
+
+  // ───────── Vitals card styles ─────────
+  vitalsCard: {
+    position: 'absolute',
+    // moved vitals a bit higher so it sits clearly above the patient modal
+    top: '18%',
+    width: '86%',
+    borderRadius: 14,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    elevation: 22,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 10 },
+    alignItems: 'center',
+    zIndex: 30,
+  },
+
+  vitalsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+    justifyContent:"center"
+  },
+
+  vitalsHeaderText: {
+    marginLeft: 8,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
+  vitalsGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+
+  vitalTile: {
+    width: '48%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'flex-start',
+  },
+
+  vitalLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+  },
+
+  vitalValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: 4,
   },
 
   // ───────── Filter modal styles ─────────
