@@ -18,6 +18,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from 'react-native-vector-icons/Ionicons';
 import FA5 from 'react-native-vector-icons/FontAwesome5';
 import Feather from "react-native-vector-icons/Feather";
+import { PanResponder } from 'react-native';
+
 
 
 type Patient = {
@@ -33,6 +35,8 @@ type Patient = {
 };
 
 type FilterKey = 'name' | 'ward' | 'doctor' | 'ip';
+/* ✅ NEW: Person tab type */
+type PersonTab = 'IN' | 'OUT';
 
 const ALL_FILTER_KEYS: FilterKey[] = ['name', 'ward', 'doctor', 'ip'];
 
@@ -149,15 +153,88 @@ const PATIENTS: Patient[] = [
     admitDate: '2025-12-05',
   },
 ];
+const OUT_PATIENTS: Patient[] = [
+  {
+    id: 'OP-101',
+    name: 'Riya Mehta',
+    age: 26,
+    gender: 'Female',
+    IP: 3001001,
+    room: 'OPD - 01',
+    diagnosis: 'Skin allergy',
+    doctorName: 'Dr. Anil Shah',
+    admitDate: '2025-12-05',
+  },
+  {
+    id: 'OP-102',
+    name: 'Kunal Patel',
+    age: 33,
+    gender: 'Male',
+    IP: 3001002,
+    room: 'OPD - 02',
+    diagnosis: 'Back pain',
+    doctorName: 'Dr. Neha Jain',
+    admitDate: '2025-12-05',
+  },
+  {
+    id: 'OP-103',
+    name: 'Sneha Iyer',
+    age: 41,
+    gender: 'Female',
+    IP: 3001003,
+    room: 'OPD - 05',
+    diagnosis: 'Thyroid follow-up',
+    doctorName: 'Dr. Kavita Rao',
+    admitDate: '2025-12-04',
+  },
+  {
+    id: 'OP-104',
+    name: 'Amit Kulkarni',
+    age: 50,
+    gender: 'Male',
+    IP: 3001004,
+    room: 'OPD - 08',
+    diagnosis: 'Blood pressure check',
+    doctorName: 'Dr. Sandeep Rao',
+    admitDate: '2025-12-03',
+  },
+  {
+    id: 'OP-105',
+    name: 'Tripti Tripathi',
+    age: 26,
+    gender: 'Female',
+    IP: 3001004,
+    room: 'OPD - 08',
+    diagnosis: 'Blood pressure check',
+    doctorName: 'Dr.  Shirish',
+    admitDate: '2025-12-10',
+  },
+
+  {
+    id: 'OP-106',
+    name: 'Mayur Khulabkar',
+    age: 50,
+    gender: 'Male',
+    IP: 3001004,
+    room: 'OPD - 08',
+    diagnosis: 'Blood pressure check',
+    doctorName: 'Dr. Baji Rao',
+    admitDate: '2025-12-11',
+  },
+];
+
+
+
 
 export default function PatientScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
+
   const [searchText, setSearchText] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-
+  const [personTab, setPersonTab] = useState<PersonTab>('IN');
   // NEW: filter modal + selected filters
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterKey[]>([
@@ -188,6 +265,23 @@ export default function PatientScreen() {
       parts[parts.length - 1].charAt(0).toUpperCase()
     );
   };
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 15 && Math.abs(gesture.dy) < 30,
+
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx < -60) {
+          // Swipe LEFT → OUT Patient
+          setPersonTab('OUT');
+        } else if (gesture.dx > 60) {
+          // Swipe RIGHT → IN Patient
+          setPersonTab('IN');
+        }
+      },
+    })
+  ).current;
+
 
   // Whether filters are in a "custom" state (not all, not none)
   const filtersActive =
@@ -195,16 +289,19 @@ export default function PatientScreen() {
     selectedFilters.length < ALL_FILTER_KEYS.length;
 
   const filteredPatients = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    if (!q) return PATIENTS;
+    const SOURCE =
+      personTab === 'IN' ? PATIENTS : OUT_PATIENTS;
 
-    return PATIENTS.filter((p) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return SOURCE;
+
+    return SOURCE.filter((p) => {
       const fields: string[] = [];
 
-      // If user selected specific filters, use those; if none selected,
-      // treat as "no restriction" (search all).
       const activeFilters =
-        selectedFilters.length === 0 ? ALL_FILTER_KEYS : selectedFilters;
+        selectedFilters.length === 0
+          ? ALL_FILTER_KEYS
+          : selectedFilters;
 
       if (activeFilters.includes('name')) {
         fields.push(p.name.toLowerCase());
@@ -219,12 +316,13 @@ export default function PatientScreen() {
         fields.push(String(p.IP).toLowerCase());
       }
 
-      // Always allow ID search regardless of filters
+      // always allow ID search
       fields.push(p.id.toLowerCase());
 
       return fields.some((f) => f.includes(q));
     });
-  }, [searchText, selectedFilters]);
+  }, [searchText, selectedFilters, personTab]);
+
 
   const formatDate = (isoOrString: string) => {
     try {
@@ -472,12 +570,14 @@ export default function PatientScreen() {
                 <Text style={styles.name}>{item.name}</Text>
                 <View style={styles.badge}>
                   <View style={styles.badgeDot} />
-                  <Text style={styles.badgeText}>InPatient</Text>
+                  <Text style={styles.badgeText}>
+                    {personTab === 'OUT' ? 'OutPatient' : 'InPatient'}
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.metaRow}>
-                <Text style={styles.metaText}>IP No: {item.IP}</Text>
+                <Text style={styles.metaText}>UHID: {item.IP}</Text>
                 <Text style={styles.metaText}>
                   {item.gender} • {item.age} yrs
                 </Text>
@@ -493,7 +593,7 @@ export default function PatientScreen() {
               <Text style={styles.roomText}>{item.room}</Text>
 
               <Text style={[styles.labelText, { marginTop: 8 }]}>
-                Admit date
+                {personTab === 'OUT' ? 'Visit Date' : 'Admit Date'}
               </Text>
               <Text style={styles.smallText}>{formatDate(item.admitDate)}</Text>
             </View>
@@ -532,7 +632,7 @@ export default function PatientScreen() {
   const vitals = getVitalsForPatient(selectedPatient);
 
   // modal shift value when vitals are visible — you can tune this number
-  const modalExtraShiftWhenVitals = vitalsVisible ? 50: 24;
+  const modalExtraShiftWhenVitals = vitalsVisible ? 50 : 24;
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
@@ -556,6 +656,43 @@ export default function PatientScreen() {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
+      <View style={{}} {...panResponder.panHandlers}>
+        <View style={styles.personTabWrapper}>
+          <TouchableOpacity
+            onPress={() => setPersonTab('OUT')}
+            style={[
+              styles.personTab,
+              personTab === 'OUT' && styles.personTabActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.personTabText,
+                personTab === 'OUT' && styles.personTabTextActive,
+              ]}
+            >
+              Out Patient
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setPersonTab('IN')}
+            style={[
+              styles.personTab,
+              personTab === 'IN' && styles.personTabActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.personTabText,
+                personTab === 'IN' && styles.personTabTextActive,
+              ]}
+            >
+              In Patient
+            </Text>
+          </TouchableOpacity>
+
+
+        </View></View>
 
       {/* Content */}
       <View style={styles.contentWrapper}>
@@ -571,7 +708,7 @@ export default function PatientScreen() {
               />
               <TextInput
                 multiline={false}
-                placeholder="Search by Name, Ward, Doctor or IP No"
+                placeholder="Search by Name, Ward, Doctor or Patient No"
                 placeholderTextColor="#64748B"
                 value={searchText}
                 onChangeText={setSearchText}
@@ -619,6 +756,9 @@ export default function PatientScreen() {
         />
       </View>
 
+
+
+
       {/* Stylish popup / modal (Patient details) */}
       <Modal
         transparent
@@ -645,18 +785,18 @@ export default function PatientScreen() {
                 },
               ]}
             >
-                <TouchableOpacity
-      onPress={toggleVitals}   // <-- your open/close function
-      style={{
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        padding: 6,
-        zIndex: 20,
-      }}
-    >
-      <Feather name="x" size={22} color="#444" />
-    </TouchableOpacity>
+              <TouchableOpacity
+                onPress={toggleVitals}   // <-- your open/close function
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  padding: 6,
+                  zIndex: 20,
+                }}
+              >
+                <Feather name="x" size={22} color="#444" />
+              </TouchableOpacity>
               <View style={styles.vitalsHeaderRow}>
                 <FA5 name="stethoscope" size={18} color="#0EA5A4" />
                 <Text style={styles.vitalsHeaderText}>Recent Vitals</Text>
@@ -765,8 +905,8 @@ export default function PatientScreen() {
                             selectedPatient.gender === 'Male'
                               ? 'male'
                               : selectedPatient.gender === 'Female'
-                              ? 'female'
-                              : 'person'
+                                ? 'female'
+                                : 'person'
                           }
                           size={14}
                           color="#0EA5A4"
@@ -785,8 +925,9 @@ export default function PatientScreen() {
                           style={{ marginRight: 4 }}
                         />
                         <Text style={styles.chipText}>
-                          IP: {selectedPatient.IP}
+                          {personTab === 'OUT' ? 'Visit No:' : 'IP:'} {selectedPatient.IP}
                         </Text>
+
                       </View>
                     </View>
 
@@ -828,6 +969,7 @@ export default function PatientScreen() {
                   </View>
                   <View style={styles.infoTile}>
                     <Text style={styles.infoLabel}>Admit Date</Text>
+
                     <Text style={styles.infoValue}>
                       {formatDate(selectedPatient.admitDate)}
                     </Text>
@@ -1241,6 +1383,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
   },
+  personTabActive: {
+    backgroundColor: '#fff',
+    elevation: 2,
+  },
+
+  personTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+
+  personTabTextActive: {
+    color: '#0EA5A4',
+  },
 
   modalChipsRow: {
     flexDirection: 'row',
@@ -1310,6 +1466,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  personTabWrapper: {
+    flexDirection: 'row',
+    backgroundColor: '#cdd3dbff',
+    borderRadius: 20,
+    padding: 3,
+    marginBottom: 10,
+    marginHorizontal: 20,
+  },
+
+  personTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+
   // ───────── Vitals card styles ─────────
   vitalsCard: {
     position: 'absolute',
@@ -1333,7 +1505,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     marginBottom: 8,
-    justifyContent:"center"
+    justifyContent: "center"
   },
 
   vitalsHeaderText: {

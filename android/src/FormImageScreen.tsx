@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import AntDesign from 'react-native-vector-icons/AntDesign';
 
 /* ---------------- FORM IMAGES ---------------- */
 
@@ -191,24 +192,29 @@ function FormImageScreen() {
     const overlaySrc = savedPath
       ? { uri: `${savedPath.startsWith('file://') ? savedPath : 'file://' + savedPath}?t=${reloadToken}` }
       : null;
+
     return (
-  
       <View style={styles.pageCard}>
         <View style={[styles.imageBox, { width: SCREEN_W, height: PAGE_HEIGHT }]}>
-          <Image source={source} style={{ width: SCREEN_W, height: PAGE_HEIGHT }} resizeMode="stretch" />
+          <Image
+            source={source}
+            style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
+            resizeMode="stretch"
+          />
 
           {overlaySrc && (
-            <Image source={overlaySrc} style={StyleSheet.absoluteFill} resizeMode="stretch" />
+            <Image
+              source={overlaySrc}
+              style={StyleSheet.absoluteFill}
+              resizeMode="stretch"
+            />
           )}
 
-          {/* -------- STICKERS -------- */}
           {imageStickers
             .filter(s => s.pageIndex === idx)
             .map(s => {
-              const stickerType = s.stickerType ?? 'patient';
-
               const stickerSource =
-                stickerType === 'doctor'
+                s.stickerType === 'doctor'
                   ? DOCTOR_STICKER_SOURCE
                   : NAME_STICKER_IMAGE;
 
@@ -263,6 +269,18 @@ function FormImageScreen() {
         )}
       />
 
+      {/* ---------- FLOATING HISTORY BUTTON ---------- */}
+      <TouchableOpacity
+        style={styles.historyFab}
+        onPress={() => {
+      navigation.navigate('EditorHistory');
+
+        }}
+      >
+        <Text style={styles.historyText}>History</Text>
+        <AntDesign name="folderopen" size={22} color="#0EA5A4" />
+      </TouchableOpacity>
+
       <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
         <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
           <Ionicons name="create-outline" size={22} color="#fff" />
@@ -285,6 +303,7 @@ export default FormImageScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+
   header: {
     height: 52,
     backgroundColor: '#0EA5A4',
@@ -293,17 +312,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   title: { color: '#fff', fontSize: 17, fontWeight: '700' },
+
   pageCard: { flex: 1 },
+
   imageBox: { backgroundColor: '#f8fafc' },
+
   footer: {
     padding: 12,
     backgroundColor: '#f1f5f9',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
   },
+
   footerTxt: { fontSize: 14, fontWeight: '600', color: '#374151' },
+
   bottomSafe: { padding: 16 },
+
   btn: {
     backgroundColor: '#0EA5A4',
     paddingVertical: 15,
@@ -312,11 +338,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   btnTxt: { color: '#fff', marginLeft: 10, fontSize: 16, fontWeight: '700' },
+
   loading: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255,255,255,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  /* ---------- HISTORY FAB ---------- */
+  historyFab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 120,
+    backgroundColor: '#fff',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+
+  historyText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 4,
   },
 });

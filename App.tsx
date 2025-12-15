@@ -18,6 +18,8 @@ import CareScribeLogin from './android/src/components/CareScribeLogin';
 import HMISFormType from './android/src/HMISFromType';
 import NoOFReport from './android/src/NoOFReport';
 import PdfViewerScreen from './android/src/PdfViewerScreen';
+import EditorHistory from './android/src/EditHistory';
+import ImagePdfViewerScreen from './android/src/ImagePdfViewerScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -65,6 +67,11 @@ function App() {
             <Stack.Screen name="HMISFormType" component={HMISFormType} />
             <Stack.Screen name="NoOFReport" component={NoOFReport}/>
             <Stack.Screen name="PdfViewer" component={PdfViewerScreen} />
+            <Stack.Screen name="EditorHistory" component={EditorHistory} />
+            <Stack.Screen
+  name="ImagePdfViewer"
+  component={ImagePdfViewerScreen}
+/>
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>

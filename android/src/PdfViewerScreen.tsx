@@ -1,5 +1,4 @@
-// src/PdfViewerScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,32 +9,54 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import Pdf from 'react-native-pdf';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
+  Dimensions.get('window');
 
-type PdfRouteParams = {
+type RouteParams = {
   title?: string;
-  pdfFileName: string;   // 👈 comes from NoOFReport
+
+  // ✅ ONLY for bundled PDFs
+  pdfFileName?: string;
+
+  // ❌ deprecated (we redirect instead)
+  storageKey?: string;
+  totalPages?: number;
 };
 
-type Props = {
-  route: { params?: PdfRouteParams };
-  navigation: any;
-};
+export default function PdfViewerScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
-export default function PdfViewerScreen({ route, navigation }: Props) {
-  const params = (route?.params || {}) as PdfRouteParams;
-  const { title = 'Report', pdfFileName } = params;
+  const {
+    title = 'Report',
+    pdfFileName,
+    storageKey,
+    totalPages,
+  } = (route.params || {}) as RouteParams;
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // For Android assets in android/app/src/main/assets/pdf
+  /* ---------- REDIRECT GENERATED DOCUMENTS ---------- */
+  useEffect(() => {
+    if (!pdfFileName && storageKey) {
+      // 👉 This is NOT a real PDF → open image-based viewer
+      navigation.replace('ImagePdfViewer', {
+        storageKey,
+        totalPages,
+        title,
+      });
+    }
+  }, [pdfFileName, storageKey, totalPages, title, navigation]);
+
+  /* ---------- SOURCE ---------- */
   const pdfSource = pdfFileName
     ? { uri: `bundle-assets://pdf/${pdfFileName}` }
-    : undefined;
+    : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -45,11 +66,13 @@ export default function PdfViewerScreen({ route, navigation }: Props) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Icon name="chevron-back" size={22} color="#0F172A" />
+          <Ionicons name="chevron-back" size={22} color="#0F172A" />
         </TouchableOpacity>
+
         <Text style={styles.headerTitle} numberOfLines={1}>
           {title}
         </Text>
+
         <View style={{ width: 32 }} />
       </View>
 
@@ -57,7 +80,10 @@ export default function PdfViewerScreen({ route, navigation }: Props) {
       <View style={styles.pdfContainer}>
         {!pdfSource && (
           <View style={styles.center}>
-            <Text style={{ color: '#fff' }}>No PDF source provided</Text>
+            <ActivityIndicator size="large" color="#0EA5A4" />
+            <Text style={styles.infoText}>
+              Opening document…
+            </Text>
           </View>
         )}
 
@@ -65,39 +91,35 @@ export default function PdfViewerScreen({ route, navigation }: Props) {
           <>
             <Pdf
               source={pdfSource}
-              trustAllCerts={false}
               style={styles.pdf}
-              onLoadComplete={(pages, filePath) => {
+              onLoadComplete={() => {
                 setLoading(false);
                 setError(null);
-                console.log(`PDF loaded, pages: ${pages}, file: ${filePath}`);
-              }}
-              onLoadProgress={(progress) => {
-                if (progress < 1) setLoading(true);
               }}
               onError={(err) => {
-                console.log('PDF ERROR', err);
-                const msg = String(err);
+                console.warn('PDF ERROR', err);
                 setLoading(false);
-                setError(msg);
-                // Show actual error even in release
-                Alert.alert('PDF Error', msg);
+                setError(String(err));
+                Alert.alert(
+                  'PDF Error',
+                  'Unable to open PDF file'
+                );
               }}
             />
 
             {loading && !error && (
               <View style={styles.overlay}>
                 <ActivityIndicator size="large" />
-                <Text style={styles.overlayText}>Loading PDF…</Text>
+                <Text style={styles.overlayText}>
+                  Loading PDF…
+                </Text>
               </View>
             )}
 
             {error && (
               <View style={styles.overlay}>
                 <Text style={styles.overlayText}>
-                  Failed to load PDF:
-                  {'\n'}
-                  {error}
+                  Failed to load PDF
                 </Text>
               </View>
             )}
@@ -108,11 +130,14 @@ export default function PdfViewerScreen({ route, navigation }: Props) {
   );
 }
 
+/* ---------------- STYLES ---------------- */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#ECFEFF',
   },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -120,6 +145,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: '#ECFEFF',
   },
+
   backButton: {
     width: 32,
     height: 32,
@@ -130,6 +156,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
   },
+
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -137,20 +164,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
   },
+
   pdfContainer: {
     flex: 1,
     backgroundColor: '#000',
   },
+
   pdf: {
     flex: 1,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
+
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  infoText: {
+    marginTop: 8,
+    color: '#374151',
+    fontWeight: '600',
+  },
+
   overlay: {
     position: 'absolute',
     left: 0,
@@ -162,6 +199,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
+
   overlayText: {
     marginTop: 8,
     color: '#fff',

@@ -30,6 +30,8 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import Feather from "react-native-vector-icons/Feather";
+import type { EditorHistoryItem } from './src/EditorHistory';
+
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
@@ -128,6 +130,18 @@ type DrawingCanvasProps = {
   savedPath?: string | null;
   drawingEnabled?: boolean; // Add this new prop
 };
+const HISTORY_STORAGE_KEY = 'DoctorApp:editorHistory:v1';
+
+type EditorHistoryItem = {
+  id: string;
+  title: string;
+  formKey: string;
+  storageKey: string;
+  totalPages: number;
+  savedAt: number;
+  savedDate: string;
+};
+
 
 // --- stable memoized drawing canvas
 const DrawingCanvas = React.memo(
@@ -2330,78 +2344,76 @@ const pinchResponder = useRef(
   };
 
   const onSaveAll = async () => {
-    if (saveStatus === 'saving') return;
+  if (saveStatus === 'saving') return;
 
-    setSaveStatus('saving');
+  setSaveStatus('saving');
 
-    const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
+  const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
 
-    for (let i = 0; i < IMAGES.length; i++) {
-      const c = canvasRefs.current[i];
-      if (!c || typeof c.saveToFile !== 'function') {
-        allMeta[i] = savedMeta[i] || { bitmapPath: null };
-        continue;
-      }
-
-      const path = makePageFilePath(i);
-
-      try {
-        const result = await c.saveToFile(path);
-
-        if (result) {
-          allMeta[i] = { bitmapPath: path };
-        } else {
-          allMeta[i] = savedMeta[i] || { bitmapPath: null };
-        }
-      } catch (e) {
-        allMeta[i] = savedMeta[i] || { bitmapPath: null };
-      }
+  // 1️⃣ Save all pages
+  for (let i = 0; i < IMAGES.length; i++) {
+    const c = canvasRefs.current[i];
+    if (!c || typeof c.saveToFile !== 'function') {
+      allMeta[i] = savedMeta[i] || { bitmapPath: null };
+      continue;
     }
 
-    console.log('[onSaveAll] allMeta =', allMeta);
-
-    const uiPayload = {
-      color,
-      penWidth,
-      eraserWidth,
-    };
-
-    const fullSaveBlob = {
-      bitmaps: allMeta,
-      voiceNotes,
-      imageStickers,
-    };
+    const path = makePageFilePath(i);
 
     try {
-      if (AsyncStorage) {
-        await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(uiPayload));
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fullSaveBlob));
-        console.log('[onSaveAll] wrote to AsyncStorage key =', STORAGE_KEY);
-      } else {
-        console.log('AsyncStorage not available — session-only.');
-      }
-
-      setSavedMeta(allMeta);
-
-      const payload = {
-        savedStrokes: allMeta,
-        editorUI: uiPayload,
-        editorSavedAt: Date.now(),
-        storageKey: STORAGE_KEY,
-        formName: route.params?.formName,
-        voiceNotes,
-        imageStickers,
-      };
-      lastPayloadRef.current = payload;
-
-      // Only show success message, don't navigate yet
-      setSaveStatus('success');
-      
-    } catch (err) {
-      console.warn('[onSaveAll] Error saving', err);
-      setSaveStatus('error');
+      const result = await c.saveToFile(path);
+      allMeta[i] = result ? { bitmapPath: path } : savedMeta[i];
+    } catch {
+      allMeta[i] = savedMeta[i];
     }
-  };
+  }
+
+  console.log('[onSaveAll] allMeta =', allMeta);
+
+  const uiPayload = { color, penWidth, eraserWidth };
+  const fullSaveBlob = { bitmaps: allMeta, voiceNotes, imageStickers };
+
+  try {
+    if (AsyncStorage) {
+      // 2️⃣ Save editor data
+      await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(uiPayload));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fullSaveBlob));
+
+      // 3️⃣ ✅ SAVE TO EDITOR HISTORY (ONCE)
+      const now = new Date();
+      const savedDateKey = now.toISOString().split('T')[0];
+
+      const historyRaw = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
+      const pdfFileName = `form_${Date.now()}.pdf`;
+      const history: EditorHistoryItem[] = historyRaw
+        ? JSON.parse(historyRaw)
+        : [];
+
+      history.unshift({
+        id: `${Date.now()}`,
+        title: route.params?.formName || 'Untitled Form',
+        formKey: formKeyParam || '',
+        storageKey: STORAGE_KEY,
+        totalPages: IMAGES.length,
+        savedAt: now.getTime(),
+        savedDate: savedDateKey,
+        pdfFileName
+      });
+
+      await AsyncStorage.setItem(
+        HISTORY_STORAGE_KEY,
+        JSON.stringify(history)
+      );
+    }
+
+    setSavedMeta(allMeta);
+    setSaveStatus('success');
+  } catch (err) {
+    console.warn('[onSaveAll] Error saving', err);
+    setSaveStatus('error');
+  }
+};
+
 
   const handleSaveOk = () => {
     const payload =
