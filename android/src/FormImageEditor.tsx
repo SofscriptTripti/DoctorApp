@@ -30,7 +30,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import Feather from "react-native-vector-icons/Feather";
-import type { EditorHistoryItem } from './src/EditorHistory';
+import type { EditorHistoryItem } from './android/src/EditorHistory';
 
 
 import Ionicons from 'react-native-vector-icons/Ionicons';

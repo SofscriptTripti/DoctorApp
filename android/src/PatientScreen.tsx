@@ -1,4 +1,3 @@
-// src/PatientScreen.tsx
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -234,7 +233,8 @@ export default function PatientScreen() {
   const [searchText, setSearchText] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [personTab, setPersonTab] = useState<PersonTab>('IN');
+  // const [personTab, setPersonTab] = useState<PersonTab>('IN');
+  const [personTab, setPersonTab] = useState<PersonTab>('OUT');
   // NEW: filter modal + selected filters
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterKey[]>([
@@ -256,6 +256,20 @@ export default function PatientScreen() {
   // small animation for vitals card
   const vitalsScale = useRef(new Animated.Value(0.96)).current;
   const vitalsOpacity = useRef(new Animated.Value(0)).current;
+const [vitalsData, setVitalsData] = useState({
+  temperature: '99.9 °F',
+  spo2: '98 %',
+  bp: '120/80 mmHg',
+  respiration: '16 /min',
+  heartRate: '72 bpm',
+  weight: '65 kg',      // Weight in kg
+  height: '170 cm',     // Height in cm
+  bmi: '22.5',          // Will be auto-calculated
+});
+
+  const [editingVital, setEditingVital] = useState<keyof typeof vitalsData | null>(null);
+
+
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ');
@@ -267,17 +281,18 @@ export default function PatientScreen() {
   };
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 15 && Math.abs(gesture.dy) < 30,
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        // 🔥 Disable swipe when editing vitals
+        if (editingVital !== null) return false;
+
+        return Math.abs(gesture.dx) > 15 && Math.abs(gesture.dy) < 30;
+      },
 
       onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx < -60) {
-          // Swipe LEFT → OUT Patient
-          setPersonTab('OUT');
-        } else if (gesture.dx > 60) {
-          // Swipe RIGHT → IN Patient
-          setPersonTab('IN');
-        }
+        if (editingVital !== null) return;
+
+        if (gesture.dx < -60) setPersonTab('OUT');
+        else if (gesture.dx > 60) setPersonTab('IN');
       },
     })
   ).current;
@@ -350,6 +365,8 @@ export default function PatientScreen() {
     const dayNum = diffDays >= 0 ? diffDays + 1 : 1;
     return `Day ${dayNum} of admission`;
   };
+  const isEditingAnyVital = editingVital !== null;
+
 
   const handleLogout = () => {
     navigation.reset({
@@ -480,7 +497,6 @@ export default function PatientScreen() {
   };
 
   const closePatientModal = () => {
-    // Hide vitals first (if visible) then hide modal
     const finish = () => {
       Animated.parallel([
         Animated.timing(scaleAnim, {
@@ -524,7 +540,6 @@ export default function PatientScreen() {
     });
   };
 
-  // ───── Filter logic handlers ─────
   const toggleFilter = (key: FilterKey) => {
     setSelectedFilters((prev) => {
       if (prev.includes(key)) {
@@ -533,11 +548,191 @@ export default function PatientScreen() {
       return [...prev, key];
     });
   };
+   const calculateBMI = () => {
+  const weightStr = vitalsData.weight;
+  const heightStr = vitalsData.height;
+  
+  // Extract numeric values
+  const weightMatch = weightStr.match(/^([\d.]+)/);
+  const heightMatch = heightStr.match(/^([\d.]+)/);
+  
+  if (weightMatch && heightMatch) {
+    const weightKg = parseFloat(weightMatch[1]);
+    const heightCm = parseFloat(heightMatch[1]);
+    
+    if (weightKg > 0 && heightCm > 0) {
+      const heightM = heightCm / 100; // Convert cm to meters
+      const bmi = weightKg / (heightM * heightM);
+      const roundedBMI = bmi.toFixed(1);
+      
+      setVitalsData(prev => ({
+        ...prev,
+        bmi: roundedBMI
+      }));
+    }
+  }
+};
 
   const handleClearFilters = () => {
-    // Clear all selections (search will behave as "all fields" since we handle empty separately)
     setSelectedFilters([]);
   };
+const clearVital = (key: keyof typeof vitalsData) => {
+  const currentValue = vitalsData[key];
+  const unitMatch = currentValue.match(/\s*([^\d./]+)$/); // Extract unit from the end
+  
+  if (unitMatch) {
+    // Keep only the unit, clear the number part
+    setVitalsData(prev => ({ ...prev, [key]: unitMatch[1].trim() }));
+  } else {
+    // No unit, clear everything
+    setVitalsData(prev => ({ ...prev, [key]: '' }));
+  }
+  
+  setEditingVital(key);
+};
+
+  const updateVital = (key: keyof typeof vitalsData, value: string) => {
+  setVitalsData(prev => ({ ...prev, [key]: value }));
+  
+  // If updating weight or height, recalculate BMI
+  if (key === 'weight' || key === 'height') {
+    // Use setTimeout to ensure state update happens first
+    setTimeout(() => {
+      calculateBMI();
+    }, 0);
+  }
+};
+  const saveVital = () => {
+    setEditingVital(null);
+  };
+const VitalTile = ({
+  label,
+  value,
+  vitalKey,
+}: {
+  label: string;
+  value: string;
+  vitalKey: keyof typeof vitalsData;
+}) => {
+  // Enhanced function to separate number and unit
+  const separateNumberAndUnit = (val: string) => {
+    if (!val || val === '--') return { number: '', unit: '' };
+    
+    // Extract unit (anything after numbers, decimal points, and slashes)
+    const match = val.match(/^([\d./]+)?\s*(.*)$/);
+    
+    if (match) {
+      return { 
+        number: match[1] ? match[1].trim() : '', 
+        unit: match[2] ? match[2].trim() : '' 
+      };
+    }
+    
+    return { number: '', unit: val.trim() };
+  };
+  
+  const { number: displayNumber, unit } = separateNumberAndUnit(value);
+  const [editingNumber, setEditingNumber] = useState(displayNumber);
+  const [editingUnit] = useState(unit); // Unit is read-only for editing
+
+  useEffect(() => {
+    if (editingVital !== vitalKey) {
+      const { number } = separateNumberAndUnit(value);
+      setEditingNumber(number);
+    }
+  }, [value, editingVital, vitalKey]);
+
+  const handleStartEdit = () => {
+    if (vitalKey === 'bmi') return;
+    setEditingVital(vitalKey);
+  };
+
+  const handleSave = () => {
+    // Combine number with existing unit
+    const savedValue = (editingNumber || '') + (unit ? ` ${unit}` : '');
+    updateVital(vitalKey, savedValue);
+    setEditingVital(null);
+  };
+
+  const handleClear = () => {
+    // Clear the input field
+    setEditingNumber('');
+  };
+
+  const handleClearAll = () => {
+    // When not editing, clear number but keep unit
+    updateVital(vitalKey, unit ? unit : '');
+  };
+
+  const currentIsEditing = editingVital === vitalKey;
+  const isEditable = vitalKey !== 'bmi';
+
+  return (
+    <View style={styles.vitalTile}>
+      <View style={styles.vitalRow}>
+        <Text style={styles.vitalLabel}>{label}</Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {currentIsEditing ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <TextInput
+              placeholder="Enter value"
+              style={[styles.vitalInput, { flex: 1 }]}
+              value={editingNumber}
+              onChangeText={setEditingNumber}
+              keyboardType={
+                vitalKey === 'bp' ? 'numbers-and-punctuation' : 
+                vitalKey === 'weight' || vitalKey === 'height' || vitalKey === 'temperature' || 
+                vitalKey === 'spo2' ? 'decimal-pad' : 'numeric'
+              }
+              autoFocus={true}
+              blurOnSubmit={false}
+              returnKeyType="done"
+              autoCorrect={false}
+              onSubmitEditing={handleSave}
+            />
+            {unit && <Text style={styles.vitalUnit}>{unit}</Text>}
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+            onPress={handleStartEdit}
+            disabled={!isEditable}
+          >
+            <Text style={styles.vitalValue}>
+              {displayNumber || '--'}
+              {unit && <Text style={styles.vitalUnit}> {unit}</Text>}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {currentIsEditing ? (
+          <>
+            <TouchableOpacity
+              style={[styles.vitalClearBtn, { marginLeft: 8 }]}
+              onPress={handleClear}
+            >
+              <Feather name="x" size={16} color="#4d4848ff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.vitalClearBtn, { marginLeft: 8 }]}
+              onPress={handleSave}
+            >
+              <Feather name="check" size={16} color="#4d4848ff" />
+            </TouchableOpacity>
+          </>
+        ) : displayNumber && vitalKey !== 'bmi' ? (
+          <TouchableOpacity
+            style={[styles.vitalClearBtn, { marginLeft: 8 }]}
+            onPress={handleClearAll}
+          >
+            <Feather name="x" size={16} color="#4d4848ff" />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+};
 
   const renderItem = ({ item }: { item: Patient }) => {
     const isActive = selectedPatient?.id === item.id;
@@ -617,18 +812,18 @@ export default function PatientScreen() {
     );
   };
 
-  // Simple static vitals for now (replace with live values later)
-  const getVitalsForPatient = (p: Patient | null) => {
-    // using static values provided by user
-    return {
-      temperature: '99.9 °F',
-      spo2: '98 %',
-      bp: '160 / 90 mmHg',
-      respiration: '35 /min',
-      heartRate: '67 bpm',
-    };
+const getVitalsForPatient = (p: Patient | null) => {
+  return {
+    temperature: '99.9 °F',
+    spo2: '98 %',
+    bp: '120/80 mmHg',
+    respiration: '16 /min',
+    heartRate: '72 bpm',
+    weight: '65 kg',
+    height: '170 cm',
+    bmi: '22.5',
   };
-
+};
   const vitals = getVitalsForPatient(selectedPatient);
 
   // modal shift value when vitals are visible — you can tune this number
@@ -656,7 +851,8 @@ export default function PatientScreen() {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
-      <View style={{}} {...panResponder.panHandlers}>
+      <View {...(!editingVital ? panResponder.panHandlers : {})}>
+
         <View style={styles.personTabWrapper}>
           <TouchableOpacity
             onPress={() => setPersonTab('OUT')}
@@ -692,7 +888,8 @@ export default function PatientScreen() {
           </TouchableOpacity>
 
 
-        </View></View>
+        </View>
+      </View>
 
       {/* Content */}
       <View style={styles.contentWrapper}>
@@ -757,26 +954,29 @@ export default function PatientScreen() {
       </View>
 
 
-
-
-      {/* Stylish popup / modal (Patient details) */}
       <Modal
         transparent
         visible={modalVisible}
         animationType="none"
         onRequestClose={closePatientModal}
       >
-        <View style={styles.modalBackdrop}>
-          {/* Click outside to close */}
+
+        <View
+          style={styles.modalBackdrop}
+          onStartShouldSetResponderCapture={() => false}
+          onMoveShouldSetResponderCapture={() => false}
+        >
+
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
+            disabled={isEditingAnyVital}
             onPress={closePatientModal}
           />
 
-          {/* Vitals mini-card (shows only when vitalsVisible true) */}
           {vitalsVisible && selectedPatient && (
             <Animated.View
+              pointerEvents="box-none"
               style={[
                 styles.vitalsCard,
                 {
@@ -785,8 +985,9 @@ export default function PatientScreen() {
                 },
               ]}
             >
+
               <TouchableOpacity
-                onPress={toggleVitals}   // <-- your open/close function
+                onPress={toggleVitals}
                 style={{
                   position: 'absolute',
                   top: 8,
@@ -801,55 +1002,50 @@ export default function PatientScreen() {
                 <FA5 name="stethoscope" size={18} color="#0EA5A4" />
                 <Text style={styles.vitalsHeaderText}>Recent Vitals</Text>
               </View>
+             <View style={styles.vitalsGrid}>
+  {/* Row 1 */}
+  <View style={styles.vitalRowContainer}>
+    <VitalTile label="Temperature" vitalKey="temperature" value={vitalsData.temperature} />
+    <VitalTile label="SPO₂" vitalKey="spo2" value={vitalsData.spo2} />
+    <VitalTile label="Blood Pressure" vitalKey="bp" value={vitalsData.bp} />
+  </View>
+  
+  {/* Row 2 */}
+  <View style={styles.vitalRowContainer}>
+    <VitalTile label="Respiration" vitalKey="respiration" value={vitalsData.respiration} />
+    <VitalTile label="Heart Rate" vitalKey="heartRate" value={vitalsData.heartRate} />
+    <VitalTile label="Weight" vitalKey="weight" value={vitalsData.weight} />
+  </View>
+  
+  {/* Row 3 */}
+  <View style={styles.vitalRowContainer}>
+    <VitalTile label="Height" vitalKey="height" value={vitalsData.height} />
+    <VitalTile label="BMI" vitalKey="bmi" value={vitalsData.bmi} />
+    {/* Empty space for alignment */}
+    <View style={styles.emptyVitalTile} />
+  </View>
+</View>
 
-              <View style={styles.vitalsGrid}>
-                <View style={styles.vitalTile}>
-                  <Text style={styles.vitalLabel}>Temperature</Text>
-                  <Text style={styles.vitalValue}>{vitals.temperature}</Text>
-                </View>
-
-                <View style={styles.vitalTile}>
-                  <Text style={styles.vitalLabel}>SPO₂</Text>
-                  <Text style={styles.vitalValue}>{vitals.spo2}</Text>
-                </View>
-
-                <View style={styles.vitalTile}>
-                  <Text style={styles.vitalLabel}>Blood Pressure</Text>
-                  <Text style={styles.vitalValue}>{vitals.bp}</Text>
-                </View>
-
-                <View style={styles.vitalTile}>
-                  <Text style={styles.vitalLabel}>Respiration</Text>
-                  <Text style={styles.vitalValue}>{vitals.respiration}</Text>
-                </View>
-
-                {/* Last tile full-width */}
-                <View style={[styles.vitalTile, { width: '100%', marginTop: 6 }]}>
-                  <Text style={styles.vitalLabel}>Heart Rate</Text>
-                  <Text style={styles.vitalValue}>{vitals.heartRate}</Text>
-                </View>
-              </View>
             </Animated.View>
           )}
 
           <Animated.View
+             pointerEvents="box-none"
             style={[
+              
               styles.modalCard,
               {
                 opacity: opacityAnim,
                 transform: [
                   { scale: scaleAnim },
                   { translateY: translateYAnim },
-                  // extra numeric translate to push patient details down when vitals are visible
                   { translateY: modalExtraShiftWhenVitals },
                 ],
               },
             ]}
           >
-            {/* Accent strip on left */}
             <View style={styles.modalAccentStrip} />
 
-            {/* Hero circular icon (half inside, half outside) */}
             <Animated.View
               style={[
                 styles.modalHeroCircle,
@@ -859,7 +1055,6 @@ export default function PatientScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => {
-                  // Toggle vitals only when user taps the heartbeat icon (Beat)
                   toggleVitals();
                 }}
                 style={styles.modalHeroInnerTouchable}
@@ -870,7 +1065,6 @@ export default function PatientScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* Floating arrow with border (60% in, 40% out) */}
             <TouchableOpacity
               onPress={goToFormType}
               style={styles.modalArrowOuter}
@@ -886,6 +1080,7 @@ export default function PatientScreen() {
                 style={styles.modalScroll}
                 contentContainerStyle={styles.modalScrollContent}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
               >
                 {/* Top row: avatar + name + tags */}
                 <View style={[styles.modalTopRow, { marginTop: 18 }]}>
@@ -997,7 +1192,6 @@ export default function PatientScreen() {
         </View>
       </Modal>
 
-      {/* NEW: Filter modal */}
       <Modal
         transparent
         visible={filterModalVisible}
@@ -1065,9 +1259,6 @@ export default function PatientScreen() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0EA5A4' },
 
@@ -1089,6 +1280,33 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#fff',
   },
+  vitalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+
+  vitalClearBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderColor: "4d4848ff",
+    borderWidth: 1,
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  vitalInput: {
+    borderBottomWidth: 1,
+    borderColor: '#CBD5F5',
+    fontSize: 14,
+    paddingVertical: 8, // Increased padding
+    paddingHorizontal: 0,
+    width: '100%',
+  },
+
 
   headerCenter: {
     flex: 1,
@@ -1515,24 +1733,24 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
 
-  vitalsGrid: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
+  // vitalsGrid: {
+  //   width: '100%',
+  //   flexDirection: 'row',
+  //   flexWrap: 'wrap',
+  //   justifyContent: 'space-between',
+  // },
 
-  vitalTile: {
-    width: '48%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'flex-start',
-  },
+  // vitalTile: {
+  //   width: '48%',
+  //   backgroundColor: '#F8FAFC',
+  //   borderRadius: 10,
+  //   paddingVertical: 8,
+  //   paddingHorizontal: 10,
+  //   marginBottom: 8,
+  //   borderWidth: 1,
+  //   borderColor: '#E2E8F0',
+  //   alignItems: 'flex-start',
+  // },
 
   vitalLabel: {
     fontSize: 11,
@@ -1540,11 +1758,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  vitalValue: {
+ vitalValue: {
     fontSize: 15,
     fontWeight: '700',
     color: '#0F172A',
     marginTop: 4,
+  },
+  
+  vitalUnit: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#64748B',
+    marginLeft: 2,
   },
 
   // ───────── Filter modal styles ─────────
@@ -1616,5 +1841,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  vitalsGrid: {
+    width: '100%',
+  },
+  
+  vitalRowContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  
+  vitalTile: {
+    width: '31%', // 3 per row with small gaps
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'flex-start',
+  },
+  
+  emptyVitalTile: {
+    width: '31%',
+    // Invisible placeholder for alignment
   },
 });

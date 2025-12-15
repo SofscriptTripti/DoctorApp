@@ -244,7 +244,6 @@ function FormImageScreen() {
     );
   };
 
-  /* ---------- RENDER ---------- */
 
   return (
     <View style={styles.container}>
@@ -269,7 +268,7 @@ function FormImageScreen() {
         )}
       />
 
-      {/* ---------- FLOATING HISTORY BUTTON ---------- */}
+      {/* ---------- FLOATING HISTORY BUTTON ----------
       <TouchableOpacity
         style={styles.historyFab}
         onPress={() => {
@@ -279,7 +278,7 @@ function FormImageScreen() {
       >
         <Text style={styles.historyText}>History</Text>
         <AntDesign name="folderopen" size={22} color="#0EA5A4" />
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
         <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
@@ -299,7 +298,6 @@ function FormImageScreen() {
 
 export default FormImageScreen;
 
-/* ---------------- STYLES ---------------- */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
