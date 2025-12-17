@@ -667,71 +667,62 @@ const VitalTile = ({
   const currentIsEditing = editingVital === vitalKey;
   const isEditable = vitalKey !== 'bmi';
 
-  return (
-    <View style={styles.vitalTile}>
-      <View style={styles.vitalRow}>
-        <Text style={styles.vitalLabel}>{label}</Text>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {currentIsEditing ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-            <TextInput
-              placeholder="Enter value"
-              style={[styles.vitalInput, { flex: 1 }]}
-              value={editingNumber}
-              onChangeText={setEditingNumber}
-              keyboardType={
-                vitalKey === 'bp' ? 'numbers-and-punctuation' : 
-                vitalKey === 'weight' || vitalKey === 'height' || vitalKey === 'temperature' || 
-                vitalKey === 'spo2' ? 'decimal-pad' : 'numeric'
-              }
-              autoFocus={true}
-              blurOnSubmit={false}
-              returnKeyType="done"
-              autoCorrect={false}
-              onSubmitEditing={handleSave}
-            />
-            {unit && <Text style={styles.vitalUnit}>{unit}</Text>}
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-            onPress={handleStartEdit}
-            disabled={!isEditable}
-          >
-            <Text style={styles.vitalValue}>
-              {displayNumber || '--'}
-              {unit && <Text style={styles.vitalUnit}> {unit}</Text>}
-            </Text>
-          </TouchableOpacity>
-        )}
+return (
+  <View style={styles.vitalTile}>
+    {/* Header row: Label + Edit icon */}
+    <View style={styles.vitalHeaderRow}>
+      <Text style={styles.vitalLabel}>{label}</Text>
 
-        {currentIsEditing ? (
-          <>
-            <TouchableOpacity
-              style={[styles.vitalClearBtn, { marginLeft: 8 }]}
-              onPress={handleClear}
-            >
-              <Feather name="x" size={16} color="#4d4848ff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.vitalClearBtn, { marginLeft: 8 }]}
-              onPress={handleSave}
-            >
-              <Feather name="check" size={16} color="#4d4848ff" />
-            </TouchableOpacity>
-          </>
-        ) : displayNumber && vitalKey !== 'bmi' ? (
-          <TouchableOpacity
-            style={[styles.vitalClearBtn, { marginLeft: 8 }]}
-            onPress={handleClearAll}
-          >
-            <Feather name="x" size={16} color="#4d4848ff" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      {isEditable && (
+        <TouchableOpacity
+          onPress={() =>
+            currentIsEditing ? handleSave() : handleStartEdit()
+          }
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Feather
+            name={currentIsEditing ? 'check' : 'edit-2'}
+            size={14}
+            color="#0EA5A4"
+          />
+        </TouchableOpacity>
+      )}
     </View>
-  );
+
+    {/* Value row */}
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      {currentIsEditing ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <TextInput
+            placeholder="Enter value"
+            style={[styles.vitalInput, { flex: 1 }]}
+            value={editingNumber}
+            onChangeText={setEditingNumber}
+            keyboardType={
+              vitalKey === 'bp'
+                ? 'numbers-and-punctuation'
+                : vitalKey === 'weight' ||
+                  vitalKey === 'height' ||
+                  vitalKey === 'temperature' ||
+                  vitalKey === 'spo2'
+                ? 'decimal-pad'
+                : 'numeric'
+            }
+            autoFocus
+            onSubmitEditing={handleSave}
+          />
+          {unit && <Text style={styles.vitalUnit}>{unit}</Text>}
+        </View>
+      ) : (
+        <Text style={styles.vitalValue}>
+          {displayNumber || '--'}
+          {unit && <Text style={styles.vitalUnit}> {unit}</Text>}
+        </Text>
+      )}
+    </View>
+  </View>
+);
+
 };
 
   const renderItem = ({ item }: { item: Patient }) => {
@@ -811,6 +802,23 @@ const VitalTile = ({
       </Animated.View>
     );
   };
+  const goToRxNotes = () => {
+    if (!selectedPatient) return;
+  
+    const patient = selectedPatient;
+  
+    // ✅ Close modal FIRST
+    closePatientModal();
+  
+    // ⏱️ Small delay so close animation finishes
+    setTimeout(() => {
+      navigation.navigate('RxNotes', {
+        patient,
+        vitals: vitalsData,
+      });
+    }, 200);
+  };
+  
 
 const getVitalsForPatient = (p: Patient | null) => {
   return {
@@ -825,9 +833,18 @@ const getVitalsForPatient = (p: Patient | null) => {
   };
 };
   const vitals = getVitalsForPatient(selectedPatient);
+  const [modalLayout, setModalLayout] = useState<{
+  y: number;
+  height: number;
+} | null>(null);
+
+const [vitalsLayout, setVitalsLayout] = useState<{
+  height: number;
+} | null>(null);
+
 
   // modal shift value when vitals are visible — you can tune this number
-  const modalExtraShiftWhenVitals = vitalsVisible ? 50 : 24;
+  // const modalExtraShiftWhenVitals = vitalsVisible ? 50 : 24;
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
@@ -1039,7 +1056,8 @@ const getVitalsForPatient = (p: Patient | null) => {
                 transform: [
                   { scale: scaleAnim },
                   { translateY: translateYAnim },
-                  { translateY: modalExtraShiftWhenVitals },
+                  // { translateY: modalExtraShiftWhenVitals },
+                     { translateY: translateYAnim },
                 ],
               },
             ]}
@@ -1179,12 +1197,25 @@ const getVitalsForPatient = (p: Patient | null) => {
                       {selectedPatient.diagnosis}
                     </Text>
                   </View>
-                  <View style={styles.infoTile}>
-                    <Text style={styles.infoLabel}>Doctor</Text>
-                    <Text style={styles.infoValue}>
-                      {selectedPatient.doctorName}
-                    </Text>
-                  </View>
+                <View style={styles.infoTile}>
+  <Text style={styles.infoLabel}>Doctor</Text>
+  <Text style={styles.infoValue}>
+    {selectedPatient.doctorName}
+  </Text>
+</View>
+
+<View style={[styles.infoTile, styles.rxNotesButtonContainer]}>
+  <TouchableOpacity
+    style={styles.rxNotesButton}
+    activeOpacity={0.8}
+    onPress={goToRxNotes}
+
+
+  >
+    <Icon name="document-text-outline" size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
+    <Text style={styles.rxNotesText}>RxNotes</Text>
+  </TouchableOpacity>
+</View>
                 </View>
               </ScrollView>
             )}
@@ -1286,7 +1317,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
+rxNotesButtonContainer: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#FFFFFF',  // Changed from '#0EA5A4' to white
+  borderColor: '#0EA5A4',     // Changed from '#fff' to teal
+  borderWidth: 2,
+  width: "15%",
+  height: "20%",
+  borderRadius: 15,
+  marginLeft: 4,
+},
 
+rxNotesButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 12,
+  width: '100%',
+},
+
+rxNotesText: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#0EA5A4',  // Changed from '#fff' to teal
+},
   vitalClearBtn: {
     width: 18,
     height: 18,
@@ -1487,6 +1542,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
   },
+  vitalHeaderRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  width: '100%',
+  marginBottom: 4,
+},
+
 
   modalCard: {
     width: '94%', // almost full width
@@ -1502,7 +1565,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     position: 'relative',
     overflow: 'visible', // allow icons to be half outside
-    height: '25%',
+    height: '31%',
     borderColor: '#0EA5A4',
     borderWidth: 5,
     zIndex: 20,
@@ -1661,7 +1724,7 @@ const styles = StyleSheet.create({
   },
 
   infoTile: {
-    width: '48%',
+    width: '50%',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -1704,7 +1767,7 @@ const styles = StyleSheet.create({
   vitalsCard: {
     position: 'absolute',
     // moved vitals a bit higher so it sits clearly above the patient modal
-    top: '18%',
+    top: '10%',
     width: '86%',
     borderRadius: 14,
     padding: 12,
@@ -1867,4 +1930,22 @@ const styles = StyleSheet.create({
     width: '31%',
     // Invisible placeholder for alignment
   },
+  // Add ONLY these 3 new styles:
+modalsContainer: {
+  width: '94%',
+  alignItems: 'center',
+  maxHeight: '85%',
+},
+
+modalsContainerWithVitals: {
+  // Keep this empty for now
+},
+
+vitalsCloseButton: {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  padding: 6,
+  zIndex: 20,
+},
 });

@@ -20,6 +20,7 @@ import NoOFReport from './android/src/NoOFReport';
 import PdfViewerScreen from './android/src/PdfViewerScreen';
 import EditorHistory from './android/src/EditHistory';
 import ImagePdfViewerScreen from './android/src/ImagePdfViewerScreen';
+import RxNotes from './android/src/RxNotes';
 
 const Stack = createNativeStackNavigator();
 
@@ -68,6 +69,7 @@ function App() {
             <Stack.Screen name="NoOFReport" component={NoOFReport}/>
             <Stack.Screen name="PdfViewer" component={PdfViewerScreen} />
             <Stack.Screen name="EditorHistory" component={EditorHistory} />
+            <Stack.Screen name='RxNotes' component={RxNotes}/>
             <Stack.Screen
   name="ImagePdfViewer"
   component={ImagePdfViewerScreen}
