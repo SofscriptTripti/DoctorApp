@@ -18,15 +18,17 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import FA5 from 'react-native-vector-icons/FontAwesome5';
 import Feather from "react-native-vector-icons/Feather";
 import { PanResponder } from 'react-native';
+import { getAdmittedPatients } from './api/admissionsApi';
+
 
 
 
 type Patient = {
-  id: string;
+  id: string;              // admissionNo
+  patientId: string;       // ✅ UHID
   name: string;
   age: number;
   gender: 'Male' | 'Female' | 'Other';
-  IP: number;
   room: string;
   diagnosis: string;
   doctorName: string;
@@ -38,189 +40,6 @@ type FilterKey = 'name' | 'ward' | 'doctor' | 'ip';
 type PersonTab = 'IN' | 'OUT';
 
 const ALL_FILTER_KEYS: FilterKey[] = ['name', 'ward', 'doctor', 'ip'];
-
-// (patients list unchanged — omitted here to keep snippet short in explanation; include it in the file)
-const PATIENTS: Patient[] = [
-  {
-    id: 'P-001',
-    name: 'Aarav Malhotra',
-    age: 28,
-    gender: 'Male',
-    IP: 2005481,
-    room: 'Ward 3B - Bed 12',
-    diagnosis: 'Post-op observation',
-    doctorName: 'Dr. Sandeep Rao',
-    admitDate: '2025-12-03',
-  },
-  {
-    id: 'P-002',
-    name: 'Ishita Kulkarni',
-    age: 34,
-    gender: 'Female',
-    IP: 2005482,
-    room: 'Ward 2A - Bed 05',
-    diagnosis: 'Diabetes follow-up',
-    doctorName: 'Dr. Meera Joshi',
-    admitDate: '2025-12-02',
-  },
-  {
-    id: 'P-003',
-    name: 'Kabir Narang',
-    age: 19,
-    gender: 'Male',
-    IP: 2005483,
-    room: 'OPD - 07',
-    diagnosis: 'Sports injury (knee)',
-    doctorName: 'Dr. Aman Verma',
-    admitDate: '2025-12-05',
-  },
-  {
-    id: 'P-004',
-    name: "Myra D’Souza",
-    age: 25,
-    gender: 'Female',
-    IP: 2005484,
-    room: 'Ward 1C - Bed 02',
-    diagnosis: 'Anemia workup',
-    doctorName: 'Dr. Lata Fernandes',
-    admitDate: '2025-11-30',
-  },
-  {
-    id: 'P-005',
-    name: 'Vihaan Suri',
-    age: 42,
-    gender: 'Male',
-    IP: 2005485,
-    room: 'ICU - Bed 04',
-    diagnosis: 'Chest pain evaluation',
-    doctorName: 'Dr. Rohit Bedi',
-    admitDate: '2025-12-01',
-  },
-  {
-    id: 'P-006',
-    name: 'Anaya Bansal',
-    age: 31,
-    gender: 'Female',
-    IP: 2005486,
-    room: 'Ward 4A - Bed 09',
-    diagnosis: 'High-risk pregnancy',
-    doctorName: 'Dr. Nisha Kapoor',
-    admitDate: '2025-12-04',
-  },
-  {
-    id: 'P-007',
-    name: 'Reyansh Chawla',
-    age: 37,
-    gender: 'Male',
-    IP: 2005487,
-    room: 'OPD - 03',
-    diagnosis: 'Migraine follow-up',
-    doctorName: 'Dr. Arjun Mal',
-    admitDate: '2025-12-05',
-  },
-  {
-    id: 'P-008',
-    name: 'Siya Khurana',
-    age: 22,
-    gender: 'Female',
-    IP: 2005488,
-    room: 'Day Care - 02',
-    diagnosis: 'IV iron therapy',
-    doctorName: 'Dr. Meera Joshi',
-    admitDate: '2025-12-04',
-  },
-  {
-    id: 'P-009',
-    name: 'Advait Reddy',
-    age: 55,
-    gender: 'Male',
-    IP: 2005489,
-    room: 'Ward 5D - Bed 11',
-    diagnosis: 'Hypertension management',
-    doctorName: 'Dr. Kavita Rao',
-    admitDate: '2025-11-28',
-  },
-  {
-    id: 'P-010',
-    name: 'Kiara Oberoi',
-    age: 29,
-    gender: 'Female',
-    IP: 2005490,
-    room: 'Ward 2B - Bed 01',
-    diagnosis: 'Pre-op assessment',
-    doctorName: 'Dr. Sandeep Rao',
-    admitDate: '2025-12-05',
-  },
-];
-const OUT_PATIENTS: Patient[] = [
-  {
-    id: 'OP-101',
-    name: 'Riya Mehta',
-    age: 26,
-    gender: 'Female',
-    IP: 3001001,
-    room: 'OPD - 01',
-    diagnosis: 'Skin allergy',
-    doctorName: 'Dr. Anil Shah',
-    admitDate: '2025-12-05',
-  },
-  {
-    id: 'OP-102',
-    name: 'Kunal Patel',
-    age: 33,
-    gender: 'Male',
-    IP: 3001002,
-    room: 'OPD - 02',
-    diagnosis: 'Back pain',
-    doctorName: 'Dr. Neha Jain',
-    admitDate: '2025-12-05',
-  },
-  {
-    id: 'OP-103',
-    name: 'Sneha Iyer',
-    age: 41,
-    gender: 'Female',
-    IP: 3001003,
-    room: 'OPD - 05',
-    diagnosis: 'Thyroid follow-up',
-    doctorName: 'Dr. Kavita Rao',
-    admitDate: '2025-12-04',
-  },
-  {
-    id: 'OP-104',
-    name: 'Amit Kulkarni',
-    age: 50,
-    gender: 'Male',
-    IP: 3001004,
-    room: 'OPD - 08',
-    diagnosis: 'Blood pressure check',
-    doctorName: 'Dr. Sandeep Rao',
-    admitDate: '2025-12-03',
-  },
-  {
-    id: 'OP-105',
-    name: 'Tripti Tripathi',
-    age: 26,
-    gender: 'Female',
-    IP: 3001004,
-    room: 'OPD - 08',
-    diagnosis: 'Blood pressure check',
-    doctorName: 'Dr.  Shirish',
-    admitDate: '2025-12-10',
-  },
-
-  {
-    id: 'OP-106',
-    name: 'Mayur Khulabkar',
-    age: 50,
-    gender: 'Male',
-    IP: 3001004,
-    room: 'OPD - 08',
-    diagnosis: 'Blood pressure check',
-    doctorName: 'Dr. Baji Rao',
-    admitDate: '2025-12-11',
-  },
-];
 
 
 
@@ -296,47 +115,45 @@ const [vitalsData, setVitalsData] = useState({
       },
     })
   ).current;
+  const [patients, setPatients] = useState<Patient[]>([]);
+const [loadingPatients, setLoadingPatients] = useState(false);
 
 
   // Whether filters are in a "custom" state (not all, not none)
   const filtersActive =
     selectedFilters.length > 0 &&
     selectedFilters.length < ALL_FILTER_KEYS.length;
+const filteredPatients = useMemo(() => {
+  const q = searchText.trim().toLowerCase();
+  if (!q) return patients;
 
-  const filteredPatients = useMemo(() => {
-    const SOURCE =
-      personTab === 'IN' ? PATIENTS : OUT_PATIENTS;
+  return patients.filter((p) => {
+    const fields: string[] = [];
 
-    const q = searchText.trim().toLowerCase();
-    if (!q) return SOURCE;
+    const activeFilters =
+      selectedFilters.length === 0
+        ? ALL_FILTER_KEYS
+        : selectedFilters;
 
-    return SOURCE.filter((p) => {
-      const fields: string[] = [];
+    if (activeFilters.includes('name')) {
+      fields.push(p.name.toLowerCase());
+    }
+    if (activeFilters.includes('ward')) {
+      fields.push(p.room.toLowerCase());
+    }
+    if (activeFilters.includes('doctor')) {
+      fields.push(p.doctorName.toLowerCase());
+    }
+    // if (activeFilters.includes('ip')) {
+    //   fields.push(String(p.IP));
+    // }
 
-      const activeFilters =
-        selectedFilters.length === 0
-          ? ALL_FILTER_KEYS
-          : selectedFilters;
+    fields.push(p.id.toLowerCase());
 
-      if (activeFilters.includes('name')) {
-        fields.push(p.name.toLowerCase());
-      }
-      if (activeFilters.includes('ward')) {
-        fields.push(p.room.toLowerCase());
-      }
-      if (activeFilters.includes('doctor')) {
-        fields.push(p.doctorName.toLowerCase());
-      }
-      if (activeFilters.includes('ip')) {
-        fields.push(String(p.IP).toLowerCase());
-      }
+    return fields.some((f) => f.includes(q));
+  });
+}, [searchText, selectedFilters, patients]);
 
-      // always allow ID search
-      fields.push(p.id.toLowerCase());
-
-      return fields.some((f) => f.includes(q));
-    });
-  }, [searchText, selectedFilters, personTab]);
 
 
   const formatDate = (isoOrString: string) => {
@@ -395,24 +212,36 @@ const [vitalsData, setVitalsData] = useState({
     ).start();
   };
 
-  useEffect(() => {
-    if (modalVisible) {
-      startHeroPulse();
-      Animated.timing(activeCardScale, {
-        toValue: 0.96,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      heroPulse.stopAnimation();
-      heroPulse.setValue(1);
-      Animated.timing(activeCardScale, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
+ useEffect(() => {
+  const loadPatients = async () => {
+    try {
+      setLoadingPatients(true);
+
+     const res = await getAdmittedPatients({
+  page: 1,
+  pageSize: 50,
+});
+
+console.log('ADMITTED PATIENTS API 👉', res);
+
+// ✅ res itself is the array
+const apiPatients = Array.isArray(res) ? res : [];
+
+
+      const mappedPatients = apiPatients.map(mapApiPatientToUiPatient);
+
+      setPatients(mappedPatients);
+    } catch (error) {
+      console.error('Failed to load patients', error);
+      setPatients([]);
+    } finally {
+      setLoadingPatients(false);
     }
-  }, [modalVisible]);
+  };
+
+  loadPatients();
+}, []);
+
 
   // Animations specifically for vitals show/hide
   const showVitals = () => {
@@ -529,16 +358,20 @@ const [vitalsData, setVitalsData] = useState({
     }
   };
 
-  const goToFormType = () => {
-    if (!selectedPatient) return;
-    const p = selectedPatient;
-    closePatientModal();
-    navigation.navigate('FormType', {
-      patientName: p.name,
-      patientId: p.id,
-      patientIP: p.IP,
-    });
-  };
+ const goToFormType = () => {
+  if (!selectedPatient) return;
+
+  const p = selectedPatient;
+
+  closePatientModal();
+
+  navigation.navigate('FormType', {
+    admissionNo: p.id,        // ✅ MDR001
+    patientId: p.patientId,   // ✅ UH001
+    patientName: p.name,
+  });
+  console.log('Navigating to FormType with admissionNo:', p.id);
+};
 
   const toggleFilter = (key: FilterKey) => {
     setSelectedFilters((prev) => {
@@ -763,7 +596,8 @@ return (
               </View>
 
               <View style={styles.metaRow}>
-                <Text style={styles.metaText}>UHID: {item.IP}</Text>
+                <Text style={styles.metaText}>UHID: {item.patientId}</Text>
+
                 <Text style={styles.metaText}>
                   {item.gender} • {item.age} yrs
                 </Text>
@@ -841,6 +675,25 @@ const getVitalsForPatient = (p: Patient | null) => {
 const [vitalsLayout, setVitalsLayout] = useState<{
   height: number;
 } | null>(null);
+
+
+const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
+  return {
+    id: String(apiPatient?.admissionNo ?? ''),   // ADM001
+    patientId: String(apiPatient?.patientId ?? ''), // ✅ UH001
+    name: apiPatient?.patientName ?? 'Unknown',
+    age: Number(apiPatient?.age ?? 0),
+    gender: apiPatient?.gender ?? 'Other',
+    room: `${apiPatient?.wardName ?? ''} - ${apiPatient?.bedNo ?? ''}`,
+    diagnosis: apiPatient?.admissionStatus ?? 'Admitted',
+    doctorName: apiPatient?.currentDoctorName ?? '—',
+    admitDate: apiPatient?.admissionDate ?? new Date().toISOString(),
+  };
+};
+
+
+
+
 
 
   // modal shift value when vitals are visible — you can tune this number
@@ -954,20 +807,21 @@ const [vitalsLayout, setVitalsLayout] = useState<{
           </View>
         </View>
 
-        <FlatList
-          data={filteredPatients}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={() => (
-            <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: 'white' }}>
-                No patients match your search.
-              </Text>
-            </View>
-          )}
-        />
+     
+        {loadingPatients ? (
+  <View style={{ padding: 24, alignItems: 'center' }}>
+    <Text style={{ color: '#0F172A' }}>Loading patients...</Text>
+  </View>
+) : (
+  <FlatList
+    data={filteredPatients}
+    keyExtractor={(item) => item.id}
+    renderItem={renderItem}
+    showsVerticalScrollIndicator={false}
+    contentContainerStyle={styles.listContent}
+  />
+)}
+
       </View>
 
 
@@ -1138,7 +992,7 @@ const [vitalsLayout, setVitalsLayout] = useState<{
                           style={{ marginRight: 4 }}
                         />
                         <Text style={styles.chipText}>
-                          {personTab === 'OUT' ? 'Visit No:' : 'IP:'} {selectedPatient.IP}
+                          {/* {personTab === 'OUT' ? 'Visit No:' : 'IP:'} {selectedPatient.IP} */}
                         </Text>
 
                       </View>

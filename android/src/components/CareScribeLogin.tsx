@@ -17,6 +17,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { login } from '../api/authApi';
+import { saveAuth } from '../storage/authStorage';
+
 
 type Theme = 'light' | 'dark';
 
@@ -40,6 +43,8 @@ export default function CareScribeLogin({ navigation }: any) {
 
   const [emailError, setEmailError] = useState<string | null>(null);
   const [pwdError, setPwdError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
 
   // animation
   const cardAnim = useRef(new Animated.Value(0)).current;
@@ -54,27 +59,58 @@ export default function CareScribeLogin({ navigation }: any) {
 
   const validate = () => {
     let ok = true;
-
-    const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRx.test(email.trim())) {
-      setEmailError('Please enter a valid email address');
+  
+    if (!email.trim()) {
+      setEmailError('Username is required');
       ok = false;
-    } else setEmailError(null);
-
+    } else {
+      setEmailError(null);
+    }
+  
     if (password.length < 6) {
       setPwdError('Password must be at least 6 characters');
       ok = false;
-    } else setPwdError(null);
-
+    } else {
+      setPwdError(null);
+    }
+  
     return ok;
   };
+  
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!validate()) return;
-
-    // Navigate to PatientScreen instead of showing alert
-    navigation.navigate('PatientScreen');
+  
+    try {
+      setLoading(true);
+  
+      const response = await login(
+        email.trim(),       // username (email)
+        password,
+        'HOSP1'             // tenantCode (can be dynamic later)
+      );
+  
+      // Save token + user info
+      await saveAuth(response.accessToken, response.userInfo);
+  
+      // Navigate after successful login
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'PatientScreen' }],
+      });
+    } catch (error: any) {
+      console.error('Login error', error);
+  
+      const message =
+        error?.response?.data?.message ||
+        'Unable to login. Please try again.';
+  
+      Alert.alert('Login Failed', message);
+    } finally {
+      setLoading(false);
+    }
   };
+  
 
   const handleSocial = (provider: string) => {
     Alert.alert('Social Login', `${provider} login clicked`);
@@ -207,13 +243,19 @@ export default function CareScribeLogin({ navigation }: any) {
 
               {/* Sign In Button at bottom INSIDE card */}
               <View style={styles.cardBottomSection}>
-                <TouchableOpacity
-                  style={[styles.bottomButton, { backgroundColor: BRAND.primary }]}
-                  onPress={handleLogin}
-                >
-                  <Text style={styles.bottomButtonText}>
-                    Sign in to Continue
-                  </Text>
+              <TouchableOpacity
+  style={[
+    styles.bottomButton,
+    { backgroundColor: loading ? '#94A3B8' : BRAND.primary },
+  ]}
+  onPress={handleLogin}
+  disabled={loading}
+>
+
+<Text style={styles.bottomButtonText}>
+  {loading ? 'Signing in...' : 'Sign in to Continue'}
+</Text>
+
                 </TouchableOpacity>
               </View>
             </Animated.View>

@@ -7,13 +7,15 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// NOTE: Use default imports to avoid "undefined" when a file only exports default.
-// If a file also exports a named export and you prefer named imports that's fine,
-// but be sure the export/import style matches.
+// 🔹 REDUX
+import { Provider } from 'react-redux';
+import { store } from './android/src/store';
+
+// Screens
 import PatientScreen from './android/src/PatientScreen';
 import FormType from './android/src/FormType';
-import FormImageScreen from './android/src/FormImageScreen'; // default import
-import FormImageEditor from './android/src/FormImageEditor'; // default import
+import FormImageScreen from './android/src/FormImageScreen';
+import FormImageEditor from './android/src/FormImageEditor';
 import CareScribeLogin from './android/src/components/CareScribeLogin';
 import HMISFormType from './android/src/HMISFromType';
 import NoOFReport from './android/src/NoOFReport';
@@ -25,8 +27,7 @@ import RxNotes from './android/src/RxNotes';
 const Stack = createNativeStackNavigator();
 
 /**
- * Small runtime checks to fail fast if a screen import resolved to `undefined`.
- * If any of these log show up, fix the corresponding file's export/import.
+ * Runtime checks (kept as-is)
  */
 if (!PatientScreen) {
   console.error('[App] PatientScreen import is undefined - check export/import path');
@@ -48,36 +49,71 @@ function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
   return (
-    // GestureHandlerRootView must be the ancestor of any gesture users.
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+    // 🔹 Redux Provider (TOP LEVEL)
+    <Provider store={store}>
+      <GestureHandlerRootView style={styles.root}>
+        <SafeAreaProvider>
+          <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
-        <NavigationContainer>
-          <Stack.Navigator initialRouteName="CareScribeLogin" screenOptions={{ headerShown: false }}>
-            {/* corrected route name */}
-            <Stack.Screen name="CareScribeLogin" component={CareScribeLogin} />
+          <NavigationContainer>
+            <Stack.Navigator
+              initialRouteName="CareScribeLogin"
+              screenOptions={{ headerShown: false }}
+            >
+              {/* Auth */}
+              <Stack.Screen
+                name="CareScribeLogin"
+                component={CareScribeLogin}
+              />
 
-            {/* your main screens */}
-            <Stack.Screen name="PatientScreen" component={PatientScreen} />
-            <Stack.Screen name="FormType" component={FormType} />
+              {/* Main Screens */}
+              <Stack.Screen
+                name="PatientScreen"
+                component={PatientScreen}
+              />
+              <Stack.Screen
+                name="FormType"
+                component={FormType}
+              />
 
-            {/* Form image editor & viewer */}
-            <Stack.Screen name="FormImageEditor" component={FormImageEditor} />
-            <Stack.Screen name="FormImageScreen" component={FormImageScreen} />
-            <Stack.Screen name="HMISFormType" component={HMISFormType} />
-            <Stack.Screen name="NoOFReport" component={NoOFReport}/>
-            <Stack.Screen name="PdfViewer" component={PdfViewerScreen} />
-            <Stack.Screen name="EditorHistory" component={EditorHistory} />
-            <Stack.Screen name='RxNotes' component={RxNotes}/>
-            <Stack.Screen
-  name="ImagePdfViewer"
-  component={ImagePdfViewerScreen}
-/>
-          </Stack.Navigator>
-        </NavigationContainer>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+              {/* Form / Editor */}
+              <Stack.Screen
+                name="FormImageEditor"
+                component={FormImageEditor}
+              />
+              <Stack.Screen
+                name="FormImageScreen"
+                component={FormImageScreen}
+              />
+              <Stack.Screen
+                name="HMISFormType"
+                component={HMISFormType}
+              />
+              <Stack.Screen
+                name="NoOFReport"
+                component={NoOFReport}
+              />
+              <Stack.Screen
+                name="PdfViewer"
+                component={PdfViewerScreen}
+              />
+              <Stack.Screen
+                name="EditorHistory"
+                component={EditorHistory}
+              />
+              <Stack.Screen
+                name="RxNotes"
+                component={RxNotes}
+              />
+              <Stack.Screen
+                name="ImagePdfViewer"
+                component={ImagePdfViewerScreen}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </Provider>
   );
 }
 

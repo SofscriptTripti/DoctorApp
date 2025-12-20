@@ -131,9 +131,6 @@ export default function RxNotes() {
     );
   };
   
-  
-  
-
   const renderVital = (
     label: string,
     key: keyof Vitals,
