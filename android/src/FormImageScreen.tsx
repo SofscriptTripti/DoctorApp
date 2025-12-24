@@ -14,62 +14,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AntDesign from 'react-native-vector-icons/AntDesign';
-
-/* ---------------- FORM IMAGES ---------------- */
-
-const IMAGES_BY_FORM: Record<string, any[]> = {
-  emergency_nursing_assessment: [
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0001.jpg'),
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0002.jpg'),
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0003.jpg'),
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0004.jpg'),
-  ],
-
-  initial_nursing_assessment: [
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0001.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0002.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0003.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0004.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0005.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0006.jpg'),
-  ],
-
-  neonatal_initial_nursing: [
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0001.jpg'),
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0002.jpg'),
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0003.jpg'),
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0004.jpg'),
-  ],
-
-  doctors_handover_isbar: [
-    require('./Images/DoctorHandOverFromat.jpg'),
-  ],
-
-  doctor_chart: [
-    require('./Images/17 Diabetic Chart 2.jpg'),
-  ],
-};
+import { getDocumentPages } from './api/documentsApi';
 
 /* ---------------- STICKERS ---------------- */
-
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
 const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 
 /* ---------------- CONSTS ---------------- */
-
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
 const DEFAULT_IMAGES: any[] = [];
-
-type PageMeta = { bitmapPath?: string | null };
 
 let AsyncStorage: any = null;
 try {
   AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch {}
 
-/* ================== SCREEN ================== */
+type PageMeta = { bitmapPath?: string | null };
 
+/* ================== SCREEN ================== */
 function FormImageScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -77,34 +40,29 @@ function FormImageScreen() {
 
   const formName = params.formName;
   const formKey = params.formKey;
+  const documentId = params.documentId || params.formKey;
 
   const patientName = params.patientName ?? 'Unknown Patient';
   const patientId = params.patientId;
   const patientIP = params.patientIP;
 
-  const perFormStorageKey =
-    params.storageKey ?? 'DoctorApp:pagesBitmaps:v1';
+  const perFormStorageKey = params.storageKey ?? 'DoctorApp:pagesBitmaps:v1';
+  const imagesForThisForm = params.IMAGES_BY_FORM?.[formKey ?? ''] ?? DEFAULT_IMAGES;
 
-  const imagesForThisForm =
-    IMAGES_BY_FORM[formKey ?? ''] ?? DEFAULT_IMAGES;
-
+  const [pages, setPages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [pageMeta, setPageMeta] = useState<PageMeta[]>(
     imagesForThisForm.map(() => ({ bitmapPath: null }))
   );
-
   const [voiceNotes, setVoiceNotes] = useState<any[]>(
     Array.isArray(params.voiceNotes) ? params.voiceNotes : []
   );
-
   const [imageStickers, setImageStickers] = useState<any[]>(
     Array.isArray(params.imageStickers) ? params.imageStickers : []
   );
-
   const [reloadToken, setReloadToken] = useState(0);
-  const [loading, setLoading] = useState(false);
 
-  /* ---------- FOCUS ---------- */
-
+  /* ---------- FOCUS EFFECT ---------- */
   useFocusEffect(
     useCallback(() => {
       const p = route.params || {};
@@ -138,57 +96,34 @@ function FormImageScreen() {
     }, [route.params])
   );
 
-  /* ---------- LOAD STORAGE ---------- */
-
+  /* ---------- LOAD DOCUMENT PAGES ---------- */
   useEffect(() => {
-    if (!AsyncStorage) return;
-    let mounted = true;
+    if (!documentId) return;
 
-    (async () => {
-      setLoading(true);
+    const loadPages = async () => {
       try {
-        const raw = await AsyncStorage.getItem(perFormStorageKey);
-        if (!mounted || !raw) return;
+        setLoading(true);
+        console.log('📄 Fetching pages for document:', documentId);
 
-        const parsed = JSON.parse(raw);
-        parsed.bitmaps && setPageMeta(parsed.bitmaps);
-        parsed.voiceNotes && setVoiceNotes(parsed.voiceNotes);
-        parsed.imageStickers && setImageStickers(parsed.imageStickers);
+        const res = await getDocumentPages(documentId);
+        console.log('📄 Pages response:', res);
 
-        setReloadToken(t => t + 1);
+        // Adjust based on your API response structure
+        setPages(Array.isArray(res) ? res : res.pages ?? []);
       } catch (e) {
-        console.warn('Storage load error', e);
+        console.error('Failed to load document pages', e);
+        setPages([]);
       } finally {
-        mounted && setLoading(false);
+        setLoading(false);
       }
-    })();
-
-    return () => {
-      mounted = false;
     };
-  }, [perFormStorageKey]);
 
-  /* ---------- OPEN EDITOR ---------- */
+    loadPages();
+  }, [documentId]);
 
-  const openFullEditor = () => {
-    navigation.navigate('FormImageEditor', {
-      singleImageMode: false,
-      storageKey: perFormStorageKey,
-      savedStrokes: pageMeta,
-      voiceNotes,
-      imageStickers,
-      formKey,
-      formName,
-      patientName,
-      patientId,
-      patientIP,
-    });
-  };
-
-  /* ---------- PAGE CARD ---------- */
-
-  const PageCard = ({ idx, source }: any) => {
-    const savedPath = pageMeta[idx]?.bitmapPath;
+  /* ---------- PAGE CARD COMPONENT ---------- */
+  const PageCard = ({ page, index }: { page: any; index: number }) => {
+    const savedPath = pageMeta[index]?.bitmapPath;
     const overlaySrc = savedPath
       ? { uri: `${savedPath.startsWith('file://') ? savedPath : 'file://' + savedPath}?t=${reloadToken}` }
       : null;
@@ -197,9 +132,9 @@ function FormImageScreen() {
       <View style={styles.pageCard}>
         <View style={[styles.imageBox, { width: SCREEN_W, height: PAGE_HEIGHT }]}>
           <Image
-            source={source}
+            source={{ uri: page.imageUrl || page.url || page.uri }}
             style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
-            resizeMode="stretch"
+            resizeMode="contain"
           />
 
           {overlaySrc && (
@@ -211,7 +146,7 @@ function FormImageScreen() {
           )}
 
           {imageStickers
-            .filter(s => s.pageIndex === idx)
+            .filter(s => s.pageIndex === index)
             .map(s => {
               const stickerSource =
                 s.stickerType === 'doctor'
@@ -237,13 +172,30 @@ function FormImageScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerTxt}>
-            Page {idx + 1} of {imagesForThisForm.length}
+            Page {index + 1} of {pages.length}
           </Text>
         </View>
       </View>
     );
   };
 
+  /* ---------- OPEN EDITOR ---------- */
+  const openFullEditor = () => {
+    navigation.navigate('FormImageEditor', {
+      singleImageMode: false,
+      storageKey: perFormStorageKey,
+      savedStrokes: pageMeta,
+      voiceNotes,
+      imageStickers,
+      formKey,
+      formName,
+      patientName,
+      patientId,
+      patientIP,
+      documentId,
+     apiPages: pages,
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -257,28 +209,22 @@ function FormImageScreen() {
         </View>
       </SafeAreaView>
 
-      <FlatList
-        data={imagesForThisForm}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(_, i) => `p-${i}`}
-        renderItem={({ item, index }) => (
-          <PageCard idx={index} source={item} />
-        )}
-      />
-
-      {/* ---------- FLOATING HISTORY BUTTON ----------
-      <TouchableOpacity
-        style={styles.historyFab}
-        onPress={() => {
-      navigation.navigate('EditorHistory');
-
-        }}
-      >
-        <Text style={styles.historyText}>History</Text>
-        <AntDesign name="folderopen" size={22} color="#0EA5A4" />
-      </TouchableOpacity> */}
+      {pages.length > 0 ? (
+        <FlatList
+          data={pages}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item, index) => `page-${index}`}
+          renderItem={({ item, index }) => <PageCard page={item} index={index} />}
+        />
+      ) : (
+        !loading && (
+          <View style={styles.noPagesContainer}>
+            <Text style={styles.noPagesText}>No pages found for this document</Text>
+          </View>
+        )
+      )}
 
       <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
         <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
@@ -298,10 +244,8 @@ function FormImageScreen() {
 
 export default FormImageScreen;
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-
   header: {
     height: 52,
     backgroundColor: '#0EA5A4',
@@ -310,24 +254,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   title: { color: '#fff', fontSize: 17, fontWeight: '700' },
-
   pageCard: { flex: 1 },
-
   imageBox: { backgroundColor: '#f8fafc' },
-
   footer: {
     padding: 12,
     backgroundColor: '#f1f5f9',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
   },
-
   footerTxt: { fontSize: 14, fontWeight: '600', color: '#374151' },
-
   bottomSafe: { padding: 16 },
-
   btn: {
     backgroundColor: '#0EA5A4',
     paddingVertical: 15,
@@ -336,37 +273,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   btnTxt: { color: '#fff', marginLeft: 10, fontSize: 16, fontWeight: '700' },
-
   loading: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255,255,255,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  /* ---------- HISTORY FAB ---------- */
-  historyFab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 120,
-    backgroundColor: '#fff',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+  noPagesContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
-
-  historyText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 4,
+  noPagesText: {
+    fontSize: 16,
+    color: '#666',
   },
 });

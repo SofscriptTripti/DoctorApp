@@ -1304,11 +1304,36 @@ export default function FormImageEditor() {
   const insets = useSafeAreaInsets();
 
   const formKeyParam = route.params?.formKey as string | undefined;
+  const apiPages = route.params?.apiPages as
+  | { pageNumber: number; imageUrl: string }[]
+  | undefined;
+
   
-  const IMAGES = useMemo(
-    () => IMAGES_BY_FORM[formKeyParam ?? ''] ?? DEFAULT_IMAGES,
-    [formKeyParam]
-  );
+  type EditorImage =
+  | { type: 'local'; source: any }
+  | { type: 'api'; uri: string };
+
+const IMAGES: EditorImage[] = useMemo(() => {
+  // 1️⃣ API images take priority
+  if (Array.isArray(apiPages) && apiPages.length > 0) {
+    return apiPages.map(p => ({
+      type: 'api',
+      uri: p.imageUrl,
+    }));
+  }
+
+  // 2️⃣ fallback to local images
+  const local = IMAGES_BY_FORM[formKeyParam ?? ''];
+  if (Array.isArray(local)) {
+    return local.map(img => ({
+      type: 'local',
+      source: img,
+    }));
+  }
+
+  return [];
+}, [apiPages, formKeyParam]);
+
 
   const storageKeyParam = route.params?.storageKey as string | undefined;
   const uiKeyParam = route.params?.uiStorageKey as string | undefined;
@@ -2186,7 +2211,7 @@ const pinchResponder = useRef(
             initialDistance: distance,
             startScale: currentScale,
             pageIndex,
-            startMidpoint: { x: midX, y: midY },
+            // startMidpoint: { x: midX, y: midY },
           };
           try {
             panStartPerPageRef[pageIndex] = {
@@ -2397,7 +2422,6 @@ const pinchResponder = useRef(
         totalPages: IMAGES.length,
         savedAt: now.getTime(),
         savedDate: savedDateKey,
-        pdfFileName
       });
 
       await AsyncStorage.setItem(
@@ -2785,7 +2809,20 @@ const pinchResponder = useRef(
                       },
                     ]}
                   >
-                    <Image source={src} style={styles.pageImage} resizeMode="stretch" />
+                    {src.type === 'api' ? (
+  <Image
+    source={{ uri: src.uri }}
+    style={styles.pageImage}
+    resizeMode="stretch"
+  />
+) : (
+  <Image
+    source={src.source}
+    style={styles.pageImage}
+    resizeMode="stretch"
+  />
+)}
+
 
                     {/* Canvas container - CRITICAL FIX: Prevent drawing when interacting with UI elements */}
                     <View

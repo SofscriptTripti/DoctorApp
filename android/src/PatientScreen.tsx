@@ -20,9 +20,6 @@ import Feather from "react-native-vector-icons/Feather";
 import { PanResponder } from 'react-native';
 import { getAdmittedPatients } from './api/admissionsApi';
 
-
-
-
 type Patient = {
   id: string;              // admissionNo
   patientId: string;       // ✅ UHID
@@ -1388,7 +1385,6 @@ rxNotesText: {
     color: '#0EA5A4',
   },
 
-  // ───────── Modal styles (Patient) ─────────
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
@@ -1649,25 +1645,6 @@ rxNotesText: {
     fontWeight: '700',
     color: '#0F172A',
   },
-
-  // vitalsGrid: {
-  //   width: '100%',
-  //   flexDirection: 'row',
-  //   flexWrap: 'wrap',
-  //   justifyContent: 'space-between',
-  // },
-
-  // vitalTile: {
-  //   width: '48%',
-  //   backgroundColor: '#F8FAFC',
-  //   borderRadius: 10,
-  //   paddingVertical: 8,
-  //   paddingHorizontal: 10,
-  //   marginBottom: 8,
-  //   borderWidth: 1,
-  //   borderColor: '#E2E8F0',
-  //   alignItems: 'flex-start',
-  // },
 
   vitalLabel: {
     fontSize: 11,
