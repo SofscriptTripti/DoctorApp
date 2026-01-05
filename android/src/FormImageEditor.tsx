@@ -30,9 +30,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import Feather from "react-native-vector-icons/Feather";
-import type { EditorHistoryItem } from './android/src/EditorHistory';
-
-
+// import type { EditorHistoryItem } from './android/src/EditorHistory';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -61,41 +59,11 @@ const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
 const PAGE_SPACING = 16;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
-
-const IMAGES_BY_FORM: Record<string, any[]> = {
-  emergency_nursing_assessment: [
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0001.jpg'),
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0002.jpg'),
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0003.jpg'),
-    require('./Images/Emergency Nursing Assessment/6 Emergency Nursing Assessment_pages-to-jpg-0004.jpg'),
-  ],
-
-  initial_nursing_assessment: [
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0001.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0002.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0003.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0004.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0005.jpg'),
-    require('./Images/Initial Nursing Assessment/1 Initial Nursing Assessment -ADULTS_pages-to-jpg-0006.jpg'),
-  ],
-
-  neonatal_initial_nursing: [
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0001.jpg'),
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0002.jpg'),
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0003.jpg'),
-    require('./Images/Neonatal Initial Nursing/2 Neonatal Initial Nursing Assessment Form_page-0004.jpg'),
-  ],
-  doctors_handover_isbar: [
-    require('./Images/DoctorHandOverFromat.jpg'),
-  ],
-  doctor_chart: [ require('./Images/17 Diabetic Chart 2.jpg')],
-};
-
 const DEFAULT_IMAGES: any[] = [];
 
 // 👉 Sticker images (local assets)
-const PATIENT_STICKER_SOURCE = require('./Images/NameStick.jpg');
-const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
+import PATIENT_STICKER_SOURCE from './Images/NameStick.jpg';
+import DOCTOR_STICKER_SOURCE from './Images/Doctor_Sticker.jpg';
 
 type SavedMeta = { bitmapPath?: string | null };
 
@@ -2785,8 +2753,9 @@ const pinchResponder = useRef(
       >
         {IMAGES.length === 0 ? (
           <View style={styles.noImagesContainer}>
-            <Text style={styles.noImagesText}>No images found for form: {formKeyParam || 'Unknown'}</Text>
-            <Text style={styles.noImagesSubText}>Available forms: {Object.keys(IMAGES_BY_FORM).join(', ')}</Text>
+            {/* <Text style={styles.noImagesText}>No images found for form: {formKeyParam || 'Unknown'}</Text>
+            <Text style={styles.noImagesSubText}>Available forms: {Object.keys(IMAGES_BY_FORM).join(', ')}</Text> */}
+ <Text style={styles.noImagesText}>No images found for form</Text>
           </View>
         ) : (
           IMAGES.map((src, pageIndex) => {

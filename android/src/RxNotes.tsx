@@ -11,11 +11,13 @@ import {
   Alert,
   BackHandler,
   AppState,
+  Modal,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Feather from 'react-native-vector-icons/Feather';
+import { Calendar } from 'react-native-calendars';
 
 type Patient = {
   id: string;
@@ -60,6 +62,32 @@ type SymptomItem = {
   date: string;
 };
 
+type MedicationItem = {
+  id: string;
+  name: string;
+  dose: string;
+  unit: string;
+  frequency: string;
+  timings: string[];
+  duration: string;
+  note: string;
+};
+
+type MedicationInfusionItem = {
+  id: string;
+  name: string;
+  dose: string;
+  diluent: string;
+  diluentVolume: string;
+  time: string;
+  dropFactor: string;
+  note: string;
+  drugVolume: string;
+  totalVolume: string;
+  rate: string;
+  dropsPerMinute: string;
+};
+
 type RxNotesData = {
   vitals: Vitals;
   symptoms: SymptomItem[];
@@ -72,8 +100,8 @@ type RxNotesData = {
 
 const SEVERITY_OPTIONS = ['Mild', 'Moderate', 'Severe'] as const;
 const SINCE_UNITS = ['Days', 'Weeks', 'Months', 'Years'] as const;
-
 const DIAGNOSIS_TYPE_OPTIONS = ['Provisional', 'Final'] as const;
+const DILUENT_OPTIONS = ['NS', 'D5W', 'D10W', 'DNS'];
 
 const VITALS_CONFIG = [
   { label: 'Temp', key: 'temperature', unit: '°F', editable: true },
@@ -89,6 +117,12 @@ const VITALS_CONFIG = [
 // Storage key for draft
 const DRAFT_STORAGE_KEY = 'rx_notes_draft_';
 
+// Months array
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export default function RxNotes() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -98,13 +132,40 @@ export default function RxNotes() {
     vitals: Vitals;
   };
 
-  // State for collapsed sections
   const [expandedSections, setExpandedSections] = useState({
     vitals: false,
     symptoms: false,
     doctorsNote: false,
     diagnosis: false,
+    medication: false,
+    medicationInfusion: false
   });
+
+  const [selectedRecentMed, setSelectedRecentMed] = useState<string | null>(null);
+  const [showFreqModal, setShowFreqModal] = useState(false);
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [customFrequency, setCustomFrequency] = useState<number[]>([0, 0, 0]);
+  const [timings, setTimings] = useState<string[]>([]);
+  const [medications, setMedications] = useState<MedicationItem[]>([]);
+  const [activeMedicine, setActiveMedicine] = useState<MedicationItem | null>(null);
+  const [medSearch, setMedSearch] = useState('');
+  const [selectedRecentInfusion, setSelectedRecentInfusion] = useState<string | null>(null);
+  const [activeInfusion, setActiveInfusion] = useState<MedicationInfusionItem | null>(null);
+  const [diluentOpen, setDiluentOpen] = useState(false);
+  const [calendarView, setCalendarView] = useState<'start' | 'end'>('start');
+  const [markedDates, setMarkedDates] = useState<{[date: string]: any}>({});
+  const [selectedStartDate, setSelectedStartDate] = useState<string>('');
+  const [selectedEndDate, setSelectedEndDate] = useState<string>('');
+  
+  // Calendar state
+  const today = new Date();
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [showMonthFilter, setShowMonthFilter] = useState(false);
+  const [showYearFilter, setShowYearFilter] = useState(false);
+
+  // Generate years for filter (from current year - 10 to current year + 10)
+  const years = Array.from({ length: 21 }, (_, i) => currentYear - 10 + i);
 
   // Default symptoms data
   const defaultSymptoms: SymptomItem[] = [
@@ -250,6 +311,26 @@ export default function RxNotes() {
   const [openTypeDropdownId, setOpenTypeDropdownId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
+  // ---- Medication Order Table ----
+  const [showAllMedOrders, setShowAllMedOrders] = useState(false);
+  const [medicationOrderTable, setMedicationOrderTable] = useState([
+    { id: '1', name: 'Paracetamol', dose: '500 mg', freq: '1-0-1', duration: '3 Days', note: '-' },
+    { id: '2', name: 'Azithromycin', dose: '250 mg', freq: '1-0-0', duration: '5 Days', note: '-' },
+    { id: '3', name: 'Pantoprazole', dose: '40 mg', freq: '0-0-1', duration: '7 Days', note: 'Before meal' },
+    { id: '4', name: 'Vitamin C', dose: '500 mg', freq: '1-0-1', duration: '10 Days', note: '-' },
+    { id: '5', name: 'Cetirizine', dose: '10 mg', freq: '0-0-1', duration: '5 Days', note: 'Night' },
+  ]);
+
+  // ---- Medication Infusion Table ----
+  const [showAllInfusions, setShowAllInfusions] = useState(false);
+  const [medicationInfusionTable, setMedicationInfusionTable] = useState([
+    { id: '1', name: 'Amikacin', dose: '500 mg', diluent: 'NS', time: '4 hrs', vol: '100 mL', drops: '9 gtt/min' },
+    { id: '2', name: 'Vancomycin', dose: '1 g', diluent: 'D5W', time: '2 hrs', vol: '200 mL', drops: '16 gtt/min' },
+    { id: '3', name: 'Ceftriaxone', dose: '1 g', diluent: 'NS', time: '1 hr', vol: '100 mL', drops: '20 gtt/min' },
+    { id: '4', name: 'Meropenem', dose: '1 g', diluent: 'NS', time: '3 hrs', vol: '150 mL', drops: '10 gtt/min' },
+    { id: '5', name: 'Colistin', dose: '2 MIU', diluent: 'DNS', time: '1 hr', vol: '100 mL', drops: '18 gtt/min' },
+  ]);
+
   // New symptom input state
   const [newSymptom, setNewSymptom] = useState({
     complaint: '',
@@ -258,10 +339,241 @@ export default function RxNotes() {
     severity: 'Mild' as 'Mild' | 'Moderate' | 'Severe',
     notes: '',
   });
-  
+
+  const RECENT_MEDICINES = [
+    'Lipitor 40 MG',
+    'Chloramphenicol INJ',
+    'Dolo 650 MG TAB',
+    'Prilosec 40 MG',
+    'Glucophage 20 MG',
+    '4D Plus TAB',
+  ];
+
+  const createMedicineFromName = (name: string): MedicationItem => ({
+    id: Date.now().toString(),
+    name,
+    dose: '',
+    unit: '',
+    frequency: '',
+    timings: [],
+    duration: '',
+    note: '',
+  });
+
+  const createInfusionFromName = (name: string): MedicationInfusionItem => ({
+    id: Date.now().toString(),
+    name,
+    dose: '',
+    diluent: '',
+    diluentVolume: '',
+    time: '',
+    dropFactor: '',
+    note: '',
+    drugVolume: '',
+    totalVolume: '',
+    rate: '',
+    dropsPerMinute: '',
+  });
+
+  // Calculate infusion values
+  const calculateInfusionValues = useCallback((infusion: MedicationInfusionItem) => {
+    const dose = parseFloat(infusion.dose) || 0;
+    const diluentVol = parseFloat(infusion.diluentVolume) || 0;
+    const time = parseFloat(infusion.time) || 0;
+    const dropFactor = parseFloat(infusion.dropFactor) || 0;
+
+    // Drug Volume = dose Volume but into ML (assuming dose is in mL)
+    const drugVolume = dose.toString();
+
+    // Total Volume = dose + diluent Volume
+    const totalVolume = (dose + diluentVol).toString();
+
+    // Rate = diluent Volume / hour
+    const rate = time > 0 ? (diluentVol / time).toFixed(2) : '0';
+
+    // Drop Per Minute = (VTBI * drop factor) / time(min)
+    const timeInMinutes = time * 60;
+    const vtbi = dose + diluentVol;
+    const dropsPerMinute = (timeInMinutes > 0 && dropFactor > 0) 
+      ? ((vtbi * dropFactor) / timeInMinutes).toFixed(2) 
+      : '0';
+
+    return {
+      drugVolume,
+      totalVolume,
+      rate,
+      dropsPerMinute
+    };
+  }, []);
+
+  // Update infusion calculations when inputs change
+  useEffect(() => {
+    if (activeInfusion) {
+      const calculated = calculateInfusionValues(activeInfusion);
+      setActiveInfusion(prev => prev ? {
+        ...prev,
+        drugVolume: calculated.drugVolume,
+        totalVolume: calculated.totalVolume,
+        rate: calculated.rate,
+        dropsPerMinute: calculated.dropsPerMinute
+      } : null);
+    }
+  }, [activeInfusion?.dose, activeInfusion?.diluentVolume, activeInfusion?.time, activeInfusion?.dropFactor, calculateInfusionValues]);
+
   // Refs
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const appStateRef = useRef(AppState.currentState);
+
+  // Calculate duration between dates
+  const calculateDuration = (startDateStr: string, endDateStr: string): string => {
+    if (!startDateStr || !endDateStr) return '';
+    
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    
+    // Calculate difference in days
+    const timeDiff = Math.abs(endDate.getTime() - startDate.getTime());
+    const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+    
+    // Format duration
+    if (daysDiff === 1) {
+      return '1 day';
+    } else if (daysDiff < 7) {
+      return `${daysDiff} days`;
+    } else if (daysDiff < 30) {
+      const weeks = Math.floor(daysDiff / 7);
+      const remainingDays = daysDiff % 7;
+      if (remainingDays === 0) {
+        return weeks === 1 ? '1 week' : `${weeks} weeks`;
+      } else {
+        return `${weeks} week${weeks > 1 ? 's' : ''} ${remainingDays} day${remainingDays > 1 ? 's' : ''}`;
+      }
+    } else {
+      const months = Math.floor(daysDiff / 30);
+      const remainingDays = daysDiff % 30;
+      if (remainingDays === 0) {
+        return months === 1 ? '1 month' : `${months} months`;
+      } else {
+        return `${months} month${months > 1 ? 's' : ''} ${remainingDays} day${remainingDays > 1 ? 's' : ''}`;
+      }
+    }
+  };
+  
+  // Handle date selection for calendar
+  const handleDateSelect = (day: any) => {
+    if (calendarView === 'start') {
+      setSelectedStartDate(day.dateString);
+      setMarkedDates({
+        [day.dateString]: {
+          selected: true,
+          selectedColor: '#0EA5A4',
+          startingDay: true,
+          color: '#0EA5A4',
+          textColor: 'white'
+        }
+      });
+      setCalendarView('end');
+    } else {
+      setSelectedEndDate(day.dateString);
+      
+      // Create range marking
+      const newMarkedDates: {[date: string]: any} = {};
+      const start = new Date(selectedStartDate);
+      const end = new Date(day.dateString);
+      
+      // Mark start date
+      newMarkedDates[selectedStartDate] = {
+        selected: true,
+        selectedColor: '#0EA5A4',
+        startingDay: true,
+        color: '#0EA5A4',
+        textColor: 'white'
+      };
+      
+      // Mark end date
+      newMarkedDates[day.dateString] = {
+        selected: true,
+        selectedColor: '#0EA5A4',
+        endingDay: true,
+        color: '#0EA5A4',
+        textColor: 'white'
+      };
+      
+      // Mark dates in between
+      const current = new Date(start);
+      current.setDate(current.getDate() + 1);
+      
+      while (current < end) {
+        const dateStr = current.toISOString().split('T')[0];
+        newMarkedDates[dateStr] = {
+          selected: true,
+          selectedColor: '#E0F2F1',
+          color: '#E0F2F1',
+          textColor: '#0EA5A4'
+        };
+        current.setDate(current.getDate() + 1);
+      }
+      
+      setMarkedDates(newMarkedDates);
+    }
+  };
+
+  // Save custom duration
+  const saveCustomDuration = () => {
+    if (selectedStartDate && selectedEndDate) {
+      const calculatedDuration = calculateDuration(selectedStartDate, selectedEndDate);
+      
+      if (activeMedicine) {
+        setActiveMedicine({
+          ...activeMedicine,
+          duration: calculatedDuration
+        });
+      }
+      
+      setShowDateModal(false);
+      resetCalendar();
+    }
+  };
+
+  // Reset calendar state
+  const resetCalendar = () => {
+    setCalendarView('start');
+    setSelectedStartDate('');
+    setSelectedEndDate('');
+    setMarkedDates({});
+    setShowMonthFilter(false);
+    setShowYearFilter(false);
+  };
+
+  // Open duration modal
+  const openDurationModal = () => {
+    setShowDateModal(true);
+    resetCalendar();
+  };
+
+  // Handle month selection
+  const handleMonthSelect = (monthIndex: number) => {
+    setCurrentMonth(monthIndex);
+    setShowMonthFilter(false);
+  };
+
+  // Handle year selection
+  const handleYearSelect = (year: number) => {
+    setCurrentYear(year);
+    setShowYearFilter(false);
+  };
+
+  // Toggle month filter
+  const toggleMonthFilter = () => {
+    setShowMonthFilter(!showMonthFilter);
+    setShowYearFilter(false);
+  };
+
+  // Toggle year filter
+  const toggleYearFilter = () => {
+    setShowYearFilter(!showYearFilter);
+    setShowMonthFilter(false);
+  };
 
   // Toggle section expansion
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -522,6 +834,170 @@ export default function RxNotes() {
     }
   };
 
+  // Validate medication order form
+  const validateMedicationOrder = () => {
+    if (!activeMedicine) return false;
+    
+    const { name, dose, unit, frequency, duration } = activeMedicine;
+    
+    if (!name.trim()) {
+      Alert.alert('Validation Error', 'Medicine name is required');
+      return false;
+    }
+    
+    if (!dose.trim()) {
+      Alert.alert('Validation Error', 'Dose is required');
+      return false;
+    }
+    
+    if (!unit.trim()) {
+      Alert.alert('Validation Error', 'Unit is required');
+      return false;
+    }
+    
+    if (!frequency.trim()) {
+      Alert.alert('Validation Error', 'Frequency is required');
+      return false;
+    }
+    
+    if (!duration.trim()) {
+      Alert.alert('Validation Error', 'Duration is required');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Validate medication infusion form
+  const validateMedicationInfusion = () => {
+    if (!activeInfusion) return false;
+    
+    const { name, dose, diluent, diluentVolume, time, dropFactor } = activeInfusion;
+    
+    if (!name.trim()) {
+      Alert.alert('Validation Error', 'Infusion name is required');
+      return false;
+    }
+    
+    if (!dose.trim()) {
+      Alert.alert('Validation Error', 'Dose is required');
+      return false;
+    }
+    
+    if (!diluent.trim()) {
+      Alert.alert('Validation Error', 'Diluent is required');
+      return false;
+    }
+    
+    if (!diluentVolume.trim()) {
+      Alert.alert('Validation Error', 'Diluent volume is required');
+      return false;
+    }
+    
+    if (!time.trim()) {
+      Alert.alert('Validation Error', 'Time is required');
+      return false;
+    }
+    
+    if (!dropFactor.trim()) {
+      Alert.alert('Validation Error', 'Drop factor is required');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Handle confirm medication order
+  const handleConfirmMedicationOrder = () => {
+    if (!validateMedicationOrder()) {
+      return;
+    }
+    
+    if (activeMedicine) {
+      // Format the medication for table display
+      const newMedication = {
+        id: Date.now().toString(),
+        name: activeMedicine.name,
+        dose: `${activeMedicine.dose} ${activeMedicine.unit}`,
+        freq: activeMedicine.frequency,
+        duration: activeMedicine.duration,
+        note: activeMedicine.note || '-',
+      };
+      
+      setMedicationOrderTable(prev => [newMedication, ...prev]);
+      setActiveMedicine(null);
+      setSelectedRecentMed(null);
+      Alert.alert('Success', 'Medication added to order list');
+    }
+  };
+
+  // Handle confirm medication infusion
+  const handleConfirmMedicationInfusion = () => {
+    if (!validateMedicationInfusion()) {
+      return;
+    }
+    
+    if (activeInfusion) {
+      // Format the infusion for table display
+      const newInfusion = {
+        id: Date.now().toString(),
+        name: activeInfusion.name,
+        dose: activeInfusion.dose,
+        diluent: activeInfusion.diluent,
+        time: `${activeInfusion.time} hrs`,
+        vol: `${activeInfusion.totalVolume} mL`,
+        drops: `${activeInfusion.dropsPerMinute} gtt/min`,
+      };
+      
+      setMedicationInfusionTable(prev => [newInfusion, ...prev]);
+      setActiveInfusion(null);
+      setSelectedRecentInfusion(null);
+      Alert.alert('Success', 'Infusion added to order list');
+    }
+  };
+
+  // Delete medication order row
+  const deleteMedicationOrder = (id: string) => {
+    Alert.alert(
+      'Delete Medication',
+      'Are you sure you want to delete this medication order?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setMedicationOrderTable(prev => prev.filter(item => item.id !== id));
+          },
+        },
+      ]
+    );
+  };
+
+  // Delete medication infusion row
+  const deleteMedicationInfusion = (id: string) => {
+    Alert.alert(
+      'Delete Infusion',
+      'Are you sure you want to delete this medication infusion?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setMedicationInfusionTable(prev => prev.filter(item => item.id !== id));
+          },
+        },
+      ]
+    );
+  };
+
   // Render current diagnosis row
   const renderCurrentDiagnosisRow = (item: DiagnosisItem) => {
     const isTypeDropdownOpen = openTypeDropdownId === item.id;
@@ -686,6 +1162,7 @@ export default function RxNotes() {
             setSinceOpen(false);
             setSeverityOpen(false);
             setOpenTypeDropdownId(null);
+            setDiluentOpen(false);
           }}
           scrollEventThrottle={16}
         >
@@ -1041,6 +1518,772 @@ export default function RxNotes() {
             )}
           </View>
 
+          {/* Medication Order Section */}
+          <View style={styles.sectionCard}>
+            <TouchableOpacity
+              style={styles.sectionHeader}
+              onPress={() => toggleSection('medication')}
+            >
+              <Text style={styles.sectionTitle}>Medication Order</Text>
+              <Feather
+                name={expandedSections.medication ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color="#0EA5A4"
+              />
+            </TouchableOpacity>
+
+            {expandedSections.medication && (
+              <View style={styles.sectionContent}>
+                {/* Search Row */}
+                <View style={styles.medSearchRow}>
+                  <TextInput
+                    placeholder="Search"
+                    value={medSearch}
+                    onChangeText={setMedSearch}
+                    style={styles.medSearchInput}
+                  />
+                  <TouchableOpacity style={styles.outsideBtn}>
+                    <Text style={styles.outsideBtnText}>Add Outside Medicine</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Recent Medicines */}
+                <Text style={[styles.subTitle, { marginTop: 6 }]}>Recent Medicines</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {RECENT_MEDICINES.map(med => {
+                    const isActive = selectedRecentMed === med;
+
+                    return (
+                      <TouchableOpacity
+                        key={med}
+                        style={[
+                          styles.recentMedChip,
+                          isActive && styles.recentMedChipActive,
+                        ]}
+                        onPress={() => {
+                          setSelectedRecentMed(med);
+                          setActiveMedicine(createMedicineFromName(med));
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.recentMedText,
+                            isActive && { color: '#fff' },
+                          ]}
+                        >
+                          {med}
+                        </Text>
+                        <Feather
+                          name="plus"
+                          size={14}
+                          color={isActive ? '#fff' : '#0EA5A4'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Selected Medicine Card */}
+                {activeMedicine && (
+                  <View
+                    style={[
+                      styles.medCard,
+                      selectedRecentMed && {
+                        borderWidth: 2,
+                        borderColor: '#0EA5A4',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.medName}>{activeMedicine.name}</Text>
+
+                    {/* Dose + Unit */}
+                    <View style={styles.medRow}>
+                      <TextInput
+                        placeholder="Dose"
+                        style={styles.medInput}
+                        value={activeMedicine.dose}
+                        onChangeText={t =>
+                          setActiveMedicine({ ...activeMedicine, dose: t })
+                        }
+                      />
+                      <TextInput
+                        placeholder="Select unit"
+                        style={styles.medInput}
+                        value={activeMedicine.unit}
+                        onChangeText={t =>
+                          setActiveMedicine({ ...activeMedicine, unit: t })
+                        }
+                      />
+                    </View>
+
+                    {/* Frequency */}
+                    <Text style={styles.subTitle}>Frequency</Text>
+                    <View style={styles.optionRow}>
+                      {['1-0-1', '1-1-1', '1-0-0', '0-1-0', '0-0-1'].map(f => (
+                        <TouchableOpacity
+                          key={f}
+                          style={[
+                            styles.optionChip,
+                            activeMedicine.frequency === f && styles.optionChipActive,
+                          ]}
+                          onPress={() =>
+                            setActiveMedicine({ ...activeMedicine, frequency: f })
+                          }
+                        >
+                          <Text style={[styles.optionText, activeMedicine.frequency === f && { color: '#fff' }]}>
+                            {f}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+
+                      <TouchableOpacity style={styles.customizeBtn} onPress={() => setShowFreqModal(true)}>
+                        <Text style={styles.customizeText}>Customize</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Timing */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                      {['Before meal', 'After meal', 'SOS', 'Bedtime', 'Empty stomach'].map(t => (
+                        <TouchableOpacity
+                          key={t}
+                          style={{ flexDirection: 'row', alignItems: 'center' }}
+                          onPress={() =>
+                            setTimings(p =>
+                              p.includes(t) ? p.filter(x => x !== t) : [...p, t]
+                            )
+                          }
+                        >
+                          <Feather
+                            name={timings.includes(t) ? 'check-square' : 'square'}
+                            size={16}
+                            color="#0EA5A4"
+                          />
+                          <Text style={{ marginLeft: 6 }}>{t}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Duration */}
+                    <Text style={[styles.subTitle, { marginTop: 10 }]}>Duration</Text>
+                    <View style={styles.optionRow}>
+                      {['1 day', '2 days', '3 days', '5 days', '1 week', '2 weeks'].map(d => (
+                        <TouchableOpacity
+                          key={d}
+                          style={[
+                            styles.optionChip,
+                            activeMedicine.duration === d && styles.optionChipActive,
+                          ]}
+                          onPress={() =>
+                            setActiveMedicine({ ...activeMedicine, duration: d })
+                          }
+                        >
+                          <Text style={[styles.optionText, activeMedicine.duration === d && { color: '#fff' }]}>
+                            {d}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+
+                      <TouchableOpacity style={styles.customizeBtn} onPress={openDurationModal}>
+                        <Text style={styles.customizeText}>Customize</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Notes */}
+                    <TextInput
+                      placeholder="Enter note"
+                      multiline
+                      style={styles.medNote}
+                      value={activeMedicine.note}
+                      onChangeText={t =>
+                        setActiveMedicine({ ...activeMedicine, note: t })
+                      }
+                    />
+
+                    {/* Actions */}
+                    <View style={styles.medActionRow}>
+                      <TouchableOpacity
+                        style={styles.confirmBtn}
+                        onPress={handleConfirmMedicationOrder}
+                      >
+                        <Text style={styles.confirmText}>Confirm</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.clearBtn}
+                        onPress={() => {
+                          setActiveMedicine(null);
+                          setSelectedRecentMed(null);
+                        }}
+                      >
+                        <Text style={styles.clearText}>Clear</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                {/* ===== Medication Order Table ===== */}
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Ordered Medicines</Text>
+
+                {/* Header */}
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.th, { width: '22%' }]}>Medicine</Text>
+                  <Text style={[styles.th, { width: '14%' }]}>Dose</Text>
+                  <Text style={[styles.th, { width: '14%' }]}>Freq</Text>
+                  <Text style={[styles.th, { width: '20%' }]}>Duration</Text>
+                  <Text style={[styles.th, { width: '22%' }]}>Note</Text>
+                  <View style={{ width: '8%' }} />
+                </View>
+
+                {/* Rows */}
+                {(showAllMedOrders ? medicationOrderTable : medicationOrderTable.slice(0, 3)).map(item => (
+                  <View key={item.id} style={styles.tableRow}>
+                    <Text style={[styles.td, { width: '22%' }]}>{item.name}</Text>
+                    <Text style={[styles.td, { width: '14%' }]}>{item.dose}</Text>
+                    <Text style={[styles.td, { width: '14%' }]}>{item.freq}</Text>
+                    <Text style={[styles.td, { width: '20%' }]}>{item.duration}</Text>
+                    <Text style={[styles.td, { width: '22%' }]}>{item.note}</Text>
+
+                    <View style={{ width: '8%', alignItems: 'center' }}>
+                      <TouchableOpacity onPress={() => deleteMedicationOrder(item.id)}>
+                        <Feather name="trash-2" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+
+                {medicationOrderTable.length > 3 && (
+                  <View style={styles.viewAllContainer}>
+                    <TouchableOpacity
+                      style={styles.viewAllButton}
+                      onPress={() => setShowAllMedOrders(p => !p)}
+                    >
+                      <Text style={styles.viewAllButtonText}>
+                        {showAllMedOrders ? 'View Less' : 'View All'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+              </View>
+              
+            )}
+            
+            
+          </View>
+
+          {/* Medication Infusion Section */}
+          <View style={styles.sectionCard}>
+            <TouchableOpacity
+              style={styles.sectionHeader}
+              onPress={() => toggleSection('medicationInfusion')}
+            >
+              <Text style={styles.sectionTitle}>Medication Infusion</Text>
+              <Feather
+                name={expandedSections.medicationInfusion ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color="#0EA5A4"
+              />
+            </TouchableOpacity>
+
+            {expandedSections.medicationInfusion && (
+              <View style={styles.sectionContent}>
+                {/* Search Row */}
+                <View style={styles.medSearchRow}>
+                  <TextInput
+                    placeholder="Search infusion medicine"
+                    style={styles.medSearchInput}
+                  />
+                  <TouchableOpacity style={styles.outsideBtn}>
+                    <Text style={styles.outsideBtnText}>Add Outside Medicine</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Recent Infusions */}
+                <Text style={[styles.subTitle, { marginTop: 6 }]}>
+                  Recent Medication Infusion
+                </Text>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {RECENT_MEDICINES.map(med => {
+                    const isActive = selectedRecentInfusion === med;
+
+                    return (
+                      <TouchableOpacity
+                        key={med}
+                        style={[
+                          styles.recentMedChip,
+                          isActive && styles.recentMedChipActive,
+                        ]}
+                        onPress={() => {
+                          setSelectedRecentInfusion(med);
+                          setActiveInfusion(createInfusionFromName(med));
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.recentMedText,
+                            isActive && { color: '#fff' },
+                          ]}
+                        >
+                          {med}
+                        </Text>
+                        <Feather
+                          name="plus"
+                          size={14}
+                          color={isActive ? '#fff' : '#0EA5A4'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Infusion Card */}
+                {activeInfusion && (
+                  <View style={[styles.medCard, { borderWidth: 1, borderColor: '#0EA5A4' }]}>
+                    <Text style={styles.medName}>{activeInfusion.name}</Text>
+
+                    {/* Dose + Diluent */}
+                    <View style={styles.medRow}>
+                      <TextInput
+                        placeholder="Dose (mg)"
+                        style={styles.medInput}
+                        value={activeInfusion.dose}
+                        onChangeText={t => setActiveInfusion({ ...activeInfusion, dose: t })}
+                        keyboardType="numeric"
+                      />
+
+                      {/* Diluent Dropdown */}
+                      <View style={[styles.diluentContainer]}>
+                        <TouchableOpacity
+                          style={styles.diluentDropdown}
+                          onPress={() => setDiluentOpen(!diluentOpen)}
+                        >
+                          <Text style={styles.diluentText}>
+                            {activeInfusion.diluent || 'Diluent'}
+                          </Text>
+                          <Feather name="chevron-down" size={14} color="#64748B" />
+                        </TouchableOpacity>
+
+                        {diluentOpen && (
+                          <View style={styles.diluentMenu}>
+                            {DILUENT_OPTIONS.map(option => (
+                              <TouchableOpacity
+                                key={option}
+                                style={styles.diluentOption}
+                                onPress={() => {
+                                  setActiveInfusion({ ...activeInfusion, diluent: option });
+                                  setDiluentOpen(false);
+                                }}
+                              >
+                                <Text style={styles.diluentOptionText}>{option}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Diluent Volume + Time */}
+                    <View style={styles.medRow}>
+                      <TextInput
+                        placeholder="Diluent Volume (mL)"
+                        style={styles.medInput}
+                        value={activeInfusion.diluentVolume}
+                        onChangeText={t =>
+                          setActiveInfusion({ ...activeInfusion, diluentVolume: t })
+                        }
+                        keyboardType="numeric"
+                      />
+
+                      <TextInput
+                        placeholder="Time (hr)"
+                        style={styles.medInput}
+                        value={activeInfusion.time}
+                        onChangeText={t => setActiveInfusion({ ...activeInfusion, time: t })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+
+                    {/* Drop Factor */}
+                    <View style={styles.medRow}>
+                      <TextInput
+                        placeholder="Drop Factor"
+                        style={styles.medInput}
+                        value={activeInfusion.dropFactor}
+                        onChangeText={t => setActiveInfusion({ ...activeInfusion, dropFactor: t })}
+                        keyboardType="numeric"
+                      />
+                      <View style={styles.medInput} />
+                    </View> 
+
+                    {/* Calculation Results */}
+                    <View style={styles.calculationSection}>
+                      <Text style={[styles.subTitle, { marginTop: 10 }]}>Calculations</Text>
+                      
+                      <View style={styles.calculationRow}>
+                        <Text style={styles.calculationLabel}>Drug Volume:</Text>
+                        <Text style={styles.calculationValue}>{activeInfusion.drugVolume || '0'} mL</Text>
+                      </View>
+                      
+                      <View style={styles.calculationRow}>
+                        <Text style={styles.calculationLabel}>Total Volume:</Text>
+                        <Text style={styles.calculationValue}>{activeInfusion.totalVolume || '0'} mL</Text>
+                      </View>
+                      
+                      <View style={styles.calculationRow}>
+                        <Text style={styles.calculationLabel}>Rate:</Text>
+                        <Text style={styles.calculationValue}>{activeInfusion.rate || '0'} mL/hr</Text>
+                      </View>
+                      
+                      <View style={styles.calculationRow}>
+                        <Text style={styles.calculationLabel}>Drops/min:</Text>
+                        <Text style={styles.calculationValue}>{activeInfusion.dropsPerMinute || '0'} gtt/min</Text>
+                      </View>
+                    </View>
+
+                    {/* Notes */}
+                    <TextInput
+                      placeholder="Enter note"
+                      multiline
+                      style={styles.medNote}
+                      value={activeInfusion.note}
+                      onChangeText={t => setActiveInfusion({ ...activeInfusion, note: t })}
+                    />
+
+                    <View style={styles.medActionRow}>
+                      <TouchableOpacity
+                        style={styles.confirmBtn}
+                        onPress={handleConfirmMedicationInfusion}
+                      >
+                        <Text style={styles.confirmText}>Confirm</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.clearBtn}
+                        onPress={() => {
+                          setActiveInfusion(null);
+                          setSelectedRecentInfusion(null);
+                        }}
+                      >
+                        <Text style={styles.clearText}>Clear</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                {/* ===== Medication Infusion Table ===== */}
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Ordered Infusions</Text>
+
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.th, { width: '22%' }]}>Infusion</Text>
+                  <Text style={[styles.th, { width: '12%' }]}>Dose</Text>
+                  <Text style={[styles.th, { width: '10%' }]}>Diluent</Text>
+                  <Text style={[styles.th, { width: '14%' }]}>Time</Text>
+                  <Text style={[styles.th, { width: '16%' }]}>Volume</Text>
+                  <Text style={[styles.th, { width: '18%' }]}>Drops/min</Text>
+                  <View style={{ width: '8%' }} />
+                </View>
+
+                {(showAllInfusions ? medicationInfusionTable : medicationInfusionTable.slice(0, 3)).map(item => (
+                  <View key={item.id} style={styles.tableRow}>
+                    <Text style={[styles.td, { width: '22%' }]}>{item.name}</Text>
+                    <Text style={[styles.td, { width: '12%' }]}>{item.dose}</Text>
+                    <Text style={[styles.td, { width: '10%' }]}>{item.diluent}</Text>
+                    <Text style={[styles.td, { width: '14%' }]}>{item.time}</Text>
+                    <Text style={[styles.td, { width: '16%' }]}>{item.vol}</Text>
+                    <Text style={[styles.td, { width: '18%' }]}>{item.drops}</Text>
+
+                    <View style={{ width: '8%', alignItems: 'center' }}>
+                      <TouchableOpacity onPress={() => deleteMedicationInfusion(item.id)}>
+                        <Feather name="trash-2" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+
+                {medicationInfusionTable.length > 3 && (
+                  <View style={styles.viewAllContainer}>
+                    <TouchableOpacity
+                      style={styles.viewAllButton}
+                      onPress={() => setShowAllInfusions(p => !p)}
+                    >
+                      <Text style={styles.viewAllButtonText}>
+                        {showAllInfusions ? 'View Less' : 'View All'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+              </View>
+              
+            )}
+            
+          </View>
+
+
+          <View style={{ height: 30 }}>
+                <TouchableOpacity
+              style={styles.sectionHeader}
+              onPress={() => toggleSection('medicationInfusion')}
+            >
+              <Text style={styles.sectionTitle}>Medication Infusion</Text>
+              </TouchableOpacity>
+          </View>
+
+          {/* ================= MODALS ================= */}
+
+          {/* Frequency Modal */}
+          <Modal
+            visible={showFreqModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowFreqModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalBox}>
+                <Text style={styles.modalTitle}>Custom Frequency</Text>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
+                  {customFrequency.map((v, i) => (
+                    <TextInput
+                      key={i}
+                      style={styles.freqInput}
+                      keyboardType="number-pad"
+                      value={String(v)}
+                      onChangeText={t => {
+                        const copy = [...customFrequency];
+                        copy[i] = Number(t || 0);
+                        setCustomFrequency(copy);
+                      }}
+                    />
+                  ))}
+
+                  <TouchableOpacity onPress={() => setCustomFrequency(p => [...p, 0])}>
+                    <Text style={{ color: '#0EA5A4', fontWeight: '600' }}>
+                      Add More
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.confirmBtn}
+                    onPress={() => setShowFreqModal(false)}
+                  >
+                    <Text style={styles.confirmText}>Save</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.clearBtn}
+                    onPress={() => setShowFreqModal(false)}
+                  >
+                    <Text style={styles.clearText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Calendar Modal for Duration */}
+          <Modal
+            visible={showDateModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              setShowDateModal(false);
+              resetCalendar();
+            }}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalBox, { width: '95%' }]}>
+
+                {/* ===== Title ===== */}
+                <Text style={styles.modalTitle}>
+                  {calendarView === 'start' ? 'Select Start Date' : 'Select End Date'}
+                </Text>
+
+                {/* ===== Calendar Header with Month/Year Filter ===== */}
+                <View style={styles.calendarHeaderContainer}>
+                  <View style={styles.calendarHeader}>
+                    {/* Month Filter */}
+                    <View style={styles.monthYearSelector}>
+                      <TouchableOpacity
+                        style={styles.monthYearButton}
+                        onPress={toggleMonthFilter}
+                      >
+                        <Text style={styles.monthYearButtonText}>
+                          {MONTHS[currentMonth]}
+                        </Text>
+                        <Feather name="chevron-down" size={16} color="#0EA5A4" />
+                      </TouchableOpacity>
+
+                      <Text style={styles.separator}> </Text>
+
+                      {/* Year Filter */}
+                      <TouchableOpacity
+                        style={styles.monthYearButton}
+                        onPress={toggleYearFilter}
+                      >
+                        <Text style={styles.monthYearButtonText}>
+                          {currentYear}
+                        </Text>
+                        <Feather name="chevron-down" size={16} color="#0EA5A4" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Navigation Arrows */}
+                    <View style={styles.navigationArrows}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (currentMonth === 0) {
+                            setCurrentMonth(11);
+                            setCurrentYear(prev => prev - 1);
+                          } else {
+                            setCurrentMonth(prev => prev - 1);
+                          }
+                        }}
+                        style={styles.navArrow}
+                      >
+                        <Feather name="chevron-left" size={20} color="#0EA5A4" />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (currentMonth === 11) {
+                            setCurrentMonth(0);
+                            setCurrentYear(prev => prev + 1);
+                          } else {
+                            setCurrentMonth(prev => prev + 1);
+                          }
+                        }}
+                        style={styles.navArrow}
+                      >
+                        <Feather name="chevlon-right" size={20} color="#0EA5A4" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Month Filter Dropdown */}
+                  {showMonthFilter && (
+                    <View style={styles.filterDropdown}>
+                      <ScrollView style={styles.filterList}>
+                        {MONTHS.map((month, index) => (
+                          <TouchableOpacity
+                            key={month}
+                            style={[
+                              styles.filterItem,
+                              currentMonth === index && styles.selectedFilterItem
+                            ]}
+                            onPress={() => handleMonthSelect(index)}
+                          >
+                            <Text style={[
+                              styles.filterItemText,
+                              currentMonth === index && styles.selectedFilterItemText
+                            ]}>
+                              {month}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* Year Filter Dropdown */}
+                  {showYearFilter && (
+                    <View style={styles.filterDropdown}>
+                      <ScrollView style={styles.filterList}>
+                        {years.map((year) => (
+                          <TouchableOpacity
+                            key={year}
+                            style={[
+                              styles.filterItem,
+                              currentYear === year && styles.selectedFilterItem
+                            ]}
+                            onPress={() => handleYearSelect(year)}
+                          >
+                            <Text style={[
+                              styles.filterItemText,
+                              currentYear === year && styles.selectedFilterItemText
+                            ]}>
+                              {year}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
+                <Calendar
+                  current={`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`}
+                  onDayPress={handleDateSelect}
+                  onMonthChange={(month) => {
+                    setCurrentMonth(month.month - 1);
+                    setCurrentYear(month.year);
+                  }}
+                  markedDates={markedDates}
+                  markingType="period"
+                  enableSwipeMonths
+                  hideExtraDays
+                  theme={{
+                    backgroundColor: '#ffffff',
+                    calendarBackground: '#ffffff',
+                    textSectionTitleColor: '#64748B',
+                    selectedDayBackgroundColor: '#0EA5A4',
+                    selectedDayTextColor: '#ffffff',
+                    todayTextColor: '#0EA5A4',
+                    dayTextColor: '#334155',
+                    textDisabledColor: '#CBD5E1',
+                    arrowColor: '#0EA5A4',
+                    monthTextColor: '#334155',
+                    textMonthFontWeight: '600',
+                    textDayFontSize: 16,
+                    textMonthFontSize: 16,
+                    textDayHeaderFontSize: 14,
+                  }}
+                  // style={styles.calendar}
+                />
+
+                {/* ===== Duration Summary ===== */}
+                {selectedStartDate && selectedEndDate && (
+                  <View style={styles.durationSummary}>
+                    <Text style={styles.durationText}>
+                      Duration: {calculateDuration(selectedStartDate, selectedEndDate)}
+                    </Text>
+                    <Text style={styles.dateRangeText}>
+                      {new Date(selectedStartDate).toLocaleDateString('en-GB')} –{' '}
+                      {new Date(selectedEndDate).toLocaleDateString('en-GB')}
+                    </Text>
+                  </View>
+                )}
+
+                {/* ===== Actions ===== */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.confirmBtn,
+                      (!selectedStartDate || !selectedEndDate) && { opacity: 0.5 },
+                    ]}
+                    onPress={saveCustomDuration}
+                    disabled={!selectedStartDate || !selectedEndDate}
+                  >
+                    <Text style={styles.confirmText}>Save</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.clearBtn}
+                    onPress={() => {
+                      setShowDateModal(false);
+                      resetCalendar();
+                    }}
+                  >
+                    <Text style={styles.clearText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+
+              </View>
+            </View>
+          </Modal>
+
+          {/* ================= END MODALS ================= */}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1130,6 +2373,92 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 227,
   },
+  calendarHeaderContainer: {
+    marginBottom: 10,
+    position: 'relative',
+    zIndex: 1000,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  monthYearSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  monthYearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  monthYearButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    marginRight: 4,
+  },
+  separator: {
+    fontSize: 14,
+    color: '#64748B',
+    marginHorizontal: 4,
+  },
+  navigationArrows: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  navArrow: {
+    padding: 6,
+    marginLeft: 8,
+  },
+  filterDropdown: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    maxHeight: 200,
+    zIndex: 1001,
+  },
+  filterList: {
+    maxHeight: 200,
+  },
+  filterItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  selectedFilterItem: {
+    backgroundColor: '#F0F9FF',
+  },
+  filterItemText: {
+    fontSize: 14,
+    color: '#334155',
+  },
+  selectedFilterItemText: {
+    color: '#0EA5A4',
+    fontWeight: '600',
+  },
   roomText: {
     flex: 1,
     marginRight: 12,
@@ -1177,6 +2506,25 @@ const styles = StyleSheet.create({
   emptyTile: {
     backgroundColor: 'transparent',
     borderWidth: 0,
+  },
+  recentMedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#0EA5A4',
+    marginRight: 8,
+    backgroundColor: '#fff',
+  },
+  recentMedChipActive: {
+    backgroundColor: '#0EA5A4',
+  },
+  recentMedText: {
+    fontSize: 12,
+    color: '#0EA5A4',
+    marginRight: 4,
   },
   vitalHeader: {
     flexDirection: 'row',
@@ -1369,8 +2717,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-
-  // Symptoms Add Row Styles
   symptomAddRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1381,20 +2727,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: 8,
   },
- symptomInput: {
-  borderWidth: 1,
-  borderColor: '#CBD5F5',
-  borderRadius: 6,
-  paddingHorizontal: 8,
-  paddingVertical: 8,
-  fontSize: 12,
-  backgroundColor: '#fff',
-  minHeight: 36,
-  textAlignVertical: 'top',
-},
-
-  
-  // Combined Since and Unit container
+  symptomInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 12,
+    backgroundColor: '#fff',
+    minHeight: 36,
+    textAlignVertical: 'top',
+  },
   sinceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1439,6 +2782,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334155',
   },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  th: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  td: {
+    fontSize: 13,
+    color: '#334155',
+    textAlign: 'center',
+  },
   unitMenu: {
     position: 'absolute',
     top: 38,
@@ -1479,8 +2850,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#475569',
   },
-  
-
   severityDropdown: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1492,7 +2861,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334155',
   },
-
   severityOption: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1501,8 +2869,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#475569',
   },
-  
-  // Symptoms Table Styles
   symptomHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1542,8 +2908,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Column Widths for Add Symptoms Section
   addSympColComplaint: { 
     width: '24%',
   },
@@ -1561,8 +2925,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Column Widths for Symptoms Table Section
   sympColComplaint: { 
     width: '24%',
   },
@@ -1574,14 +2936,276 @@ const styles = StyleSheet.create({
   },
   sympColNotes: { 
     width: '24%',
-    // backgroundColor:"red"
   },
   sympColDate: { 
     width: '12%',
     paddingRight:4,
-    // backgroundColor:"green"
   },
   sympColDelete: { 
     width: '7%',
+  },
+  medSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  medSearchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 8,
+    padding: 10,
+    marginRight: 8,
+  },
+  outsideBtn: {
+    backgroundColor: '#0EA5A4',
+    paddingHorizontal: 12,
+    height: 42,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  outsideBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  medChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#0EA5A4',
+    marginRight: 8,
+    marginBottom: 10,
+  },
+  medChipText: {
+    fontSize: 12,
+    color: '#0EA5A4',
+    marginRight: 4,
+  },
+  medCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+  },
+  medName: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 10,
+    color: '#334155',
+  },
+  medRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  medInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 13,
+    backgroundColor: '#fff',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  optionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+  },
+  optionChipActive: {
+    backgroundColor: '#0EA5A4',
+    borderColor: '#0EA5A4',
+  },
+  optionText: {
+    fontSize: 12,
+    color: '#334155',
+  },
+  customizeBtn: {
+    borderWidth: 1,
+    borderColor: '#0EA5A4',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  customizeText: {
+    color: '#0EA5A4',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  medNote: {
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 6,
+    padding: 8,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 10,
+  },
+  medActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  confirmBtn: {
+    backgroundColor: '#0EA5A4',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  confirmText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  clearBtn: {
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  clearText: {
+    color: '#475569',
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 10,
+  },
+  freqInput: {
+    width: 40,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 6,
+    textAlign: 'center',
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  calendar: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginVertical: 10,
+  },
+  durationSummary: {
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 10,
+  },
+  durationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  dateRangeText: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  // New styles for Medication Infusion
+  diluentContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  diluentDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 6,
+    padding: 8,
+    backgroundColor: '#fff',
+  },
+  diluentText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  diluentMenu: {
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    zIndex: 1000,
+  },
+  diluentOption: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  diluentOptionText: {
+    fontSize: 13,
+    color: '#475569',
+  },
+  calculationSection: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 8,
+    padding: 12,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E0F2FE',
+  },
+  calculationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  calculationLabel: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  calculationValue: {
+    fontSize: 13,
+    color: '#0EA5A4',
+    fontWeight: '600',
   },
 });

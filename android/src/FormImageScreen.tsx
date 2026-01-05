@@ -30,7 +30,12 @@ try {
   AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch {}
 
-type PageMeta = { bitmapPath?: string | null };
+// type PageMeta = { bitmapPath?: string | null };
+type PageMeta = {
+  pageId: string;
+  bitmapPath?: string | null;
+};
+
 
 /* ================== SCREEN ================== */
 function FormImageScreen() {
@@ -51,9 +56,11 @@ function FormImageScreen() {
 
   const [pages, setPages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageMeta, setPageMeta] = useState<PageMeta[]>(
-    imagesForThisForm.map(() => ({ bitmapPath: null }))
-  );
+  // const [pageMeta, setPageMeta] = useState<PageMeta[]>(
+  //   imagesForThisForm.map(() => ({ bitmapPath: null }))
+  // );
+  const [pageMeta, setPageMeta] = useState<PageMeta[]>([]);
+
   const [voiceNotes, setVoiceNotes] = useState<any[]>(
     Array.isArray(params.voiceNotes) ? params.voiceNotes : []
   );
@@ -95,35 +102,55 @@ function FormImageScreen() {
       return () => sub.remove();
     }, [route.params])
   );
-
-  /* ---------- LOAD DOCUMENT PAGES ---------- */
+    const IMAGE_BASE_URL = 'https://your-server-domain.com/';
   useEffect(() => {
     if (!documentId) return;
 
-    const loadPages = async () => {
-      try {
-        setLoading(true);
-        console.log('📄 Fetching pages for document:', documentId);
+ const loadPages = async () => {
+  try {
+    setLoading(true);
 
-        const res = await getDocumentPages(documentId);
-        console.log('📄 Pages response:', res);
 
-        // Adjust based on your API response structure
-        setPages(Array.isArray(res) ? res : res.pages ?? []);
-      } catch (e) {
-        console.error('Failed to load document pages', e);
-        setPages([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+
+    const res = await getDocumentPages(documentId);
+    console.log('Document pages response:', res, documentId);
+
+    const sortedPages = (Array.isArray(res) ? res : res.pages ?? [])
+      .sort((a: any, b: any) => a.displayOrderNo - b.displayOrderNo)
+      .map((p: any) => ({
+        ...p,
+        imageUrl: `${IMAGE_BASE_URL}${p.baseImagePath}`,
+      }));
+
+    setPages(sortedPages);
+
+setPageMeta(
+  sortedPages.map((p: any) => ({
+    pageId: p.pageId,
+    bitmapPath: null,
+  }))
+);
+
+  } catch (e) {
+    console.error('Failed to load document pages', e);
+    setPages([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
+    
 
     loadPages();
   }, [documentId]);
 
-  /* ---------- PAGE CARD COMPONENT ---------- */
   const PageCard = ({ page, index }: { page: any; index: number }) => {
-    const savedPath = pageMeta[index]?.bitmapPath;
+    // const savedPath = pageMeta[index]?.bitmapPath;
+    const savedPath = pageMeta.find(
+  p => p.pageId === page.pageId
+)?.bitmapPath;
+
+    
     const overlaySrc = savedPath
       ? { uri: `${savedPath.startsWith('file://') ? savedPath : 'file://' + savedPath}?t=${reloadToken}` }
       : null;
@@ -131,11 +158,16 @@ function FormImageScreen() {
     return (
       <View style={styles.pageCard}>
         <View style={[styles.imageBox, { width: SCREEN_W, height: PAGE_HEIGHT }]}>
-          <Image
+          {/* <Image
             source={{ uri: page.imageUrl || page.url || page.uri }}
             style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
             resizeMode="contain"
-          />
+          /> */}
+<Image
+  source={{ uri: page.imageUrl }}
+  style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
+  resizeMode="contain"
+/>
 
           {overlaySrc && (
             <Image
@@ -146,7 +178,9 @@ function FormImageScreen() {
           )}
 
           {imageStickers
-            .filter(s => s.pageIndex === index)
+            // .filter(s => s.pageIndex === index)
+            .filter(s => s.pageId === page.pageId)
+
             .map(s => {
               const stickerSource =
                 s.stickerType === 'doctor'
@@ -215,7 +249,9 @@ function FormImageScreen() {
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          keyExtractor={(item, index) => `page-${index}`}
+          // keyExtractor={(item, index) => `page-${index}`}
+          keyExtractor={(item) => item.pageId}
+
           renderItem={({ item, index }) => <PageCard page={item} index={index} />}
         />
       ) : (
@@ -225,6 +261,17 @@ function FormImageScreen() {
           </View>
         )
       )}
+        <TouchableOpacity
+        style={styles.historyFab}
+        onPress={() => {
+      navigation.navigate('EditorHistory');
+
+        }}
+      >
+        <Text style={styles.historyText}>History</Text>
+        <AntDesign name="folderopen" size={28} color="#0EA5A4" />
+      </TouchableOpacity> 
+
 
       <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
         <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
@@ -253,6 +300,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+    historyFab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 120,
+    backgroundColor: '#fff',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+
+  historyText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 4,
   },
   title: { color: '#fff', fontSize: 17, fontWeight: '700' },
   pageCard: { flex: 1 },
