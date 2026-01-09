@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AntDesign from 'react-native-vector-icons/AntDesign';
-import { getDocumentPages } from './api/documentsApi';
+import { getDocumentPageImage, getDocumentPages } from './api/documentsApi';
 
 /* ---------------- STICKERS ---------------- */
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
@@ -23,44 +23,37 @@ const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 /* ---------------- CONSTS ---------------- */
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
-const DEFAULT_IMAGES: any[] = [];
 
-let AsyncStorage: any = null;
-try {
-  AsyncStorage = require('@react-native-async-storage/async-storage').default;
-} catch {}
+/* ---------------- TYPES ---------------- */
+type PageItem = {
+  pageId: string;
+  displayOrderNo: number;
+  imageData?: string;
+  loading?: boolean;
+};
 
-// type PageMeta = { bitmapPath?: string | null };
 type PageMeta = {
   pageId: string;
   bitmapPath?: string | null;
 };
 
-
-/* ================== SCREEN ================== */
-function FormImageScreen() {
+/* ================= SCREEN ================= */
+const FormImageScreen = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const params = route.params || {};
 
-  const formName = params.formName;
+  const documentId = params.documentId;
+  const formName = params.formName ?? 'Document';
   const formKey = params.formKey;
-  const documentId = params.documentId || params.formKey;
-
   const patientName = params.patientName ?? 'Unknown Patient';
   const patientId = params.patientId;
   const patientIP = params.patientIP;
-
   const perFormStorageKey = params.storageKey ?? 'DoctorApp:pagesBitmaps:v1';
-  const imagesForThisForm = params.IMAGES_BY_FORM?.[formKey ?? ''] ?? DEFAULT_IMAGES;
 
-  const [pages, setPages] = useState<any[]>([]);
+  const [pages, setPages] = useState<PageItem[]>([]);
   const [loading, setLoading] = useState(true);
-  // const [pageMeta, setPageMeta] = useState<PageMeta[]>(
-  //   imagesForThisForm.map(() => ({ bitmapPath: null }))
-  // );
   const [pageMeta, setPageMeta] = useState<PageMeta[]>([]);
-
   const [voiceNotes, setVoiceNotes] = useState<any[]>(
     Array.isArray(params.voiceNotes) ? params.voiceNotes : []
   );
@@ -102,54 +95,65 @@ function FormImageScreen() {
       return () => sub.remove();
     }, [route.params])
   );
-    const IMAGE_BASE_URL = 'https://your-server-domain.com/';
+
+  /* ---------- LOAD PAGES & IMAGES ---------- */
   useEffect(() => {
     if (!documentId) return;
 
- const loadPages = async () => {
-  try {
-    setLoading(true);
+    const loadPages = async () => {
+      try {
+        setLoading(true);
 
+        const res = await getDocumentPages(documentId);
 
+        const sortedPages: PageItem[] = (Array.isArray(res) ? res : res.pages ?? [])
+          .sort((a: any, b: any) => a.displayOrderNo - b.displayOrderNo)
+          .map((p: any) => ({
+            pageId: p.pageId,
+            displayOrderNo: p.displayOrderNo,
+            loading: true,
+          }));
 
-    const res = await getDocumentPages(documentId);
-    console.log('Document pages response:', res, documentId);
+        setPages(sortedPages);
+        
+        // Initialize page metadata
+        setPageMeta(
+          sortedPages.map((p: any) => ({
+            pageId: p.pageId,
+            bitmapPath: null,
+          }))
+        );
 
-    const sortedPages = (Array.isArray(res) ? res : res.pages ?? [])
-      .sort((a: any, b: any) => a.displayOrderNo - b.displayOrderNo)
-      .map((p: any) => ({
-        ...p,
-        imageUrl: `${IMAGE_BASE_URL}${p.baseImagePath}`,
-      }));
+        const pagesWithImages = await Promise.all(
+          sortedPages.map(async (page) => {
+            try {
+              const imageData = await getDocumentPageImage(
+                documentId,
+                page.pageId
+              );
+              return { ...page, imageData, loading: false };
+            } catch (e) {
+              console.error('Image load failed:', page.pageId, e);
+              return { ...page, loading: false };
+            }
+          })
+        );
 
-    setPages(sortedPages);
-
-setPageMeta(
-  sortedPages.map((p: any) => ({
-    pageId: p.pageId,
-    bitmapPath: null,
-  }))
-);
-
-  } catch (e) {
-    console.error('Failed to load document pages', e);
-    setPages([]);
-  } finally {
-    setLoading(false);
-  }
-};
-
-    
+        setPages(pagesWithImages);
+      } catch (e) {
+        console.error('Failed to load pages', e);
+        setPages([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     loadPages();
   }, [documentId]);
 
-  const PageCard = ({ page, index }: { page: any; index: number }) => {
-    // const savedPath = pageMeta[index]?.bitmapPath;
-    const savedPath = pageMeta.find(
-  p => p.pageId === page.pageId
-)?.bitmapPath;
-
+  /* ---------- PAGE CARD ---------- */
+  const PageCard = ({ page, index }: { page: PageItem; index: number }) => {
+    const savedPath = pageMeta.find(p => p.pageId === page.pageId)?.bitmapPath;
     
     const overlaySrc = savedPath
       ? { uri: `${savedPath.startsWith('file://') ? savedPath : 'file://' + savedPath}?t=${reloadToken}` }
@@ -158,16 +162,22 @@ setPageMeta(
     return (
       <View style={styles.pageCard}>
         <View style={[styles.imageBox, { width: SCREEN_W, height: PAGE_HEIGHT }]}>
-          {/* <Image
-            source={{ uri: page.imageUrl || page.url || page.uri }}
-            style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
-            resizeMode="contain"
-          /> */}
-<Image
-  source={{ uri: page.imageUrl }}
-  style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
-  resizeMode="contain"
-/>
+          {page.imageData ? (
+            <Image
+              source={{ uri: page.imageData }}
+              style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
+              resizeMode="contain"
+            />
+          ) : page.loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#0EA5A4" />
+              <Text style={styles.loadingText}>Loading image...</Text>
+            </View>
+          ) : (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>Failed to load image</Text>
+            </View>
+          )}
 
           {overlaySrc && (
             <Image
@@ -178,9 +188,7 @@ setPageMeta(
           )}
 
           {imageStickers
-            // .filter(s => s.pageIndex === index)
             .filter(s => s.pageId === page.pageId)
-
             .map(s => {
               const stickerSource =
                 s.stickerType === 'doctor'
@@ -227,10 +235,15 @@ setPageMeta(
       patientId,
       patientIP,
       documentId,
-     apiPages: pages,
+      apiPages: pages.map(p => ({
+        pageId: p.pageId,
+        displayOrderNo: p.displayOrderNo,
+        imageData: p.imageData,
+      })),
     });
   };
 
+  /* ---------- UI ---------- */
   return (
     <View style={styles.container}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: '#0EA5A4' }}>
@@ -248,31 +261,30 @@ setPageMeta(
           data={pages}
           horizontal
           pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          // keyExtractor={(item, index) => `page-${index}`}
           keyExtractor={(item) => item.pageId}
-
-          renderItem={({ item, index }) => <PageCard page={item} index={index} />}
+          renderItem={({ item, index }) => (
+            <PageCard page={item} index={index} />
+          )}
+          showsHorizontalScrollIndicator={false}
         />
-      ) : (
-        !loading && (
-          <View style={styles.noPagesContainer}>
-            <Text style={styles.noPagesText}>No pages found for this document</Text>
-          </View>
-        )
-      )}
-        <TouchableOpacity
+      ) : !loading ? (
+        <View style={styles.noPagesContainer}>
+          <Text style={styles.noPagesText}>No pages found for this document</Text>
+        </View>
+      ) : null}
+
+      {/* History FAB Button */}
+      <TouchableOpacity
         style={styles.historyFab}
         onPress={() => {
-      navigation.navigate('EditorHistory');
-
+          navigation.navigate('EditorHistory');
         }}
       >
         <Text style={styles.historyText}>History</Text>
         <AntDesign name="folderopen" size={28} color="#0EA5A4" />
-      </TouchableOpacity> 
+      </TouchableOpacity>
 
-
+      {/* Open Full Editor Button */}
       <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
         <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
           <Ionicons name="create-outline" size={22} color="#fff" />
@@ -287,10 +299,11 @@ setPageMeta(
       )}
     </View>
   );
-}
+};
 
 export default FormImageScreen;
 
+/* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   header: {
@@ -301,7 +314,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-    historyFab: {
+  title: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  pageCard: { flex: 1 },
+  imageBox: {
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  footer: {
+    padding: 12,
+    backgroundColor: '#f1f5f9',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  footerTxt: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  loading: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 14,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8d7da',
+  },
+  errorText: { 
+    color: '#721c24', 
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  noPagesContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noPagesText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  historyFab: {
     position: 'absolute',
     right: 16,
     bottom: 120,
@@ -315,25 +379,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+    zIndex: 10,
   },
-
   historyText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#374151',
     marginBottom: 4,
   },
-  title: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  pageCard: { flex: 1 },
-  imageBox: { backgroundColor: '#f8fafc' },
-  footer: {
-    padding: 12,
-    backgroundColor: '#f1f5f9',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+  bottomSafe: { 
+    padding: 16,
+    backgroundColor: '#fff',
   },
-  footerTxt: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  bottomSafe: { padding: 16 },
   btn: {
     backgroundColor: '#0EA5A4',
     paddingVertical: 15,
@@ -342,20 +399,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  btnTxt: { color: '#fff', marginLeft: 10, fontSize: 16, fontWeight: '700' },
-  loading: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  btnTxt: { 
+    color: '#fff', 
+    marginLeft: 10, 
+    fontSize: 16, 
+    fontWeight: '700' 
   },
-  noPagesContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  noPagesText: {
-    fontSize: 16,
-    color: '#666',
-  },
-});
+}); 

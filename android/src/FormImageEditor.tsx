@@ -59,7 +59,6 @@ const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
 const PAGE_SPACING = 16;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
-const DEFAULT_IMAGES: any[] = [];
 
 // 👉 Sticker images (local assets)
 import PATIENT_STICKER_SOURCE from './Images/NameStick.jpg';
@@ -70,6 +69,7 @@ type SavedMeta = { bitmapPath?: string | null };
 // Voice text note type
 export type VoiceNote = {
   id: string;
+  pageId?: string; // Added pageId to match with FormImageScreen
   pageIndex: number;
   text: string;
   color: string;
@@ -83,20 +83,21 @@ export type VoiceNote = {
 // Image sticker type
 export type ImageSticker = {
   id: string;
+  pageId?: string; // Added pageId to match with FormImageScreen
   pageIndex: number;
   x: number;
   y: number;
   scale: number;
   width?: number;
   height?: number;
-  stickerType: 'patient' | 'doctor'; // Added sticker type
+  stickerType: 'patient' | 'doctor';
 };
 
 // --- stable memoized drawing canvas
 type DrawingCanvasProps = {
   index: number;
   savedPath?: string | null;
-  drawingEnabled?: boolean; // Add this new prop
+  drawingEnabled?: boolean;
 };
 const HISTORY_STORAGE_KEY = 'DoctorApp:editorHistory:v1';
 
@@ -110,28 +111,32 @@ type EditorHistoryItem = {
   savedDate: string;
 };
 
+// Page type matching FormImageScreen
+type PageItem = {
+  pageId: string;
+  displayOrderNo: number;
+  imageData?: string;
+  loading?: boolean;
+};
 
 // --- stable memoized drawing canvas
 const DrawingCanvas = React.memo(
   forwardRef(function DrawingCanvasInternal(
-    { index, savedPath, drawingEnabled = true }: DrawingCanvasProps, // Add default value
+    { index, savedPath, drawingEnabled = true }: DrawingCanvasProps,
     forwardedRef: React.Ref<DrawingRef | null>
   ) {
-    // We need to pass drawingEnabled to NativeDrawingView if it supports it
     return (
       <NativeDrawingView
         ref={forwardedRef}
         style={styles.canvasOverlay}
         savedPath={savedPath ?? undefined}
-        // If NativeDrawingView has a drawingEnabled prop, pass it
-        // Otherwise, we'll handle it differently
       />
     );
   }),
   (prev, next) =>
     prev.index === next.index && 
     prev.savedPath === next.savedPath &&
-    prev.drawingEnabled === next.drawingEnabled // Add this
+    prev.drawingEnabled === next.drawingEnabled
 );
 
 const clamp = (val: number, min: number, max: number) =>
@@ -167,11 +172,9 @@ function DraggableVoiceText({
   const DEFAULT_HEIGHT = 60;
   const DEFAULT_FONT_SIZE = 14;
   
-  // Image dimensions - these should match your page/image size
-  const IMAGE_WIDTH = SCREEN_W; // Full screen width
-  const IMAGE_HEIGHT = PAGE_HEIGHT; // Page height
+  const IMAGE_WIDTH = SCREEN_W;
+  const IMAGE_HEIGHT = PAGE_HEIGHT;
   
-  // Minimum sizes
   const MIN_WIDTH = 40;
   const MIN_HEIGHT = 30;
   
@@ -181,7 +184,6 @@ function DraggableVoiceText({
   const PADDING_H = 12;
   const PADDING_V = 8;
 
-  // Refs for current state
   const currentPosRef = useRef<{ x: number; y: number }>(
     { x: note.x, y: note.y }
   );
@@ -200,13 +202,9 @@ function DraggableVoiceText({
   const currentWidthRef = useRef(note.boxWidth ?? DEFAULT_WIDTH);
   const currentHeightRef = useRef(note.boxHeight ?? DEFAULT_HEIGHT);
 
-  // Track user resizing state
   const isUserResizingRef = useRef(false);
   const [isTextInputFocused, setIsTextInputFocused] = useState(false);
   const [manualResizeFlag, setManualResizeFlag] = useState(0);
-  // Add near other useState declarations in FormImageEditor
-
-
 
   const startPosRef = useRef({ x: note.x, y: note.y });
   const lastTapRef = useRef(0);
@@ -228,28 +226,22 @@ function DraggableVoiceText({
   const textInputRef = useRef<TextInput>(null);
   const pageScaleRef = useRef(pageScale);
 
-  // Track if we're actively interacting with resize handles
   const isResizingRef = useRef(false);
 
-  // Function to calculate maximum allowed dimensions based on current position
   const calculateDynamicMaximums = (x: number, y: number) => {
-    // Calculate available space from current position to image edges
-    const maxAvailableWidth = IMAGE_WIDTH - x - 10; // 10px margin from right edge
-    const maxAvailableHeight = IMAGE_HEIGHT - y - 10; // 10px margin from bottom edge
+    const maxAvailableWidth = IMAGE_WIDTH - x - 10;
+    const maxAvailableHeight = IMAGE_HEIGHT - y - 10;
     
-    // Return maximum allowed dimensions
     return {
       maxWidth: Math.max(MIN_WIDTH, Math.min(maxAvailableWidth, IMAGE_WIDTH * 0.8)),
       maxHeight: Math.max(MIN_HEIGHT, Math.min(maxAvailableHeight, IMAGE_HEIGHT * 0.8))
     };
   };
 
-  // Update page scale ref
   useEffect(() => {
     pageScaleRef.current = pageScale || 1;
   }, [pageScale]);
 
-  // Update sizes when note changes
   useEffect(() => {
     const w = note.boxWidth ?? DEFAULT_WIDTH;
     const h = note.boxHeight ?? DEFAULT_HEIGHT;
@@ -259,13 +251,11 @@ function DraggableVoiceText({
     heightAnim.setValue(h);
   }, [note.boxWidth, note.boxHeight, widthAnim, heightAnim]);
 
-  // Update position when note changes
   useEffect(() => {
     pan.setValue({ x: note.x, y: note.y });
     currentPosRef.current = { x: note.x, y: note.y };
   }, [note.x, note.y, pan]);
 
-  // Focus text input when editing starts
   useEffect(() => {
     if (isEditing && isTextInputFocused && textInputRef.current) {
       setTimeout(() => {
@@ -274,7 +264,6 @@ function DraggableVoiceText({
     }
   }, [isEditing, isTextInputFocused]);
 
-  // Reset user resizing state when exiting edit mode
   useEffect(() => {
     if (!isEditing) {
       isUserResizingRef.current = false;
@@ -282,15 +271,12 @@ function DraggableVoiceText({
     }
   }, [isEditing]);
 
-  // Handle initial auto-sizing only for notes without dimensions
   useEffect(() => {
     if ((note.boxWidth == null || note.boxHeight == null) && measuredContentSizeRef.current) {
       const c = measuredContentSizeRef.current;
       
-      // Calculate dynamic maximums based on current position
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
       
-      // Add buffer to ensure text fits
       const buffer = 16;
       const autoW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
       const autoH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
@@ -303,9 +289,6 @@ function DraggableVoiceText({
     }
   }, [measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
 
-
-  
-  // Handle content layout measurement
   const handleContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = { 
       w: layout.width, 
@@ -321,135 +304,117 @@ function DraggableVoiceText({
     }
   };
 
-  // Drag handlers with boundary checking
-const dragPan = useRef(
-  PanResponder.create({
-    onStartShouldSetPanResponder: (evt: GestureResponderEvent) => {
-      // Only allow drag when there's exactly one touch and writing is enabled
-      if (!writingEnabled) return false;
-      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
-      if (touches.length !== 1) return false;
-      // Don't start drag if we're resizing
-      if (isResizingRef.current) return false;
-      return true;
-    },
+  const dragPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt: GestureResponderEvent) => {
+        if (!writingEnabled) return false;
+        const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+        if (touches.length !== 1) return false;
+        if (isResizingRef.current) return false;
+        return true;
+      },
 
-    onMoveShouldSetPanResponder: (evt: GestureResponderEvent) => {
-      // Only allow movement when there's exactly one touch and writing is enabled
-      if (!writingEnabled) return false;
-      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
-      if (touches.length !== 1) return false;
-      // Don't move if we're resizing
-      if (isResizingRef.current) return false;
-      return true;
-    },
+      onMoveShouldSetPanResponder: (evt: GestureResponderEvent) => {
+        if (!writingEnabled) return false;
+        const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+        if (touches.length !== 1) return false;
+        if (isResizingRef.current) return false;
+        return true;
+      },
 
-    onPanResponderGrant: (evt: GestureResponderEvent) => {
-      if (!writingEnabled) return;
-      // only set start if this is a single-touch grant
-      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
-      if (touches.length !== 1) return;
+      onPanResponderGrant: (evt: GestureResponderEvent) => {
+        if (!writingEnabled) return;
+        const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+        if (touches.length !== 1) return;
 
-      try {
-        const v = (pan as any).__getValue?.();
-        if (v && typeof v.x === 'number' && typeof v.y === 'number') {
-          startPosRef.current = { x: v.x, y: v.y };
-        } else {
+        try {
+          const v = (pan as any).__getValue?.();
+          if (v && typeof v.x === 'number' && typeof v.y === 'number') {
+            startPosRef.current = { x: v.x, y: v.y };
+          } else {
+            startPosRef.current = { ...currentPosRef.current };
+          }
+        } catch (e) {
           startPosRef.current = { ...currentPosRef.current };
         }
-      } catch (e) {
-        startPosRef.current = { ...currentPosRef.current };
-      }
-    },
+      },
 
-    onPanResponderMove: (
-      evt: GestureResponderEvent,
-      gestureState: PanResponderGestureState
-    ) => {
-      if (!writingEnabled) return;
-      // ignore multi-touch move events (pinch/pan handled globally)
-      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
-      if (touches.length !== 1) return;
+      onPanResponderMove: (
+        evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        if (!writingEnabled) return;
+        const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+        if (touches.length !== 1) return;
 
-      const scale = pageScaleRef.current || 1;
+        const scale = pageScaleRef.current || 1;
 
-      // Calculate new position
-      let nx = startPosRef.current.x + gestureState.dx / scale;
-      let ny = startPosRef.current.y + gestureState.dy / scale;
+        let nx = startPosRef.current.x + gestureState.dx / scale;
+        let ny = startPosRef.current.y + gestureState.dy / scale;
 
-      // Apply boundaries - ensure text box stays within image
-      const maxX = IMAGE_WIDTH - currentWidthRef.current - 5; // 5px margin from right
-      const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5; // 5px margin from bottom
+        const maxX = IMAGE_WIDTH - currentWidthRef.current - 5;
+        const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5;
 
-      nx = clamp(nx, 5, maxX); // Minimum 5px from left
-      ny = clamp(ny, 5, maxY); // Minimum 5px from top
+        nx = clamp(nx, 5, maxX);
+        ny = clamp(ny, 5, maxY);
 
-      pan.setValue({ x: nx, y: ny });
-      currentPosRef.current = { x: nx, y: ny };
-    },
+        pan.setValue({ x: nx, y: ny });
+        currentPosRef.current = { x: nx, y: ny };
+      },
 
-    onPanResponderRelease: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-      if (!writingEnabled) return;
-      // If multi-touch ended here, ignore
-      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
-      if (touches.length > 1) {
-        // do not treat as a finished single-finger drag/tap
-        return;
-      }
+      onPanResponderRelease: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        if (!writingEnabled) return;
+        const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+        if (touches.length > 1) {
+          return;
+        }
 
-      const dx = gestureState.dx;
-      const dy = gestureState.dy;
-      const moveDist = Math.sqrt(dx * dx + dy * dy);
+        const dx = gestureState.dx;
+        const dy = gestureState.dy;
+        const moveDist = Math.sqrt(dx * dx + dy * dy);
 
-      const now = Date.now();
-      const delta = now - lastTapRef.current;
-      lastTapRef.current = now;
+        const now = Date.now();
+        const delta = now - lastTapRef.current;
+        lastTapRef.current = now;
 
-      const isTap = moveDist < 5 &&
-        Math.abs(gestureState.vx) < 0.3 &&
-        Math.abs(gestureState.vy) < 0.3;
+        const isTap = moveDist < 5 &&
+          Math.abs(gestureState.vx) < 0.3 &&
+          Math.abs(gestureState.vy) < 0.3;
 
-      const { x: finalX, y: finalY } = currentPosRef.current;
+        const { x: finalX, y: finalY } = currentPosRef.current;
 
-      if (isTap && delta < 280) {
+        if (isTap && delta < 280) {
+          onPositionChange(note.id, finalX, finalY);
+          onToggleEdit(note.id);
+          return;
+        }
+
         onPositionChange(note.id, finalX, finalY);
-        onToggleEdit(note.id);
-        return;
-      }
+      },
 
-      onPositionChange(note.id, finalX, finalY);
-    },
+      onPanResponderTerminate: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+        if (!writingEnabled) return;
+        const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
+        if (touches.length !== 1) {
+        }
 
-    onPanResponderTerminate: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-      if (!writingEnabled) return;
-      // Guard multi-touch termination
-      const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
-      if (touches.length !== 1) {
-        // If multiple touches present (or termination was due to multitouch), still compute final from gesture values
-        // but prefer startPosRef as base (this avoids accidental large moves)
-      }
+        const scale = pageScaleRef.current || 1;
+        let nx = startPosRef.current.x + gestureState.dx / scale;
+        let ny = startPosRef.current.y + gestureState.dy / scale;
 
-      const scale = pageScaleRef.current || 1;
-      let nx = startPosRef.current.x + gestureState.dx / scale;
-      let ny = startPosRef.current.y + gestureState.dy / scale;
+        const maxX = IMAGE_WIDTH - currentWidthRef.current - 5;
+        const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5;
 
-      // Apply boundaries
-      const maxX = IMAGE_WIDTH - currentWidthRef.current - 5;
-      const maxY = IMAGE_HEIGHT - currentHeightRef.current - 5;
+        nx = clamp(nx, 5, maxX);
+        ny = clamp(ny, 5, maxY);
 
-      nx = clamp(nx, 5, maxX);
-      ny = clamp(ny, 5, maxY);
+        pan.setValue({ x: nx, y: ny });
+        currentPosRef.current = { x: nx, y: ny };
+        onPositionChange(note.id, nx, ny);
+      },
+    })
+  ).current;
 
-      pan.setValue({ x: nx, y: ny });
-      currentPosRef.current = { x: nx, y: ny };
-      onPositionChange(note.id, nx, ny);
-    },
-  })
-).current;
-
-
-
-  // Enhanced resize pan handlers with image boundaries
   const createResizePan = (opts: {
     signX: -1 | 0 | 1;
     signY: -1 | 0 | 1;
@@ -457,13 +422,11 @@ const dragPan = useRef(
     return PanResponder.create({
       onStartShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        // Mark that we're resizing to prevent drag
         isResizingRef.current = true;
         return true;
       },
       onMoveShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        // Mark that we're resizing to prevent drag
         isResizingRef.current = true;
         return true;
       },
@@ -485,7 +448,6 @@ const dragPan = useRef(
 
         const scale = pageScaleRef.current || 1;
 
-        // Calculate dynamic maximums based on current position
         const { maxWidth, maxHeight } = calculateDynamicMaximums(currentPosRef.current.x, currentPosRef.current.y);
 
         if (opts.signX !== 0) {
@@ -506,7 +468,6 @@ const dragPan = useRef(
           );
         }
 
-        // Update animations
         widthAnim.setValue(newWidth);
         heightAnim.setValue(newHeight);
         currentWidthRef.current = newWidth;
@@ -516,7 +477,6 @@ const dragPan = useRef(
       onPanResponderRelease: () => {
         if (!writingEnabled) return;
         
-        // Save the user-resized dimensions
         onBoxSizeChange(
           note.id,
           currentWidthRef.current,
@@ -524,7 +484,6 @@ const dragPan = useRef(
         );
         
         setManualResizeFlag(v => v + 1);
-        // Reset resizing flag
         isResizingRef.current = false;
       },
 
@@ -536,7 +495,6 @@ const dragPan = useRef(
           currentHeightRef.current
         );
         setManualResizeFlag(v => v + 1);
-        // Reset resizing flag
         isResizingRef.current = false;
       },
     });
@@ -568,7 +526,6 @@ const dragPan = useRef(
     createResizePan({ signX: 0, signY: 1 })
   ).current;
 
-  // Listen to animation value changes
   useEffect(() => {
     const widthListener = widthAnim.addListener(({ value }) => {
       currentWidthRef.current = value;
@@ -584,36 +541,29 @@ const dragPan = useRef(
     };
   }, [widthAnim, heightAnim]);
 
-  // Function to auto-resize when font size changes
   const autoResizeForFontSize = (newFontSize: number) => {
     if (!writingEnabled || !measuredContentSizeRef.current) return;
     
     const measured = measuredContentSizeRef.current;
     if (!measured) return;
 
-    // Calculate dynamic maximums based on current position
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
     
-    // Estimate new dimensions based on font size ratio
     const oldFontSize = note.fontSize || DEFAULT_FONT_SIZE;
     const sizeRatio = newFontSize / oldFontSize;
     
-    // Calculate needed size with buffer
     const buffer = 16;
     const neededWidth = Math.round((measured.w * sizeRatio) + PADDING_H * 2 + buffer);
     const neededHeight = Math.round((measured.h * sizeRatio) + PADDING_V * 2 + buffer);
     
-    // Clamp to dynamic bounds
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
     
-    // Update animations
     widthAnim.setValue(newWidth);
     heightAnim.setValue(newHeight);
     currentWidthRef.current = newWidth;
     currentHeightRef.current = newHeight;
     
-    // Save the new size
     onBoxSizeChange(note.id, newWidth, newHeight);
   };
 
@@ -621,8 +571,6 @@ const dragPan = useRef(
     if (!writingEnabled) return;
     const newSize = clamp(currentFontSize + 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
-    
-    // Auto-resize the box for the new font size
     autoResizeForFontSize(newSize);
   };
 
@@ -630,8 +578,6 @@ const dragPan = useRef(
     if (!writingEnabled) return;
     const newSize = clamp(currentFontSize - 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
-    
-    // Auto-resize the box for the new font size
     autoResizeForFontSize(newSize);
   };
 
@@ -643,41 +589,33 @@ const dragPan = useRef(
     setIsTextInputFocused(false);
   };
 
-  // Text change handler - no auto-resize
   const handleTextChange = (text: string) => {
     onChangeText(note.id, text);
   };
 
-  // Manual resize function with image boundaries
   const handleManualResize = () => {
     if (!writingEnabled) return;
     
     const measured = measuredContentSizeRef.current;
     if (!measured) return;
 
-    // Calculate dynamic maximums based on current position
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
     
-    // Calculate needed size with buffer
     const buffer = 16;
     const neededWidth = Math.round(measured.w + PADDING_H * 2 + buffer);
     const neededHeight = Math.round(measured.h + PADDING_V * 2 + buffer);
     
-    // Clamp to dynamic bounds
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
     
-    // Update animations
     widthAnim.setValue(newWidth);
     heightAnim.setValue(newHeight);
     currentWidthRef.current = newWidth;
     currentHeightRef.current = newHeight;
     
-    // Save the new size
     onBoxSizeChange(note.id, newWidth, newHeight);
   };
 
-  // Clean up on unmount
   useEffect(() => {
     return () => {
       if (resizeDebounceRef.current) {
@@ -955,7 +893,6 @@ function DraggableImageSticker({
   const MIN_SCALE = 0.5;
   const MAX_SCALE = 3;
 
-  // Image dimensions
   const IMAGE_WIDTH = SCREEN_W;
   const IMAGE_HEIGHT = PAGE_HEIGHT;
 
@@ -983,7 +920,6 @@ function DraggableImageSticker({
   const lastTapRef = useRef(0);
   const scaleStartRef = useRef(sticker.scale ?? 1);
 
-  // Track if we're actively resizing
   const isResizingRef = useRef(false);
 
   const pageScaleRef = useRef(pageScale);
@@ -1015,13 +951,11 @@ function DraggableImageSticker({
     PanResponder.create({
       onStartShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        // Don't start drag if we're resizing
         if (isResizingRef.current) return false;
         return true;
       },
       onMoveShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        // Don't move if we're resizing
         if (isResizingRef.current) return false;
         return true;
       },
@@ -1049,7 +983,6 @@ function DraggableImageSticker({
         let nx = startPosRef.current.x + gestureState.dx / scale;
         let ny = startPosRef.current.y + gestureState.dy / scale;
         
-        // Apply boundaries
         const maxX = IMAGE_WIDTH - currentSizeRef.current.width - 5;
         const maxY = IMAGE_HEIGHT - currentSizeRef.current.height - 5;
         
@@ -1094,7 +1027,6 @@ function DraggableImageSticker({
         let nx = startPosRef.current.x + gestureState.dx / scale;
         let ny = startPosRef.current.y + gestureState.dy / scale;
         
-        // Apply boundaries
         const maxX = IMAGE_WIDTH - currentSizeRef.current.width - 5;
         const maxY = IMAGE_HEIGHT - currentSizeRef.current.height - 5;
         
@@ -1115,13 +1047,11 @@ function DraggableImageSticker({
     return PanResponder.create({
       onStartShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        // Mark that we're resizing to prevent drag
         isResizingRef.current = true;
         return true;
       },
       onMoveShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        // Mark that we're resizing to prevent drag
         isResizingRef.current = true;
         return true;
       },
@@ -1136,7 +1066,6 @@ function DraggableImageSticker({
         const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
         let newScale = scaleStartRef.current * factor;
         
-        // Calculate maximum scale based on image boundaries
         const maxWidthScale = (IMAGE_WIDTH - currentPosRef.current.x - 10) / DEFAULT_WIDTH;
         const maxHeightScale = (IMAGE_HEIGHT - currentPosRef.current.y - 10) / DEFAULT_HEIGHT;
         const maxScaleByBoundary = Math.min(maxWidthScale, maxHeightScale, MAX_SCALE);
@@ -1152,7 +1081,6 @@ function DraggableImageSticker({
         const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
         let newScale = scaleStartRef.current * factor;
         
-        // Calculate maximum scale based on image boundaries
         const maxWidthScale = (IMAGE_WIDTH - currentPosRef.current.x - 10) / DEFAULT_WIDTH;
         const maxHeightScale = (IMAGE_HEIGHT - currentPosRef.current.y - 10) / DEFAULT_HEIGHT;
         const maxScaleByBoundary = Math.min(maxWidthScale, maxHeightScale, MAX_SCALE);
@@ -1164,7 +1092,6 @@ function DraggableImageSticker({
         const newHeight = DEFAULT_HEIGHT * newScale;
         
         onSizeChange(sticker.id, newWidth, newHeight);
-        // Reset resizing flag
         isResizingRef.current = false;
       },
 
@@ -1173,7 +1100,6 @@ function DraggableImageSticker({
         const newWidth = DEFAULT_WIDTH * (sticker.scale ?? 1);
         const newHeight = DEFAULT_HEIGHT * (sticker.scale ?? 1);
         onSizeChange(sticker.id, newWidth, newHeight);
-        // Reset resizing flag
         isResizingRef.current = false;
       },
     });
@@ -1272,36 +1198,8 @@ export default function FormImageEditor() {
   const insets = useSafeAreaInsets();
 
   const formKeyParam = route.params?.formKey as string | undefined;
-  const apiPages = route.params?.apiPages as
-  | { pageNumber: number; imageUrl: string }[]
-  | undefined;
-
-  
-  type EditorImage =
-  | { type: 'local'; source: any }
-  | { type: 'api'; uri: string };
-
-const IMAGES: EditorImage[] = useMemo(() => {
-  // 1️⃣ API images take priority
-  if (Array.isArray(apiPages) && apiPages.length > 0) {
-    return apiPages.map(p => ({
-      type: 'api',
-      uri: p.imageUrl,
-    }));
-  }
-
-  // 2️⃣ fallback to local images
-  const local = IMAGES_BY_FORM[formKeyParam ?? ''];
-  if (Array.isArray(local)) {
-    return local.map(img => ({
-      type: 'local',
-      source: img,
-    }));
-  }
-
-  return [];
-}, [apiPages, formKeyParam]);
-
+  const apiPages = route.params?.apiPages as PageItem[] | undefined;
+  const documentId = route.params?.documentId as string | undefined;
 
   const storageKeyParam = route.params?.storageKey as string | undefined;
   const uiKeyParam = route.params?.uiStorageKey as string | undefined;
@@ -1368,6 +1266,19 @@ const IMAGES: EditorImage[] = useMemo(() => {
       setEditingStickerId(null);
     }
   }, [writingEnabled]);
+
+  // Use apiPages directly instead of IMAGES_BY_FORM
+  const IMAGES: PageItem[] = useMemo(() => {
+    if (Array.isArray(apiPages) && apiPages.length > 0) {
+      return apiPages.map(page => ({
+        pageId: page.pageId,
+        displayOrderNo: page.displayOrderNo,
+        imageData: page.imageData,
+        loading: page.loading ?? false,
+      }));
+    }
+    return [];
+  }, [apiPages]);
 
   const canvasRefs = useRef<Array<DrawingRef | null>>(
     IMAGES.map(() => null)
@@ -1546,9 +1457,11 @@ const IMAGES: EditorImage[] = useMemo(() => {
     if (!trimmed) return;
 
     const pageIndex = getCurrentPageIndex();
+    const currentPage = IMAGES[pageIndex];
 
     const newNote: VoiceNote = {
       id: `${Date.now()}-${Math.random()}`,
+      pageId: currentPage?.pageId, // Add pageId to match FormImageScreen
       pageIndex,
       text: trimmed,
       color,
@@ -1562,19 +1475,20 @@ const IMAGES: EditorImage[] = useMemo(() => {
 
   const addImageSticker = (stickerType: 'patient' | 'doctor') => {
     const pageIndex = getCurrentPageIndex();
+    const currentPage = IMAGES[pageIndex];
 
-    // Different default positions for patient vs doctor stickers
-    let x = SCREEN_W * 0.7; // Right side (70% from left)
+    let x = SCREEN_W * 0.7;
     let y;
     
     if (stickerType === 'patient') {
-      y = PAGE_HEIGHT * 0.05 + 20; // Top-right with more padding (5% from top)
+      y = PAGE_HEIGHT * 0.05 + 20;
     } else {
-      y = PAGE_HEIGHT * 0.75 - 20; // Bottom-right with more padding (75% from top)
+      y = PAGE_HEIGHT * 0.75 - 20;
     }
 
     const newSticker: ImageSticker = {
       id: `${Date.now()}-${Math.random()}`,
+      pageId: currentPage?.pageId, // Add pageId to match FormImageScreen
       pageIndex,
       x,
       y,
@@ -1830,23 +1744,20 @@ const IMAGES: EditorImage[] = useMemo(() => {
       prev.filter((s) => s.pageIndex !== pageIndex)
     );
   };
-  // confirmation modal for clearing page
-const [confirmClearVisible, setConfirmClearVisible] = useState(false);
 
-const performClearConfirmed = () => {
-  // close modal first for immediate feedback
-  setConfirmClearVisible(false);
+  const [confirmClearVisible, setConfirmClearVisible] = useState(false);
 
-  // existing performClear behaviour (call the same internal code)
-  const idx = getCurrentPageIndex();
-  const c = canvasRefs.current[idx];
-  if (c && typeof c.clear === 'function') c.clear();
+  const performClearConfirmed = () => {
+    setConfirmClearVisible(false);
 
-  clearNotesForPage(idx);
-  setEditingNoteId(null);
-  setEditingStickerId(null);
-};
+    const idx = getCurrentPageIndex();
+    const c = canvasRefs.current[idx];
+    if (c && typeof c.clear === 'function') c.clear();
 
+    clearNotesForPage(idx);
+    setEditingNoteId(null);
+    setEditingStickerId(null);
+  };
 
   const performClear = () => {
     if (!writingEnabled) return;
@@ -1873,20 +1784,20 @@ const performClearConfirmed = () => {
   const CONTENT_BOTTOM_PADDING = Math.max(160, SCREEN_H - PAGE_HEIGHT + PAGE_SPACING + 24);
 
   const PALETTE = [
-    '#073694ff', // Pen Ink Blue (new, main writing color)
+    '#073694ff', // Pen Ink Blue
 
-    '#066666', // Dark Teal (darker of #0EA5A4)
-    '#B13120', // Dark Brick Red (darker of #E4572E)
-    '#CC3F5C', // Deep Pink-Red (darker of #FF8A80)
-    '#B45A73', // Dusty Rose (darker of #FFB6C1)
-    '#C97A3A', // Burnt Orange (darker of #FFC79C)
-    '#C8A31F', // Deep Mustard Yellow (darker of #FFEB7A)
-    '#4F8B45', // Dark Leaf Green (darker of #7EE07A)
-    '#008080', // Dark Cyan (darker of #3FE0D0)
-    '#0069A8', // Deep Sky Blue (darker of #00B0FF)
-    '#5870C2', // Steel Blue (darker of #9CC6FF)
-    '#7A52B3', // Deep Violet (darker of #C39CFF)
-    '#555555', // Dark Grey (darker of #BDBDBD)
+    '#066666', // Dark Teal
+    '#B13120', // Dark Brick Red
+    '#CC3F5C', // Deep Pink-Red
+    '#B45A73', // Dusty Rose
+    '#C97A3A', // Burnt Orange
+    '#C8A31F', // Deep Mustard Yellow
+    '#4F8B45', // Dark Leaf Green
+    '#008080', // Dark Cyan
+    '#0069A8', // Deep Sky Blue
+    '#5870C2', // Steel Blue
+    '#7A52B3', // Deep Violet
+    '#555555', // Dark Grey
     '#000000', // Black
   ];
 
@@ -2041,16 +1952,12 @@ const performClearConfirmed = () => {
   };
   const disableDrawingImmediately = (disable: boolean) => {
   try {
-    // flip ref first for synchronous reads
     multiTouchActiveRef.current = disable;
-    // call any native methods available on the drawing refs to stop current stroke
     canvasRefs.current.forEach((c) => {
       if (!c) return;
-      // Preferred API: if the native module exposes a direct boolean setter
       if (typeof (c as any).setDrawingEnabled === 'function') {
         (c as any).setDrawingEnabled(!disable ? true : false);
       }
-      // Common cancel/finish methods that native drawing libs sometimes provide
       if (disable) {
         if (typeof (c as any).cancelStroke === 'function') {
           (c as any).cancelStroke();
@@ -2065,7 +1972,6 @@ const performClearConfirmed = () => {
           (c as any).abortCurrentStroke();
         }
       } else {
-        // If re-enabling, ensure drawing mode restored if API exists
         if (typeof (c as any).setDrawingEnabled === 'function') {
           (c as any).setDrawingEnabled(true);
         }
@@ -2075,10 +1981,8 @@ const performClearConfirmed = () => {
     console.warn('[FormImageEditor] disableDrawingImmediately error', e);
   }
 
-  // update React state too (for pointerEvents / drawingEnabled prop)
   setMultiTouchActive(disable);
 };
-
 
 const pinchResponder = useRef(
   PanResponder.create({
@@ -2113,7 +2017,6 @@ const pinchResponder = useRef(
       const pageIndex = getCurrentPageIndex();
       const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      // If two fingers — mark multitouch active so drawing is disabled
       if (touches.length === 2) {
         setMultiTouchActive(true);
       }
@@ -2130,7 +2033,6 @@ const pinchResponder = useRef(
           initialDistance: distance,
           startScale: currentScale,
           pageIndex,
-          startMidpoint: { x: midX, y: midY },
         };
 
         try {
@@ -2144,7 +2046,6 @@ const pinchResponder = useRef(
 
         activePanPageRef.current = null;
       } else if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
-        // one-finger pan when zoomed and writing disabled
         activePanPageRef.current = pageIndex;
         try {
           panStartPerPageRef[pageIndex] = {
@@ -2156,7 +2057,6 @@ const pinchResponder = useRef(
         }
       } else {
         activePanPageRef.current = null;
-        // For single-finger start we don't modify multiTouchActive
       }
     },
 
@@ -2165,7 +2065,6 @@ const pinchResponder = useRef(
       const pageIndex = getCurrentPageIndex();
       const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      // TWO-FINGER: handle pinch scale AND two-finger pan via midpoint delta
       if (touches.length === 2) {
         const [t1, t2] = touches;
         const dx = t1.pageX - t2.pageX;
@@ -2179,7 +2078,6 @@ const pinchResponder = useRef(
             initialDistance: distance,
             startScale: currentScale,
             pageIndex,
-            // startMidpoint: { x: midX, y: midY },
           };
           try {
             panStartPerPageRef[pageIndex] = {
@@ -2191,8 +2089,7 @@ const pinchResponder = useRef(
           }
         }
 
-        const { initialDistance, startScale, startMidpoint } = pinchStateRef.current;
-        // scale
+        const { initialDistance, startScale } = pinchStateRef.current;
         const scaleFactor = distance / (initialDistance || 1);
         let requestedScale = startScale * scaleFactor;
         if (requestedScale < MIN_ZOOM) requestedScale = MIN_ZOOM;
@@ -2208,12 +2105,10 @@ const pinchResponder = useRef(
           pageScaleAnimsRef[pageIndex].setValue(requestedScale);
         }
 
-        // two-finger pan using midpoint delta (relative to start)
         const panStart = panStartPerPageRef[pageIndex] ?? { x: 0, y: 0 };
-        const deltaX = midX - (startMidpoint?.x ?? midX);
-        const deltaY = midY - (startMidpoint?.y ?? midY);
+        const deltaX = midX - (t1.pageX + t2.pageX) / 2;
+        const deltaY = midY - (t1.pageY + t2.pageY) / 2;
 
-        // apply delta to starting translate
         const rawTx = panStart.x + deltaX;
         const rawTy = panStart.y + deltaY;
 
@@ -2224,7 +2119,6 @@ const pinchResponder = useRef(
         return;
       }
 
-      // ONE-FINGER PAN when zoomed (only allowed when writing disabled)
       if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
         const pIndex = activePanPageRef.current ?? pageIndex;
         const start = panStartPerPageRef[pIndex];
@@ -2240,7 +2134,6 @@ const pinchResponder = useRef(
       const pageIndex = getCurrentPageIndex();
       const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      // Turn off multitouch flag when gesture ends
       setMultiTouchActive(false);
 
       if (currentScale <= 1.01) {
@@ -2268,7 +2161,6 @@ const pinchResponder = useRef(
       const pageIndex = getCurrentPageIndex();
       const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      // Also clear multitouch flag on termination
       setMultiTouchActive(false);
 
       if (currentScale <= 1.01) {
@@ -2292,7 +2184,6 @@ const pinchResponder = useRef(
   })
 ).current;
 
-
   const ZOOM_STEP = 0.25;
 
   const applyZoomForPage = (pageIndex: number, requestedScale: number) => {
@@ -2311,6 +2202,7 @@ const pinchResponder = useRef(
       pageScaleAnimsRef[pageIndex].setValue(newScale);
     }
   }
+  
   const handleZoomInPress = () => {
     if (saveStatus === 'saving') return;
     const pageIndex = getCurrentPageIndex();
@@ -2343,7 +2235,6 @@ const pinchResponder = useRef(
 
   const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
 
-  // 1️⃣ Save all pages
   for (let i = 0; i < IMAGES.length; i++) {
     const c = canvasRefs.current[i];
     if (!c || typeof c.saveToFile !== 'function') {
@@ -2368,16 +2259,13 @@ const pinchResponder = useRef(
 
   try {
     if (AsyncStorage) {
-      // 2️⃣ Save editor data
       await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(uiPayload));
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fullSaveBlob));
 
-      // 3️⃣ ✅ SAVE TO EDITOR HISTORY (ONCE)
       const now = new Date();
       const savedDateKey = now.toISOString().split('T')[0];
 
       const historyRaw = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
-      const pdfFileName = `form_${Date.now()}.pdf`;
       const history: EditorHistoryItem[] = historyRaw
         ? JSON.parse(historyRaw)
         : [];
@@ -2406,7 +2294,6 @@ const pinchResponder = useRef(
   }
 };
 
-
   const handleSaveOk = () => {
     const payload =
       lastPayloadRef.current || {
@@ -2420,16 +2307,15 @@ const pinchResponder = useRef(
         storageKey: STORAGE_KEY,
         formName: route.params?.formName,
         voiceNotes,
-        imageStickers, // This already includes stickerType for each sticker
+        imageStickers,
       };
 
     setSaveStatus('idle');
     
-    // Navigate only when user clicks OK
     navigation.navigate('FormImageScreen', {
       savedStrokes: savedMeta,
       voiceNotes,
-      imageStickers, // ✅ stickerType is included here
+      imageStickers,
       storageKey: STORAGE_KEY,
       formName: route.params?.formName,
       formKey: formKeyParam,
@@ -2445,630 +2331,619 @@ const pinchResponder = useRef(
   };
 
   return (
-
-  <SafeAreaView style={styles.root}>
-    {/* Combined Header - Back + Tools + SAVE */}
-    <View style={styles.combinedHeader}>
-      {/* Top row: Back button on left, SAVE on right */}
-      <View style={styles.topRow}>
-        {/* Back button on left */}
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          disabled={saveStatus === 'saving'}
-        >
-          <Ionicons name="arrow-back" size={22} color="#fff" />
-        </TouchableOpacity>
-
-        {/* SAVE button on right */}
-        <TouchableOpacity
-          onPress={onSaveAll}
-          style={styles.saveButton}
-          disabled={saveStatus === 'saving'}
-        >
-          <Text style={styles.saveButtonText}>SAVE</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Bottom row: Tools */}
-      <View style={styles.toolsRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.toolsScrollContent}
-        >
-          {/* Writing ON/OFF toggle */}
+    <SafeAreaView style={styles.root}>
+      {/* Combined Header - Back + Tools + SAVE */}
+      <View style={styles.combinedHeader}>
+        {/* Top row: Back button on left, SAVE on right */}
+        <View style={styles.topRow}>
+          {/* Back button on left */}
           <TouchableOpacity
-            onPress={() => setWritingEnabled((prev) => !prev)}
-            style={[
-              styles.toolButton,
-              !writingEnabled && styles.writeToggleActive,
-            ]}
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
             disabled={saveStatus === 'saving'}
           >
-            <FontAwesome
-              name="pencil-square-o"
-              size={20}
-              color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
-            />
-            <Text style={styles.toolButtonText}>
-              {writingEnabled ? 'ON' : 'OFF'}
-            </Text>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
 
-          {/* Color picker circle */}
+          {/* SAVE button on right */}
           <TouchableOpacity
-            onPress={() => setColorPanelOpen((v) => !v)}
-            style={[
-              styles.toolButton,
-              !writingEnabled && styles.toolsDisabled,
-            ]}
-            disabled={saveStatus === 'saving' || !writingEnabled}
+            onPress={onSaveAll}
+            style={styles.saveButton}
+            disabled={saveStatus === 'saving'}
           >
-            <View style={[styles.colorCircle, { backgroundColor: color }]} />
-            <Text style={styles.toolButtonText}>Color</Text>
+            <Text style={styles.saveButtonText}>SAVE</Text>
           </TouchableOpacity>
+        </View>
 
-          {/* ➕ Add Text icon (typed text) */}
-          <TouchableOpacity
-            onPress={handleAddTextIconPress}
-            style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
-            disabled={saveStatus === 'saving' || !writingEnabled}
+        {/* Bottom row: Tools */}
+        <View style={styles.toolsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.toolsScrollContent}
           >
-            <MaterialCommunityIcons
-              name="format-text"
-              size={20}
-              color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
-            />
-            <Text style={styles.toolButtonText}>Text</Text>
-          </TouchableOpacity>
-
-          {/* Undo / Redo / Clear group */}
-          <View style={styles.toolGroup}>
+            {/* Writing ON/OFF toggle */}
             <TouchableOpacity
-              onPress={performUndo}
-              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
-              disabled={saveStatus === 'saving' || !writingEnabled}
+              onPress={() => setWritingEnabled((prev) => !prev)}
+              style={[
+                styles.toolButton,
+                !writingEnabled && styles.writeToggleActive,
+              ]}
+              disabled={saveStatus === 'saving'}
             >
-              <Ionicons
-                name="arrow-undo"
+              <FontAwesome
+                name="pencil-square-o"
                 size={20}
-                color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
               />
-              <Text style={styles.toolButtonText}>Undo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={performRedo}
-              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <Ionicons
-                name="arrow-redo"
-                size={20}
-                color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
-              />
-              <Text style={styles.toolButtonText}>Redo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                if (saveStatus === 'saving') return;
-                if (!writingEnabled) {
-                  showEditingOffHint();
-                  return;
-                }
-                setConfirmClearVisible(true);
-              }}
-              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <MaterialCommunityIcons
-                name="broom"
-                size={20}
-                color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
-              />
-              <Text style={styles.toolButtonText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Patient Sticker */}
-          <TouchableOpacity
-            onPress={handlePatientStickerPress}
-            style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
-            disabled={saveStatus === 'saving' || !writingEnabled}
-          >
-            <Ionicons
-              name="person"
-              size={20}
-              color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
-            />
-            <Text style={styles.toolButtonText}>Patient Sticker</Text>
-          </TouchableOpacity>
-
-          {/* Doctor Sticker */}
-          <TouchableOpacity
-            onPress={handleDoctorStickerPress}
-            style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
-            disabled={saveStatus === 'saving' || !writingEnabled}
-          >
-            <FontAwesome6
-              name="user-doctor"
-              size={20}
-              color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
-            />
-            <Text style={styles.toolButtonText}>Doctor Sticker</Text>
-          </TouchableOpacity>
-
-          {/* Pen / Eraser group */}
-          <View style={styles.toolGroup}>
-            {/* Pen */}
-            <TouchableOpacity
-              onPress={activatePen}
-              style={[styles.toolChip, tool === 'pen' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <MaterialCommunityIcons
-                name="pencil"
-                size={18}
-                color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
-              />
-              <Text style={[
-                styles.toolChipText,
-                tool === 'pen' && styles.toolChipTextActive,
-                !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
-              ]}>
-                Pen
+              <Text style={styles.toolButtonText}>
+                {writingEnabled ? 'ON' : 'OFF'}
               </Text>
+            </TouchableOpacity>
+
+            {/* Color picker circle */}
+            <TouchableOpacity
+              onPress={() => setColorPanelOpen((v) => !v)}
+              style={[
+                styles.toolButton,
+                !writingEnabled && styles.toolsDisabled,
+              ]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <View style={[styles.colorCircle, { backgroundColor: color }]} />
+              <Text style={styles.toolButtonText}>Color</Text>
+            </TouchableOpacity>
+
+            {/* ➕ Add Text icon (typed text) */}
+            <TouchableOpacity
+              onPress={handleAddTextIconPress}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <MaterialCommunityIcons
+                name="format-text"
+                size={20}
+                color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+              />
+              <Text style={styles.toolButtonText}>Text</Text>
+            </TouchableOpacity>
+
+            {/* Undo / Redo / Clear group */}
+            <View style={styles.toolGroup}>
               <TouchableOpacity
-                onPress={() => setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))}
-                style={styles.thicknessToggle}
+                onPress={performUndo}
+                style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
                 <Ionicons
-                  name={thicknessPanelOpen && thicknessTool === 'pen' ? 'chevron-up' : 'chevron-down'}
-                  size={16}
+                  name="arrow-undo"
+                  size={20}
+                  color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                />
+                <Text style={styles.toolButtonText}>Undo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={performRedo}
+                style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <Ionicons
+                  name="arrow-redo"
+                  size={20}
+                  color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                />
+                <Text style={styles.toolButtonText}>Redo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (saveStatus === 'saving') return;
+                  if (!writingEnabled) {
+                    showEditingOffHint();
+                    return;
+                  }
+                  setConfirmClearVisible(true);
+                }}
+                style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <MaterialCommunityIcons
+                  name="broom"
+                  size={20}
+                  color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                />
+                <Text style={styles.toolButtonText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Patient Sticker */}
+            <TouchableOpacity
+              onPress={handlePatientStickerPress}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <Ionicons
+                name="person"
+                size={20}
+                color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+              />
+              <Text style={styles.toolButtonText}>Patient Sticker</Text>
+            </TouchableOpacity>
+
+            {/* Doctor Sticker */}
+            <TouchableOpacity
+              onPress={handleDoctorStickerPress}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            >
+              <FontAwesome6
+                name="user-doctor"
+                size={20}
+                color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+              />
+              <Text style={styles.toolButtonText}>Doctor Sticker</Text>
+            </TouchableOpacity>
+
+            {/* Pen / Eraser group */}
+            <View style={styles.toolGroup}>
+              {/* Pen */}
+              <TouchableOpacity
+                onPress={activatePen}
+                style={[styles.toolChip, tool === 'pen' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <MaterialCommunityIcons
+                  name="pencil"
+                  size={18}
                   color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                 />
+                <Text style={[
+                  styles.toolChipText,
+                  tool === 'pen' && styles.toolChipTextActive,
+                  !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
+                ]}>
+                  Pen
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))}
+                  style={styles.thicknessToggle}
+                  disabled={saveStatus === 'saving' || !writingEnabled}
+                >
+                  <Ionicons
+                    name={thicknessPanelOpen && thicknessTool === 'pen' ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
+                  />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
 
-            {/* Eraser */}
-            <TouchableOpacity
-              onPress={activateEraser}
-              style={[styles.toolChip, tool === 'eraser' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
-              disabled={saveStatus === 'saving' || !writingEnabled}
-            >
-              <MaterialCommunityIcons
-                name="eraser"
-                size={18}
-                color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
-              />
-              <Text style={[
-                styles.toolChipText,
-                tool === 'eraser' && styles.toolChipTextActive,
-                !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
-              ]}>
-                Eraser
-              </Text>
+              {/* Eraser */}
               <TouchableOpacity
-                onPress={() => setThicknessTool((prev) => (prev === 'eraser' ? null : 'eraser'))}
-                style={styles.thicknessToggle}
+                onPress={activateEraser}
+                style={[styles.toolChip, tool === 'eraser' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
-                <Ionicons
-                  name={thicknessPanelOpen && thicknessTool === 'eraser' ? 'chevron-up' : 'chevron-down'}
-                  size={16}
+                <MaterialCommunityIcons
+                  name="eraser"
+                  size={18}
                   color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
                 />
+                <Text style={[
+                  styles.toolChipText,
+                  tool === 'eraser' && styles.toolChipTextActive,
+                  !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
+                ]}>
+                  Eraser
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setThicknessTool((prev) => (prev === 'eraser' ? null : 'eraser'))}
+                  style={styles.thicknessToggle}
+                  disabled={saveStatus === 'saving' || !writingEnabled}
+                >
+                  <Ionicons
+                    name={thicknessPanelOpen && thicknessTool === 'eraser' ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
+                  />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+
+      {/* Color palette panel */}
+      {colorPanelOpen && (
+        <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }]}>
+          {/* Close Icon */}
+          <TouchableOpacity
+            onPress={() => setColorPanelOpen(false)}
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              padding: 6,
+              zIndex: 50,
+            }}
+          >
+            <Feather name="x" size={22} color="#333" />
+          </TouchableOpacity>
+
+          <View style={styles.paletteGrid}>
+            {PALETTE.map((c) => (
+              <TouchableOpacity
+                key={c}
+                onPress={() => {
+                  setColor(c);
+                  setColorPanelOpen(false);
+
+                  if (tool === 'eraser') {
+                    setTool('pen');
+
+                    canvasRefs.current.forEach((canvas) => {
+                      if (!canvas) return;
+
+                      if (typeof canvas.setEraser === 'function') {
+                        canvas.setEraser(false);
+                      }
+
+                      if (typeof canvas.setColor === 'function') {
+                        canvas.setColor(c);
+                      }
+                    });
+                  } else {
+                    canvasRefs.current.forEach((canvas) => {
+                      if (!canvas || typeof canvas.setColor !== 'function') return;
+                      canvas.setColor(c);
+                    });
+                  }
+                }}
+                style={[
+                  styles.gridSwatchWrap,
+                  c.toUpperCase() === color.toUpperCase() ? styles.gridSwatchActive : undefined,
+                ]}
+                disabled={saveStatus === 'saving' || !writingEnabled}
+              >
+                <View style={[styles.gridSwatch, { backgroundColor: c }]} />
+                {c.toUpperCase() === '#FFFFFF' && <View style={styles.whiteSwatchBorder} />}
+              </TouchableOpacity>
+            ))}
           </View>
+        </Animated.View>
+      )}
+
+      {/* Wrapper that handles pinch zoom / pan */}
+      <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
+        <ScrollView
+          ref={(r) => (scrollRef.current = r)}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            alignItems: 'center',
+            paddingTop: 8,
+          }}
+          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            scrollY.current = e.nativeEvent.contentOffset.y;
+            syncRightHandleToScroll(scrollY.current);
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+          decelerationRate="fast"
+          overScrollMode="always"
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={!writingEnabled ? true : scrollEnabled}
+        >
+          {IMAGES.length === 0 ? (
+            <View style={styles.noImagesContainer}>
+              <Text style={styles.noImagesText}>No pages found for this document</Text>
+            </View>
+          ) : (
+            IMAGES.map((page, pageIndex) => {
+              const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
+              const notesForPage = voiceNotes.filter((n) => n.pageIndex === pageIndex);
+              const stickersForPage = imageStickers.filter((s) => s.pageIndex === pageIndex);
+
+              return (
+                <View key={`page-${pageIndex}`} style={styles.pageWrap}>
+                  <View style={styles.pageInner}>
+                    <Animated.View
+                      style={[
+                        styles.zoomGroup,
+                        {
+                          transform: [
+                            { translateX: pageTranslateXRef[pageIndex] },
+                            { translateY: pageTranslateYRef[pageIndex] },
+                            { scale: pageScaleAnimsRef[pageIndex] },
+                          ],
+                        },
+                      ]}
+                    >
+                      {/* Direct Image Display - same as FormImageScreen */}
+                      {page.imageData ? (
+                        <Image
+                          source={{ uri: page.imageData }}
+                          style={styles.pageImage}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        <View style={styles.loadingContainer}>
+                          <ActivityIndicator size="large" color="#0EA5A4" />
+                          <Text style={styles.loadingText}>Loading image...</Text>
+                        </View>
+                      )}
+
+                      {/* Canvas container */}
+                      <View
+                        style={styles.canvasContainer}
+                        pointerEvents={
+                          editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
+                            ? 'none'
+                            : 'box-none'
+                        }
+                      >
+                        <DrawingCanvas
+                          index={pageIndex}
+                          savedPath={savedPath}
+                          ref={(r) => refSetters.current[pageIndex](r)}
+                          drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
+                        />
+                      </View>
+
+                      {/* Voice notes */}
+                      {notesForPage.map((note) => (
+                        <DraggableVoiceText
+                          key={note.id}
+                          note={note}
+                          isEditing={editingNoteId === note.id}
+                          onToggleEdit={(id) => {
+                            if (!writingEnabled) return;
+                            setEditingNoteId((prev) => (prev === id ? null : id));
+                            setEditingStickerId(null);
+                          }}
+                          onPositionChange={handleVoiceNotePositionChange}
+                          onBoxSizeChange={handleVoiceNoteBoxChange}
+                          onDelete={handleVoiceNoteDelete}
+                          onChangeText={handleVoiceNoteTextChange}
+                          onChangeFontSize={handleVoiceNoteFontSizeChange}
+                          pageScale={lastScalePerPageRef[pageIndex]}
+                          writingEnabled={writingEnabled}
+                        />
+                      ))}
+
+                      {/* Image stickers */}
+                      {stickersForPage.map((sticker) => (
+                        <DraggableImageSticker
+                          key={sticker.id}
+                          sticker={sticker}
+                          isEditing={editingStickerId === sticker.id}
+                          onToggleEdit={(id) => {
+                            if (!writingEnabled) return;
+                            setEditingStickerId((prev) => (prev === id ? null : id));
+                            setEditingNoteId(null);
+                          }}
+                          onPositionChange={handleStickerPositionChange}
+                          onSizeChange={handleStickerSizeChange}
+                          onDelete={handleStickerDelete}
+                          pageScale={lastScalePerPageRef[pageIndex]}
+                          writingEnabled={writingEnabled}
+                        />
+                      ))}
+                    </Animated.View>
+                  </View>
+
+                  <View style={styles.pageLabelCompact} />
+                </View>
+              );
+            })
+          )}
         </ScrollView>
       </View>
-    </View>
 
-    {/* Color palette panel */}
- {colorPanelOpen && (
-  <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }]}>
+      {/* Right scroll handle */}
+      <Animated.View style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]} {...rightPanResponder.panHandlers} pointerEvents="auto">
+        <View style={styles.rightHandleInner}>
+          <View style={styles.rightGrip} />
+        </View>
+      </Animated.View>
 
-    {/* Close Icon */}
-    <TouchableOpacity
-      onPress={() => setColorPanelOpen(false)}
-      style={{
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        padding: 6,
-        zIndex: 50,
-      }}
-    >
-      <Feather name="x" size={22} color="#333" />
-    </TouchableOpacity>
-
-    <View style={styles.paletteGrid}>
-      {PALETTE.map((c) => (
-        <TouchableOpacity
-          key={c}
-          onPress={() => {
-            setColor(c);
-            setColorPanelOpen(false);
-
-            if (tool === 'eraser') {
-              setTool('pen');
-
-              canvasRefs.current.forEach((canvas) => {
-                if (!canvas) return;
-
-                if (typeof canvas.setEraser === 'function') {
-                  canvas.setEraser(false);
-                }
-
-                if (typeof canvas.setColor === 'function') {
-                  canvas.setColor(c);
-                }
-              });
-            } else {
-              canvasRefs.current.forEach((canvas) => {
-                if (!canvas || typeof canvas.setColor !== 'function') return;
-                canvas.setColor(c);
-              });
-            }
-          }}
-          style={[
-            styles.gridSwatchWrap,
-            c.toUpperCase() === color.toUpperCase() ? styles.gridSwatchActive : undefined,
-          ]}
-          disabled={saveStatus === 'saving' || !writingEnabled}
-        >
-          <View style={[styles.gridSwatch, { backgroundColor: c }]} />
-          {c.toUpperCase() === '#FFFFFF' && <View style={styles.whiteSwatchBorder} />}
+      {/* 🔍 Zoom +/- buttons */}
+      <View style={[styles.zoomFabContainer, { bottom: (insets.bottom ?? 0) + 24 + 72 }]}>
+        <TouchableOpacity style={styles.zoomFabButton} activeOpacity={0.8} onPress={handleZoomInPress} disabled={saveStatus === 'saving'}>
+          <Ionicons name="add" size={20} color="#fff" />
         </TouchableOpacity>
-      ))}
-    </View>
-  </Animated.View>
-)}
+        <TouchableOpacity style={[styles.zoomFabButton, { marginTop: 8 }]} activeOpacity={0.8} onPress={handleZoomOutPress} disabled={saveStatus === 'saving'}>
+          <Ionicons name="remove" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
-
-    {/* Wrapper that handles pinch zoom / pan */}
-    <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
-      <ScrollView
-        ref={(r) => (scrollRef.current = r)}
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          alignItems: 'center',
-          paddingTop: 8,
-        }}
-        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-          scrollY.current = e.nativeEvent.contentOffset.y;
-          syncRightHandleToScroll(scrollY.current);
-        }}
-        scrollEventThrottle={16}
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
-        decelerationRate="fast"
-        overScrollMode="always"
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={!writingEnabled ? true : scrollEnabled}
+      {/* 🔊 floating mic FAB */}
+      <TouchableOpacity
+        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled]}
+        activeOpacity={0.8}
+        onPress={handleVoiceFabPress}
+        disabled={saveStatus === 'saving' || !writingEnabled}
       >
-        {IMAGES.length === 0 ? (
-          <View style={styles.noImagesContainer}>
-            {/* <Text style={styles.noImagesText}>No images found for form: {formKeyParam || 'Unknown'}</Text>
-            <Text style={styles.noImagesSubText}>Available forms: {Object.keys(IMAGES_BY_FORM).join(', ')}</Text> */}
- <Text style={styles.noImagesText}>No images found for form</Text>
-          </View>
-        ) : (
-          IMAGES.map((src, pageIndex) => {
-            const savedPath = savedMeta[pageIndex]?.bitmapPath ?? null;
-            const notesForPage = voiceNotes.filter((n) => n.pageIndex === pageIndex);
-            const stickersForPage = imageStickers.filter((s) => s.pageIndex === pageIndex);
-
-            return (
-              <View key={`page-${pageIndex}`} style={styles.pageWrap}>
-                <View style={styles.pageInner}>
-                  <Animated.View
-                    style={[
-                      styles.zoomGroup,
-                      {
-                        transform: [
-                          { translateX: pageTranslateXRef[pageIndex] },
-                          { translateY: pageTranslateYRef[pageIndex] },
-                          { scale: pageScaleAnimsRef[pageIndex] },
-                        ],
-                      },
-                    ]}
-                  >
-                    {src.type === 'api' ? (
-  <Image
-    source={{ uri: src.uri }}
-    style={styles.pageImage}
-    resizeMode="stretch"
-  />
-) : (
-  <Image
-    source={src.source}
-    style={styles.pageImage}
-    resizeMode="stretch"
-  />
-)}
-
-
-                    {/* Canvas container - CRITICAL FIX: Prevent drawing when interacting with UI elements */}
-                    <View
-                      style={styles.canvasContainer}
-                      pointerEvents={
-                        editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
-                          ? 'none'
-                          : 'box-none'
-                      }
-                    >
-                      <DrawingCanvas
-                        index={pageIndex}
-                        savedPath={savedPath}
-                        ref={(r) => refSetters.current[pageIndex](r)}
-                        drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
-                      />
-                    </View>
-
-                    {/* Voice notes with writingEnabled prop */}
-                    {notesForPage.map((note) => (
-                      <DraggableVoiceText
-                        key={note.id}
-                        note={note}
-                        isEditing={editingNoteId === note.id}
-                        onToggleEdit={(id) => {
-                          if (!writingEnabled) return;
-                          setEditingNoteId((prev) => (prev === id ? null : id));
-                          setEditingStickerId(null);
-                        }}
-                        onPositionChange={handleVoiceNotePositionChange}
-                        onBoxSizeChange={handleVoiceNoteBoxChange}
-                        onDelete={handleVoiceNoteDelete}
-                        onChangeText={handleVoiceNoteTextChange}
-                        onChangeFontSize={handleVoiceNoteFontSizeChange}
-                        pageScale={lastScalePerPageRef[pageIndex]}
-                        writingEnabled={writingEnabled}
-                      />
-                    ))}
-
-                    {/* Image stickers with writingEnabled prop */}
-                    {stickersForPage.map((sticker) => (
-                      <DraggableImageSticker
-                        key={sticker.id}
-                        sticker={sticker}
-                        isEditing={editingStickerId === sticker.id}
-                        onToggleEdit={(id) => {
-                          if (!writingEnabled) return;
-                          setEditingStickerId((prev) => (prev === id ? null : id));
-                          setEditingNoteId(null);
-                        }}
-                        onPositionChange={handleStickerPositionChange}
-                        onSizeChange={handleStickerSizeChange}
-                        onDelete={handleStickerDelete}
-                        pageScale={lastScalePerPageRef[pageIndex]}
-                        writingEnabled={writingEnabled}
-                      />
-                    ))}
-                  </Animated.View>
-                </View>
-
-                <View style={styles.pageLabelCompact} />
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
-    </View>
-
-    {/* Right scroll handle */}
-    <Animated.View style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]} {...rightPanResponder.panHandlers} pointerEvents="auto">
-      <View style={styles.rightHandleInner}>
-        <View style={styles.rightGrip} />
-      </View>
-    </Animated.View>
-
-    {/* 🔍 Zoom +/- buttons */}
-    <View style={[styles.zoomFabContainer, { bottom: (insets.bottom ?? 0) + 24 + 72 }]}>
-      <TouchableOpacity style={styles.zoomFabButton} activeOpacity={0.8} onPress={handleZoomInPress} disabled={saveStatus === 'saving'}>
-        <Ionicons name="add" size={20} color="#fff" />
+        <Ionicons name="mic" size={24} color="#fff" />
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.zoomFabButton, { marginTop: 8 }]} activeOpacity={0.8} onPress={handleZoomOutPress} disabled={saveStatus === 'saving'}>
-        <Ionicons name="remove" size={20} color="#fff" />
-      </TouchableOpacity>
-    </View>
 
-    {/* 🔊 floating mic FAB */}
-    <TouchableOpacity
-      style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled]}
-      activeOpacity={0.8}
-      onPress={handleVoiceFabPress}
-      disabled={saveStatus === 'saving' || !writingEnabled}
-    >
-      <Ionicons name="mic" size={24} color="#fff" />
-    </TouchableOpacity>
+      {/* "Editing mode Off" bubble */}
+      {editingOffHintVisible && (
+        <View style={[styles.writingOffBanner, { bottom: (insets.bottom ?? 0) + 24 + 56 + 8 }]}>
+          <Text style={styles.writingOffText}>Editing mode Off</Text>
+        </View>
+      )}
 
-    {/* "Editing mode Off" bubble */}
-    {editingOffHintVisible && (
-      <View style={[styles.writingOffBanner, { bottom: (insets.bottom ?? 0) + 24 + 56 + 8 }]}>
-        <Text style={styles.writingOffText}>Editing mode Off</Text>
-      </View>
-    )}
-
-    {/* Clear confirmation modal */}
-    <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
-      <View style={styles.confirmModalBackdrop}>
-        <View style={styles.confirmModalCard}>
-          {/* <Text style={styles.confirmModalTitle}>Are you sure?</Text> */}
-          <Text style={styles.confirmModalMessage}>Are you sure you want to clear everything?</Text>
-
-          <View style={styles.confirmModalButtonsRow}>
-            <TouchableOpacity
-              style={[styles.confirmModalButton, styles.confirmModalCancel]}
-              onPress={() => setConfirmClearVisible(false)}
-            >
-              <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>No</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.confirmModalButton, styles.confirmModalConfirm]}
-              onPress={performClearConfirmed}
-            >
-              <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Yes</Text>
-            </TouchableOpacity>
+      {/* Clear confirmation modal */}
+      <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
+        <View style={styles.confirmModalBackdrop}>
+          <View style={styles.confirmModalCard}>
+            <Text style={styles.confirmModalMessage}>Are you sure you want to clear everything?</Text>
+            <View style={styles.confirmModalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalCancel]}
+                onPress={() => setConfirmClearVisible(false)}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>No</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalConfirm]}
+                onPress={performClearConfirmed}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Yes</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
 
-    {/* Sticker modal */}
-    <Modal visible={stickerModalVisible} transparent animationType="fade" onRequestClose={() => setStickerModalVisible(false)}>
-      <View style={styles.stickerModalBackdrop}>
-        <View style={styles.stickerModalContent}>
-          <Text style={styles.stickerModalTitle}>Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker</Text>
-          <Image source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE} style={styles.stickerModalImage} resizeMode="contain" />
-          <View style={styles.stickerModalButtonsRow}>
-            <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => setStickerModalVisible(false)}>
-              <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+      {/* Sticker modal */}
+      <Modal visible={stickerModalVisible} transparent animationType="fade" onRequestClose={() => setStickerModalVisible(false)}>
+        <View style={styles.stickerModalBackdrop}>
+          <View style={styles.stickerModalContent}>
+            <Text style={styles.stickerModalTitle}>Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker</Text>
+            <Image source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE} style={styles.stickerModalImage} resizeMode="contain" />
+            <View style={styles.stickerModalButtonsRow}>
+              <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => setStickerModalVisible(false)}>
+                <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]}
+                onPress={() => {
+                  if (selectedStickerType) {
+                    addImageSticker(selectedStickerType);
+                  }
+                  setStickerModalVisible(false);
+                  setSelectedStickerType(null);
+                }}
+              >
+                <Text style={[styles.stickerModalButtonText, { color: '#ffffff' }]}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 📝 Typed Text Modal */}
+      <Modal visible={textModalVisible} transparent animationType="fade" onRequestClose={() => setTextModalVisible(false)}>
+        <View style={styles.stickerModalBackdrop}>
+          <View style={styles.stickerModalContent}>
+            <Text style={styles.stickerModalTitle}>Add text</Text>
+            <TextInput style={styles.textModalInput} placeholder="Type text to add on image" placeholderTextColor="#9ca3af" multiline value={typedText} onChangeText={setTypedText} autoFocus />
+            <View style={styles.stickerModalButtonsRow}>
+              <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => { setTextModalVisible(false); setTypedText(''); }}>
+                <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]} onPress={handleTextModalAdd}>
+                <Text style={[styles.stickerModalButtonText, { color: '#ffffff' }]}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 🔽 Thickness dropdown panel */}
+      {thicknessPanelOpen && thicknessTool && writingEnabled && (
+        <View style={[styles.thicknessPanel, { top: topPadding + 150 }]}>
+          <View style={styles.thicknessHeaderRow}>
+            <Text style={styles.thicknessTitle}>{thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}</Text>
+            <TouchableOpacity onPress={() => setThicknessTool(null)}>
+              <Ionicons name="chevron-up" size={18} color="#111827" />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]}
-              onPress={() => {
-                if (selectedStickerType) {
-                  addImageSticker(selectedStickerType);
+          </View>
+
+          <View style={styles.thicknessContentRow}>
+            <Text style={styles.thicknessBigValue}>{thicknessTool === 'pen' ? penWidth : eraserWidth}px</Text>
+
+            <Slider
+              style={styles.thicknessSlider}
+              minimumValue={thicknessTool === 'pen' ? 1 : 4}
+              maximumValue={thicknessTool === 'pen' ? 40 : 50}
+              step={1}
+              value={thicknessTool === 'pen' ? penWidth : eraserWidth}
+              onValueChange={(v) => {
+                const val = Math.round(v);
+                if (thicknessTool === 'pen') {
+                  setPenWidth(val);
+                } else {
+                  setEraserWidth(val);
+                  canvasRefs.current.forEach((c) => {
+                    if (!c) return;
+                    if (typeof c.setEraser === 'function') {
+                      c.setEraser(true);
+                    }
+                    if (typeof c.setBrushSize === 'function') {
+                      c.setBrushSize(val);
+                    }
+                  });
                 }
-                setStickerModalVisible(false);
-                setSelectedStickerType(null);
               }}
-            >
-              <Text style={[styles.stickerModalButtonText, { color: '#ffffff' }]}>Add</Text>
-            </TouchableOpacity>
+              disabled={saveStatus === 'saving' || !writingEnabled}
+            />
           </View>
         </View>
-      </View>
-    </Modal>
+      )}
 
-    {/* 📝 Typed Text Modal */}
-    <Modal visible={textModalVisible} transparent animationType="fade" onRequestClose={() => setTextModalVisible(false)}>
-      <View style={styles.stickerModalBackdrop}>
-        <View style={styles.stickerModalContent}>
-          <Text style={styles.stickerModalTitle}>Add text</Text>
-          <TextInput style={styles.textModalInput} placeholder="Type text to add on image" placeholderTextColor="#9ca3af" multiline value={typedText} onChangeText={setTypedText} autoFocus />
-          <View style={styles.stickerModalButtonsRow}>
-            <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => { setTextModalVisible(false); setTypedText(''); }}>
-              <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+      {/* Voice overlay */}
+      {voiceVisible && (
+        <View style={styles.voiceOverlay}>
+          <View style={styles.voiceDialog}>
+            <TouchableOpacity style={styles.voiceCloseButton} onPress={handleVoiceClose}>
+              <Ionicons name="close" size={24} color="#9ca3af" />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]} onPress={handleTextModalAdd}>
-              <Text style={[styles.stickerModalButtonText, { color: '#ffffff' }]}>Add</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
 
-    {/* 🔽 Thickness dropdown panel */}
-    {thicknessPanelOpen && thicknessTool && writingEnabled && (
-      <View style={[styles.thicknessPanel, { top: topPadding + 150 }]}>
-        <View style={styles.thicknessHeaderRow}>
-          <Text style={styles.thicknessTitle}>{thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}</Text>
-          <TouchableOpacity onPress={() => setThicknessTool(null)}>
-            <Ionicons name="chevron-up" size={18} color="#111827" />
-          </TouchableOpacity>
-        </View>
+            <Text style={styles.voiceTitle}>Google</Text>
+            <Text style={styles.voiceSubtitle}>{voiceListening ? voiceText || 'Listening...' : 'Processing...'}</Text>
 
-        <View style={styles.thicknessContentRow}>
-          <Text style={styles.thicknessBigValue}>{thicknessTool === 'pen' ? penWidth : eraserWidth}px</Text>
-
-          <Slider
-            style={styles.thicknessSlider}
-            minimumValue={thicknessTool === 'pen' ? 1 : 4}
-            maximumValue={thicknessTool === 'pen' ? 40 : 50}
-            step={1}
-            value={thicknessTool === 'pen' ? penWidth : eraserWidth}
-            onValueChange={(v) => {
-              const val = Math.round(v);
-              if (thicknessTool === 'pen') {
-                setPenWidth(val);
-              } else {
-                setEraserWidth(val);
-                canvasRefs.current.forEach((c) => {
-                  if (!c) return;
-                  if (typeof c.setEraser === 'function') {
-                    c.setEraser(true);
-                  }
-                  if (typeof c.setBrushSize === 'function') {
-                    c.setBrushSize(val);
-                  }
-                });
-              }
-            }}
-            disabled={saveStatus === 'saving' || !writingEnabled}
-          />
-        </View>
-      </View>
-    )}
-
-    {/* Voice overlay */}
-    {voiceVisible && (
-      <View style={styles.voiceOverlay}>
-        <View style={styles.voiceDialog}>
-          <TouchableOpacity style={styles.voiceCloseButton} onPress={handleVoiceClose}>
-            <Ionicons name="close" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <Text style={styles.voiceTitle}>Google</Text>
-          <Text style={styles.voiceSubtitle}>{voiceListening ? voiceText || 'Listening...' : 'Processing...'}</Text>
-
-          <View style={styles.voiceMicContainer}>
-            {voiceListening && <View style={[styles.voiceMicPulse, { borderColor: '#2563eb' }]} />}
-            <TouchableOpacity style={[styles.voiceMicButton, voiceListening && styles.voiceMicButtonActive]} onPress={handleVoiceStopPress} activeOpacity={0.8}>
-              <Ionicons name={voiceListening ? 'mic' : 'mic-off'} size={32} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          {voiceError ? <Text style={styles.voiceErrorText}>{voiceError}</Text> : null}
-        </View>
-      </View>
-    )}
-
-    {/* Saving / Saved overlay */}
-    {saveStatus !== 'idle' && (
-      <View style={styles.saveOverlay}>
-        <View style={styles.saveDialog}>
-          {saveStatus === 'saving' && (
-            <>
-              <ActivityIndicator size="large" />
-              <Text style={styles.saveTitle}>Saving...</Text>
-              <Text style={styles.saveMessage}>Please wait while we save your changes.</Text>
-            </>
-          )}
-
-          {saveStatus === 'success' && (
-            <>
-              <Ionicons name="checkmark-circle" size={52} color="#16a34a" style={{ marginBottom: 8 }} />
-              <Text style={styles.saveTitle}>Changes saved</Text>
-              <Text style={styles.saveMessage}>Your changes have been saved successfully.</Text>
-              <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveOk}>
-                <Text style={styles.saveOkButtonText}>OK</Text>
+            <View style={styles.voiceMicContainer}>
+              {voiceListening && <View style={[styles.voiceMicPulse, { borderColor: '#2563eb' }]} />}
+              <TouchableOpacity style={[styles.voiceMicButton, voiceListening && styles.voiceMicButtonActive]} onPress={handleVoiceStopPress} activeOpacity={0.8}>
+                <Ionicons name={voiceListening ? 'mic' : 'mic-off'} size={32} color="#fff" />
               </TouchableOpacity>
-            </>
-          )}
+            </View>
 
-          {saveStatus === 'error' && (
-            <>
-              <Ionicons name="alert-circle" size={52} color="#dc2626" style={{ marginBottom: 8 }} />
-              <Text style={styles.saveTitle}>Save failed</Text>
-              <Text style={styles.saveMessage}>Could not save changes. Please try again.</Text>
-              <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveErrorOk}>
-                <Text style={styles.saveOkButtonText}>OK</Text>
-              </TouchableOpacity>
-            </>
-          )}
+            {voiceError ? <Text style={styles.voiceErrorText}>{voiceError}</Text> : null}
+          </View>
         </View>
-      </View>
-    )}
-  </SafeAreaView>
+      )}
 
+      {/* Saving / Saved overlay */}
+      {saveStatus !== 'idle' && (
+        <View style={styles.saveOverlay}>
+          <View style={styles.saveDialog}>
+            {saveStatus === 'saving' && (
+              <>
+                <ActivityIndicator size="large" />
+                <Text style={styles.saveTitle}>Saving...</Text>
+                <Text style={styles.saveMessage}>Please wait while we save your changes.</Text>
+              </>
+            )}
 
+            {saveStatus === 'success' && (
+              <>
+                <Ionicons name="checkmark-circle" size={52} color="#16a34a" style={{ marginBottom: 8 }} />
+                <Text style={styles.saveTitle}>Changes saved</Text>
+                <Text style={styles.saveMessage}>Your changes have been saved successfully.</Text>
+                <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveOk}>
+                  <Text style={styles.saveOkButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {saveStatus === 'error' && (
+              <>
+                <Ionicons name="alert-circle" size={52} color="#dc2626" style={{ marginBottom: 8 }} />
+                <Text style={styles.saveTitle}>Save failed</Text>
+                <Text style={styles.saveMessage}>Could not save changes. Please try again.</Text>
+                <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveErrorOk}>
+                  <Text style={styles.saveOkButtonText}>OK</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -3077,13 +2952,11 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: '#0EA5A4' 
   },
-
   combinedHeader: {
     backgroundColor: '#0EA5A4',
     paddingTop: 8,
     paddingBottom: 6,
   },
-
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -3091,14 +2964,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 6,
   },
-
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-
   saveButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -3110,24 +2981,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.5,
   },
-
   saveButtonText: {
     color: '#0EA5A4',
     fontSize: 16,
     fontWeight: '600',
   },
-
   toolsRow: {
     height: 50,
   },
-
   toolsScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 4,
   },
-
   toolButton: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -3136,20 +3003,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
     borderRadius: 16,
   },
-
   toolButtonText: {
     color: '#fff',
     fontSize: 11,
     fontWeight: '500',
     marginTop: 2,
   },
-
   toolGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 4,
   },
-
   toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3160,27 +3024,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
     marginHorizontal: 4,
   },
-
   toolChipActive: {
     backgroundColor: '#fff',
     borderColor: '#fff',
   },
-
   toolChipText: {
     color: '#fff',
     fontSize: 11,
     fontWeight: '500',
     marginHorizontal: 4,
   },
-
   toolChipTextActive: {
     color: '#0EA5A4',
   },
-
   thicknessToggle: {
     paddingLeft: 2,
   },
-
   colorCircle: {
     width: 20,
     height: 20,
@@ -3189,15 +3048,12 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
     marginBottom: 2,
   },
-
   writeToggleActive: {
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-
   toolsDisabled: {
     opacity: 0.35,
   },
-
   noImagesContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -3214,12 +3070,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 10,
   },
-  noImagesSubText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-
   pageWrap: {
     width: SCREEN_W,
     alignItems: 'center',
@@ -3244,7 +3094,18 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 14,
+  },
   canvasContainer: {
     position: 'absolute',
     left: 0,
@@ -3266,7 +3127,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
-
   colorPanel: {
     position: 'absolute',
     left: 12,
@@ -3304,7 +3164,6 @@ const styles = StyleSheet.create({
     height: '100%', 
     borderRadius: 8 
   },
-
   thicknessPanel: {
     position: 'absolute',
     right: 12,
@@ -3345,7 +3204,6 @@ const styles = StyleSheet.create({
   thicknessSlider: {
     flex: 1,
   },
-
   rightHandle: {
     position: 'absolute',
     width: 26,
@@ -3373,7 +3231,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.95)',
   },
-
   voiceFab: {
     position: 'absolute',
     right: 16,
@@ -3390,7 +3247,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     zIndex: 70,
   },
-
   zoomFabContainer: {
     position: 'absolute',
     right: 16,
@@ -3410,17 +3266,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-
   voiceTextDragWrapper: {
     position: 'absolute',
   },
-
   voiceTextDrag: {
     fontSize: 16,
     fontWeight: '500',
     backgroundColor: 'transparent',
   },
-  
   voiceResizeHandle: {
     position: 'absolute',
     width: 20,
@@ -3439,14 +3292,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 1,
   },
-  
   textTouchArea: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     flex: 1,
   },
-
   autoResizeButton: {
     width: 24,
     height: 24,
@@ -3457,7 +3308,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     backgroundColor: '#fff',
   },
-
   fontSizeControls: {
     position: 'absolute',
     top: -30,
@@ -3470,7 +3320,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     zIndex: 5,
   },
-
   fontSizeButton: {
     width: 20,
     height: 20,
@@ -3481,13 +3330,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     backgroundColor: '#fff',
   },
-
   fontSizeText: {
     fontSize: 12,
     fontWeight: '600',
     marginHorizontal: 4,
   },
-
   voiceTextInput: {
     fontSize: 16,
     fontWeight: '500',
@@ -3497,21 +3344,18 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: 'visible',
   },
-
   voiceTextHitBox: {
     backgroundColor: 'transparent',
     borderRadius: 4,
     minHeight: 30,
     flexDirection: 'row',
   },
-
   measureContainer: {
     position: 'absolute',
     opacity: 0,
     pointerEvents: 'none',
     flexWrap: 'wrap',
   },
-  
   stickerWrapper: {
     position: 'absolute',
   },
@@ -3541,7 +3385,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 1,
   },
-
   stickerModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -3588,7 +3431,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-
   textModalInput: {
     minHeight: 80,
     borderWidth: 1,
@@ -3601,7 +3443,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     fontSize: 14,
   },
-
   voiceOverlay: {
     position: 'absolute',
     left: 0,
@@ -3635,7 +3476,6 @@ const styles = StyleSheet.create({
     color: '#f9fafb',
     marginTop: 8,
   },
-
   voiceSubtitle: {
     marginTop: 8,
     fontSize: 16,
@@ -3644,7 +3484,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     minHeight: 24,
   },
-
   whiteSwatchBorder: {
     position: 'absolute',
     width: '100%',
@@ -3654,7 +3493,6 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
     pointerEvents: 'none',
   },
-
   voiceMicContainer: {
     position: 'relative',
     marginTop: 24,
@@ -3688,7 +3526,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 16,
   },
-
   saveOverlay: {
     position: 'absolute',
     left: 0,
@@ -3740,7 +3577,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-
   writingOffBanner: {
     position: 'absolute',
     right: 16,
@@ -3758,65 +3594,58 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   confirmModalBackdrop: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.45)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  paddingHorizontal: 28,
-},
-confirmModalCard: {
-  width: '100%',
-  maxWidth: 420,
-  backgroundColor: '#fff',
-  borderRadius: 12,
-  padding: 20,
-  alignItems: 'center',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.12,
-  shadowRadius: 18,
-  elevation: 10,
-},
-confirmModalTitle: {
-  fontSize: 18,
-  fontWeight: '700',
-  color: '#111827',
-  marginBottom: 8,
-},
-confirmModalMessage: {
-  fontSize: 16,
-  color: '#374151',
-  textAlign: 'center',
-  marginBottom: 18,
-},
-confirmModalButtonsRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  width: '100%',
-},
-confirmModalButton: {
-  flex: 1,
-  paddingVertical: 10,
-  borderRadius: 10,
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginHorizontal: 6,
-},
-confirmModalCancel: {
-  backgroundColor: '#eef2f7',
-},
-confirmModalConfirm: {
-  backgroundColor: '#0EA5A4', // your accent color
-},
-confirmModalButtonText: {
-  fontSize: 15,
-  fontWeight: '600',
-},
-confirmModalCancelText: {
-  color: '#111827',
-},
-confirmModalConfirmText: {
-  color: '#ffffff',
-},
-
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  confirmModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  confirmModalMessage: {
+    fontSize: 16,
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  confirmModalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  confirmModalButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 6,
+  },
+  confirmModalCancel: {
+    backgroundColor: '#eef2f7',
+  },
+  confirmModalConfirm: {
+    backgroundColor: '#0EA5A4',
+  },
+  confirmModalButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  confirmModalCancelText: {
+    color: '#111827',
+  },
+  confirmModalConfirmText: {
+    color: '#ffffff',
+  },
 });

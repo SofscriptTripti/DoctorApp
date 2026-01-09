@@ -19,24 +19,64 @@ import FA5 from 'react-native-vector-icons/FontAwesome5';
 import Feather from "react-native-vector-icons/Feather";
 import { PanResponder } from 'react-native';
 import { getAdmittedPatients } from './api/admissionsApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 type Patient = {
-  id: string;              // admissionNo
-  patientId: string;       // ✅ UHID
+  id: string;
+  patientId: string;
   name: string;
   age: number;
   gender: 'Male' | 'Female' | 'Other';
   room: string;
   diagnosis: string;
   doctorName: string;
+  doctorCode: string; 
   admitDate: string;
 };
+
 
 type FilterKey = 'name' | 'ward' | 'doctor' | 'ip';
 /* ✅ NEW: Person tab type */
 type PersonTab = 'IN' | 'OUT';
 
 const ALL_FILTER_KEYS: FilterKey[] = ['name', 'ward', 'doctor', 'ip'];
+const STORAGE_KEYS = {
+  admissionNo: 'admissionNo',
+  patientId: 'patientId',
+  doctorCode: 'doctorCode',
+};
+
+const savePatientSession = async (
+  admissionNo: string,
+  patientId: string,
+  doctorCode: string
+) => {
+  try {
+    await AsyncStorage.multiSet([
+      [STORAGE_KEYS.admissionNo, admissionNo],
+      [STORAGE_KEYS.patientId, patientId],
+      [STORAGE_KEYS.doctorCode, doctorCode],
+    ]);
+
+    console.log('✅ Patient session saved', {
+      admissionNo,
+      patientId,
+      doctorCode,
+    });
+  } catch (e) {
+    console.error('❌ Failed to save patient session', e);
+  }
+};
+
+const clearPatientSession = async () => {
+  await AsyncStorage.multiRemove([
+    STORAGE_KEYS.admissionNo,
+    STORAGE_KEYS.patientId,
+    STORAGE_KEYS.doctorCode,
+  ]);
+};
+
 
 
 
@@ -120,7 +160,7 @@ const [loadingPatients, setLoadingPatients] = useState(false);
   const filtersActive =
     selectedFilters.length > 0 &&
     selectedFilters.length < ALL_FILTER_KEYS.length;
-const filteredPatients = useMemo(() => {
+   const filteredPatients = useMemo(() => {
   const q = searchText.trim().toLowerCase();
   if (!q) return patients;
 
@@ -181,13 +221,15 @@ const filteredPatients = useMemo(() => {
   };
   const isEditingAnyVital = editingVital !== null;
 
+const handleLogout = async () => {
+  await clearPatientSession();
 
-  const handleLogout = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'CareScribeLogin' }],
-    });
-  };
+  navigation.reset({
+    index: 0,
+    routes: [{ name: 'CareScribeLogin' }],
+  });
+};
+
 
   const startHeroPulse = () => {
     heroPulse.setValue(1);
@@ -289,38 +331,44 @@ const apiPatients = Array.isArray(res) ? res : [];
     }
   };
 
-  const openPatientModal = (patient: Patient) => {
-    setSelectedPatient(patient);
+ const openPatientModal = async (patient: Patient) => {
+  setSelectedPatient(patient);
 
-    // Do NOT auto-show vitals on open anymore — user must click Beat to toggle
-    setModalVisible(true);
+  await savePatientSession(
+  patient.id,            // admissionNo
+  patient.patientId,     // UHID
+  patient.doctorCode     // ✅ CORRECT doctorCode
+);
 
-    // patient detail anim
-    scaleAnim.setValue(0.96);
-    opacityAnim.setValue(0);
-    translateYAnim.setValue(16);
 
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 7,
-        tension: 70,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }),
-      Animated.timing(translateYAnim, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }),
-    ]).start();
-  };
+  setModalVisible(true);
+
+  scaleAnim.setValue(0.96);
+  opacityAnim.setValue(0);
+  translateYAnim.setValue(16);
+
+  Animated.parallel([
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 70,
+    }),
+    Animated.timing(opacityAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }),
+    Animated.timing(translateYAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }),
+  ]).start();
+};
+
 
   const closePatientModal = () => {
     const finish = () => {
@@ -676,15 +724,16 @@ const [vitalsLayout, setVitalsLayout] = useState<{
 
 const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
   return {
-    id: String(apiPatient?.admissionNo ?? ''),   // ADM001
-    patientId: String(apiPatient?.patientId ?? ''), // ✅ UH001
+    id: String(apiPatient?.admissionNo ?? ''),
+    patientId: String(apiPatient?.patientId ?? ''),
     name: apiPatient?.patientName ?? 'Unknown',
     age: Number(apiPatient?.age ?? 0),
     gender: apiPatient?.gender ?? 'Other',
     room: `${apiPatient?.wardName ?? ''} - ${apiPatient?.bedNo ?? ''}`,
     diagnosis: apiPatient?.admissionStatus ?? 'Admitted',
     doctorName: apiPatient?.currentDoctorName ?? '—',
-    admitDate: apiPatient?.admissionDate ?? new Date().toISOString(),
+    doctorCode: apiPatient?.currentDoctorCode ?? '', // ✅ ADD THIS
+    admitDate: apiPatient?.admissionDtTm ?? new Date().toISOString(),
   };
 };
 

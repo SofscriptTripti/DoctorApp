@@ -12,6 +12,7 @@ import {
   BackHandler,
   AppState,
   Modal,
+  FlatList,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -98,6 +99,30 @@ type RxNotesData = {
   lastSaved: string;
 };
 
+// Investigation Types
+type InvestigationItem = {
+  id: string;
+  category: 'Biochemistry' | 'Clinical Pathology' | 'Coagulation' | 'Cytology' | 'Etsa' | 
+            'Endocrinology' | 'Genetics' | 'Haematology' | 'Histopathology' | 'Immunology' | 
+            'Microbiology' | 'Chemotherapy' | 'Radiology' | 'Procedure';
+  serviceName: string;
+  date: string;
+  time: string;
+  qty: string;
+  source: string;
+  select: boolean;
+  remarks: string;
+  checker: string;
+  price?: string;
+};
+
+type InvestigationTemplate = {
+  id: string;
+  name: string;
+  type: 'General' | 'My Templates';
+  category: string;
+};
+
 const SEVERITY_OPTIONS = ['Mild', 'Moderate', 'Severe'] as const;
 const SINCE_UNITS = ['Days', 'Weeks', 'Months', 'Years'] as const;
 const DIAGNOSIS_TYPE_OPTIONS = ['Provisional', 'Final'] as const;
@@ -113,6 +138,66 @@ const VITALS_CONFIG = [
   { label: 'Height', key: 'height', unit: 'cm', editable: true },
   { label: 'BMI', key: 'bmi', unit: '', editable: false },
 ] as const;
+
+// Investigation Categories
+const INVESTIGATION_CATEGORIES = [
+  { id: 'all', name: 'All', icon: 'grid' },
+  { id: 'laboratory', name: 'Laboratory', icon: 'droplet' },
+  { id: 'radiology', name: 'Radiology', icon: 'camera' },
+  { id: 'procedures', name: 'Procedures', icon: 'scissors' },
+  // { id: 'recent', name: 'Recent', icon: 'clock' },
+] as const;
+
+// Biochemistry Tests
+const BIOCHEMISTRY_TESTS = [
+  'Abumin',
+  'Aldolase',
+  'Alkaline Phosphatase',
+  'Alergic Rhinitis Panel Mask',
+  'Amikacin, Serum',
+  'Amylase (Minie-spot)',
+  'Beta Glucosidase',
+  'Bile Acids-Total, Serum',
+  'Bio 3 - Essential (OH_CAH & GdPD)',
+  'Bio 5 (Bio 4 + Bioinidase Deficiency)',
+];
+
+// All Investigation Categories
+const ALL_INVESTIGATION_CATEGORIES = [
+  'Biochemistry',
+  'Clinical Pathology',
+  'Coagulation',
+  'Cytology',
+  'Etsa',
+  'Endocrinology',
+  'Genetics',
+  'Haematology',
+  'Histopathology',
+  'Immunology',
+  'Microbiology',
+  'Chemotherapy'
+];
+
+// Recent Investigations
+const RECENT_INVESTIGATIONS = [
+  'CBC',
+  'Lipid Profile',
+  'Liver Function Test',
+  'Chest X-Ray',
+  'Ultrasound Abdomen',
+  'ECG',
+  'MRI Brain',
+  'CT Scan Chest',
+];
+
+// Investigation Templates
+const INVESTIGATION_TEMPLATES = [
+  { id: '1', name: 'General Health Checkup', type: 'General' as const, category: 'General' },
+  { id: '2', name: 'Pre-Operative Package', type: 'General' as const, category: 'General' },
+  { id: '3', name: 'Diabetes Panel', type: 'My Templates' as const, category: 'Endocrinology' },
+  { id: '4', name: 'Cardiac Workup', type: 'My Templates' as const, category: 'Cardiology' },
+  { id: '5', name: 'Liver Function Package', type: 'General' as const, category: 'Biochemistry' },
+];
 
 // Storage key for draft
 const DRAFT_STORAGE_KEY = 'rx_notes_draft_';
@@ -138,8 +223,81 @@ export default function RxNotes() {
     doctorsNote: false,
     diagnosis: false,
     medication: false,
-    medicationInfusion: false
+    medicationInfusion: false,
+    investigation: false
   });
+
+  // Investigation States
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [investigationSearch, setInvestigationSearch] = useState('');
+  const [showAllInvestigations, setShowAllInvestigations] = useState(false);
+  const [selectedInvestigations, setSelectedInvestigations] = useState<InvestigationItem[]>([
+    {
+      id: '1',
+      category: 'Biochemistry',
+      serviceName: 'Aldolase',
+      date: '2024-01-07',
+      time: '10:30 AM',
+      qty: '1',
+      source: 'Lab',
+      select: true,
+      remarks: 'Fasting required',
+      checker: 'Dr. Smith',
+      price: '₹1,500'
+    },
+    {
+      id: '2',
+      category: 'Radiology',
+      serviceName: 'Chest X-Ray',
+      date: '2024-01-07',
+      time: '11:00 AM',
+      qty: '1',
+      source: 'Radiology Dept',
+      select: true,
+      remarks: 'PA view',
+      checker: 'Dr. Johnson',
+      price: '₹800'
+    },
+    {
+      id: '3',
+      category: 'Haematology',
+      serviceName: 'CBC',
+      date: '2024-01-07',
+      time: '09:00 AM',
+      qty: '1',
+      source: 'Lab',
+      select: true,
+      remarks: 'Complete blood count',
+      checker: 'Dr. Williams',
+      price: '₹600'
+    },
+    {
+      id: '4',
+      category: 'Microbiology',
+      serviceName: 'Blood Culture',
+      date: '2024-01-07',
+      time: '08:30 AM',
+      qty: '2',
+      source: 'Microbiology Lab',
+      select: false,
+      remarks: 'Aerobic & Anaerobic',
+      checker: 'Dr. Davis',
+      price: '₹2,200'
+    },
+    {
+      id: '5',
+      category: 'Immunology',
+      serviceName: 'CRP',
+      date: '2024-01-07',
+      time: '10:00 AM',
+      qty: '1',
+      source: 'Lab',
+      select: true,
+      remarks: 'Quantitative',
+      checker: 'Dr. Wilson',
+      price: '₹900'
+    },
+  ]);
 
   const [selectedRecentMed, setSelectedRecentMed] = useState<string | null>(null);
   const [showFreqModal, setShowFreqModal] = useState(false);
@@ -349,6 +507,32 @@ export default function RxNotes() {
     '4D Plus TAB',
   ];
 
+  // Filtered investigations based on selected category and search
+  const filteredInvestigations = selectedInvestigations.filter(item => {
+    const matchesSearch = item.serviceName.toLowerCase().includes(investigationSearch.toLowerCase()) ||
+                         item.category.toLowerCase().includes(investigationSearch.toLowerCase());
+    
+    if (selectedCategory === 'all') return matchesSearch;
+    if (selectedCategory === 'laboratory') {
+      return matchesSearch && !['Radiology', 'Procedure'].includes(item.category);
+    }
+    if (selectedCategory === 'radiology') {
+      return matchesSearch && item.category === 'Radiology';
+    }
+    if (selectedCategory === 'procedures') {
+      return matchesSearch && item.category === 'Procedure';
+    }
+    if (selectedCategory === 'recent') {
+      // Filter by recent date or other criteria
+      const itemDate = new Date(item.date);
+      const today = new Date();
+      const diffTime = Math.abs(today.getTime() - itemDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return matchesSearch && diffDays <= 7;
+    }
+    return matchesSearch;
+  });
+
   const createMedicineFromName = (name: string): MedicationItem => ({
     id: Date.now().toString(),
     name,
@@ -421,8 +605,8 @@ export default function RxNotes() {
   }, [activeInfusion?.dose, activeInfusion?.diluentVolume, activeInfusion?.time, activeInfusion?.dropFactor, calculateInfusionValues]);
 
   // Refs
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
-  const appStateRef = useRef(AppState.currentState);
+    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const appStateRef = useRef(AppState.currentState);
 
   // Calculate duration between dates
   const calculateDuration = (startDateStr: string, endDateStr: string): string => {
@@ -998,6 +1182,75 @@ export default function RxNotes() {
     );
   };
 
+  // Investigation functions
+  const toggleInvestigationSelection = (id: string) => {
+    setSelectedInvestigations(prev =>
+      prev.map(item =>
+        item.id === id ? { ...item, select: !item.select } : item
+      )
+    );
+  };
+
+  const addNewInvestigation = () => {
+    if (!investigationSearch.trim()) return;
+
+    const newItem: InvestigationItem = {
+      id: Date.now().toString(),
+      category: 'Biochemistry',
+      serviceName: investigationSearch.trim(),
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      qty: '1',
+      source: 'Lab',
+      select: true,
+      remarks: '',
+      checker: patient.doctorName,
+      price: '₹0'
+    };
+
+    setSelectedInvestigations(prev => [newItem, ...prev]);
+    setInvestigationSearch('');
+  };
+
+  const deleteInvestigation = (id: string) => {
+    Alert.alert(
+      'Delete Investigation',
+      'Are you sure you want to delete this investigation?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setSelectedInvestigations(prev => prev.filter(item => item.id !== id));
+          },
+        },
+      ]
+    );
+  };
+
+  const addFromTemplate = (template: InvestigationTemplate) => {
+    const newItem: InvestigationItem = {
+      id: Date.now().toString(),
+      category: template.category as any,
+      serviceName: template.name,
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      qty: '1',
+      source: template.type === 'General' ? 'Template' : 'My Template',
+      select: true,
+      remarks: `Added from ${template.type} Template`,
+      checker: patient.doctorName,
+      price: '₹0'
+    };
+
+    setSelectedInvestigations(prev => [newItem, ...prev]);
+    Alert.alert('Success', 'Investigation added from template');
+  };
+
   // Render current diagnosis row
   const renderCurrentDiagnosisRow = (item: DiagnosisItem) => {
     const isTypeDropdownOpen = openTypeDropdownId === item.id;
@@ -1113,6 +1366,44 @@ export default function RxNotes() {
     </View>
   );
 
+  // Render investigation row
+  const renderInvestigationRow = (item: InvestigationItem) => (
+    <View key={item.id} style={styles.investigationRow}>
+      <TouchableOpacity
+        style={[styles.selectCheckbox, item.select && styles.selectCheckboxSelected]}
+        onPress={() => toggleInvestigationSelection(item.id)}
+      >
+        {item.select && <Feather name="check" size={12} color="#fff" />}
+      </TouchableOpacity>
+      <Text style={[styles.investigationCell, styles.invColCategory]}>{item.category}</Text>
+      <Text style={[styles.investigationCell, styles.invColService]}>{item.serviceName}</Text>
+      <Text style={[styles.investigationCell, styles.invColDate]}>{item.date}</Text>
+      <Text style={[styles.investigationCell, styles.invColTime]}>{item.time}</Text>
+      <Text style={[styles.investigationCell, styles.invColQty]}>{item.qty}</Text>
+      <Text style={[styles.investigationCell, styles.invColSource]}>{item.source}</Text>
+      <TextInput
+        style={[styles.investigationInput, styles.invColRemarks]}
+        value={item.remarks}
+        onChangeText={text => {
+          setSelectedInvestigations(prev =>
+            prev.map(inv =>
+              inv.id === item.id ? { ...inv, remarks: text } : inv
+            )
+          );
+        }}
+        placeholder="Remarks"
+        multiline
+      />
+      <Text style={[styles.investigationCell, styles.invColChecker]}>{item.checker}</Text>
+      <TouchableOpacity
+        style={[styles.invColDelete, styles.deleteButton]}
+        onPress={() => deleteInvestigation(item.id)}
+      >
+        <Feather name="trash-2" size={14} color="#EF4444" />
+      </TouchableOpacity>
+    </View>
+  );
+
   // Extract number from vital string
   const extractNumber = (v: string) => v?.match(/[\d.]+/)?.[0] ?? '';
 
@@ -1125,8 +1416,8 @@ export default function RxNotes() {
       .toUpperCase();
 
   // Chunk array for vitals grid
-  const chunkArray = (array: any[], size: number) => {
-    const chunks = [];
+  const chunkArray = <T,>(array: readonly T[], size: number): T[][] => {
+    const chunks: T[][] = [];
     for (let i = 0; i < array.length; i += size) {
       chunks.push(array.slice(i, i + size));
     }
@@ -1733,7 +2024,6 @@ export default function RxNotes() {
                   <View style={{ width: '8%' }} />
                 </View>
 
-                {/* Rows */}
                 {(showAllMedOrders ? medicationOrderTable : medicationOrderTable.slice(0, 3)).map(item => (
                   <View key={item.id} style={styles.tableRow}>
                     <Text style={[styles.td, { width: '22%' }]}>{item.name}</Text>
@@ -2018,14 +2308,182 @@ export default function RxNotes() {
             
           </View>
 
-
-          <View style={{ height: 30 }}>
-                <TouchableOpacity
+          {/* ================= INVESTIGATIONS SECTION ================= */}
+          <View style={styles.sectionCard}>
+            <TouchableOpacity
               style={styles.sectionHeader}
-              onPress={() => toggleSection('medicationInfusion')}
+              onPress={() => toggleSection('investigation')}
             >
-              <Text style={styles.sectionTitle}>Medication Infusion</Text>
-              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>Investigations</Text>
+              <Feather
+                name={expandedSections.investigation ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color="#0EA5A4"
+              />
+            </TouchableOpacity>
+
+            {expandedSections.investigation && (
+              <View style={styles.sectionContent}>
+                {/* Filter by Category */}
+                <Text style={styles.subTitle}>Filter by</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>
+                  {INVESTIGATION_CATEGORIES.map(category => (
+                    <TouchableOpacity
+                      key={category.id}
+                      style={[
+                        styles.categoryChip,
+                        selectedCategory === category.id && styles.categoryChipActive
+                      ]}
+                      onPress={() => setSelectedCategory(category.id)}
+                    >
+                      <Feather
+                        name={category.icon as any}
+                        size={14}
+                        color={selectedCategory === category.id ? '#fff' : '#0EA5A4'}
+                      />
+                      <Text style={[
+                        styles.categoryText,
+                        selectedCategory === category.id && styles.categoryTextActive
+                      ]}>
+                        {category.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Search Investigation */}
+                {/* <Text style={[styles.subTitle, { marginTop: 16 }]}>Search Investigation</Text> */}
+                <View style={styles.searchRow}>
+                  <TextInput
+                    placeholder="Search for investigation..."
+                    value={investigationSearch}
+                    onChangeText={setInvestigationSearch}
+                    style={[styles.searchInput, { flex: 1 }]}
+                  />
+                  <TouchableOpacity style={styles.addBtn} onPress={addNewInvestigation}>
+                    <Text style={styles.addBtnText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Templates
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Templates</Text>
+                <View style={styles.templateContainer}>
+                  <View style={styles.templateHeader}>
+                    <Text style={styles.templateTitle}>General Templates</Text>
+                    <TouchableOpacity>
+                      <Text style={styles.templateViewAll}>View All</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {INVESTIGATION_TEMPLATES.filter(t => t.type === 'General').map(template => (
+                      <TouchableOpacity
+                        key={template.id}
+                        style={styles.templateChip}
+                        onPress={() => addFromTemplate(template)}
+                      >
+                        <Text style={styles.templateChipText}>{template.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  
+                  <View style={[styles.templateHeader, { marginTop: 12 }]}>
+                    <Text style={styles.templateTitle}>My Templates</Text>
+                    <TouchableOpacity>
+                      <Text style={styles.templateViewAll}>View All</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {INVESTIGATION_TEMPLATES.filter(t => t.type === 'My Templates').map(template => (
+                      <TouchableOpacity
+                        key={template.id}
+                        style={styles.templateChip}
+                        onPress={() => addFromTemplate(template)}
+                      >
+                        <Text style={styles.templateChipText}>{template.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View> */}
+
+                {/* Test Categories - Biochemistry */}
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Biochemistry</Text>
+                <View style={styles.testCategoryContainer}>
+                  {ALL_INVESTIGATION_CATEGORIES.map(category => (
+                    <TouchableOpacity key={category} style={styles.testCategoryChip}>
+                      <Text style={styles.testCategoryText}>{category}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Selected Tests */}
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Selected Tests</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {BIOCHEMISTRY_TESTS.slice(0, 5).map(test => (
+                    <TouchableOpacity key={test} style={styles.testChip}>
+                      <Text style={styles.testChipText}>{test}</Text>
+                      <Feather name="plus" size={12} color="#0EA5A4" />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Recent Investigations */}
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Recent Investigations</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {RECENT_INVESTIGATIONS.map(investigation => (
+                    <TouchableOpacity key={investigation} style={styles.testChip}>
+                      <Text style={styles.testChipText}>{investigation}</Text>
+                      <Feather name="plus" size={12} color="#0EA5A4" />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Investigation Order Table */}
+                <Text style={[styles.subTitle, { marginTop: 16 }]}>Ordered Investigations</Text>
+
+                {/* Table Header */}
+                <View style={styles.investigationHeader}>
+                  <View style={[styles.investigationHeaderCol, styles.invColSelect]}></View>
+                  <Text style={[styles.investigationHeaderText, styles.invColCategory]}>Category</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColService]}>Service name</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColDate]}>Date</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColTime]}>Time</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColQty]}>Qty</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColSource]}>Source</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColRemarks]}>Remarks</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColChecker]}>Checker</Text>
+                  <View style={styles.invColDelete}></View>
+                </View>
+
+                {/* Table Rows */}
+                {(showAllInvestigations ? filteredInvestigations : filteredInvestigations.slice(0, 3)).map(
+                  renderInvestigationRow
+                )}
+
+                {/* View All/Less Button */}
+                {filteredInvestigations.length > 3 && (
+                  <View style={styles.viewAllContainer}>
+                    <TouchableOpacity
+                      style={styles.viewAllButton}
+                      onPress={() => setShowAllInvestigations(p => !p)}
+                    >
+                      <Text style={styles.viewAllButtonText}>
+                        {showAllInvestigations ? 'View Less' : 'View All'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Action Buttons */}
+                <View style={[styles.medActionRow, { marginTop: 16 }]}>
+                  <TouchableOpacity style={styles.confirmBtn}>
+                    <Text style={styles.confirmText}>Save Investigations</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.clearBtn}>
+                    <Text style={styles.clearText}>Clear All</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
 
           {/* ================= MODALS ================= */}
@@ -2156,7 +2614,7 @@ export default function RxNotes() {
                         }}
                         style={styles.navArrow}
                       >
-                        <Feather name="chevlon-right" size={20} color="#0EA5A4" />
+                        <Feather name="chevron-right" size={20} color="#0EA5A4" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2232,7 +2690,7 @@ export default function RxNotes() {
                     todayTextColor: '#0EA5A4',
                     dayTextColor: '#334155',
                     textDisabledColor: '#CBD5E1',
-                    arrowColor: '#0EA5A4',
+                    arrowColor: '#0ea5a4ff',
                     monthTextColor: '#334155',
                     textMonthFontWeight: '600',
                     textDayFontSize: 16,
@@ -3208,4 +3666,167 @@ const styles = StyleSheet.create({
     color: '#0EA5A4',
     fontWeight: '600',
   },
+
+  // Investigation Styles
+  categoryFilter: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#0EA5A4',
+    marginRight: 8,
+    backgroundColor: '#fff',
+  },
+  categoryChipActive: {
+    backgroundColor: '#0EA5A4',
+  },
+  categoryText: {
+    fontSize: 12,
+    color: '#0EA5A4',
+    marginLeft: 4,
+  },
+  categoryTextActive: {
+    color: '#fff',
+  },
+  templateContainer: {
+    marginBottom: 16,
+  },
+  templateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  templateTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  templateViewAll: {
+    fontSize: 12,
+    color: '#0EA5A4',
+    fontWeight: '600',
+  },
+  templateChip: {
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E0F2FE',
+  },
+  templateChipText: {
+    fontSize: 12,
+    color: '#0EA5A4',
+  },
+  testCategoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  testCategoryChip: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  testCategoryText: {
+    fontSize: 12,
+    color: '#475569',
+  },
+  testChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E0F2FE',
+  },
+  testChipText: {
+    fontSize: 11,
+    color: '#0EA5A4',
+    marginRight: 4,
+  },
+  investigationHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  investigationHeaderCol: {
+    width: '4%',
+  },
+  investigationHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  investigationRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  investigationCell: {
+    fontSize: 11,
+    color: '#334155',
+    textAlign: 'center',
+  },
+  investigationInput: {
+    fontSize: 11,
+    color: '#334155',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    minHeight: 24,
+    backgroundColor: '#fff',
+  },
+  selectCheckbox: {
+    width: 16,
+    height: 16,
+    borderWidth: 1,
+    borderColor: '#CBD5F5',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  selectCheckboxSelected: {
+    backgroundColor: '#0EA5A4',
+    borderColor: '#0EA5A4',
+  },
+  // Investigation column widths (adjust as needed)
+  invColSelect: { width: '4%' },
+  invColCategory: { width: '12%' },
+  invColService: { width: '20%' },
+  invColDate: { width: '8%' },
+  invColTime: { width: '8%' },
+  invColQty: { width: '6%' },
+  invColSource: { width: '10%' },
+  invColRemarks: { width: '18%' },
+  invColChecker: { width: '10%' },
+  invColDelete: { width: '4%' },
 });

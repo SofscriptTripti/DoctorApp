@@ -19,9 +19,39 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { login } from '../api/authApi';
 import { saveAuth } from '../storage/authStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 
 type Theme = 'light' | 'dark';
+const USER_STORAGE_KEYS = {
+  userId: 'userId',
+  fullName: 'fullName',
+  tenantCode: 'tenantCode',
+};
+
+const saveUserContext = async (
+  userId: string,
+  fullName: string,
+  tenantCode: string
+) => {
+  try {
+    await AsyncStorage.multiSet([
+      [USER_STORAGE_KEYS.userId, userId],
+      [USER_STORAGE_KEYS.fullName, fullName],
+      [USER_STORAGE_KEYS.tenantCode, tenantCode],
+    ]);
+
+    console.log('✅ User context saved', {
+      userId,
+      fullName,
+      tenantCode,
+    });
+  } catch (e) {
+    console.error('❌ Failed to save user context', e);
+  }
+};
+
 
 const BRAND = {
   name: 'CareScribe',
@@ -77,40 +107,44 @@ export default function CareScribeLogin({ navigation }: any) {
     return ok;
   };
   
+const handleLogin = async () => {
+  if (!validate()) return;
 
-  const handleLogin = async () => {
-    if (!validate()) return;
-  
-    try {
-      setLoading(true);
-  
-      const response = await login(
-        email.trim(),       // username (email)
-        password,
-        'HOSP1'             // tenantCode (can be dynamic later)
-      );
-  
-      // Save token + user info
-      await saveAuth(response.accessToken, response.userInfo);
-  
-      // Navigate after successful login
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'PatientScreen' }],
-      });
-    } catch (error: any) {
-      console.error('Login error', error);
-  
-      const message =
-        error?.response?.data?.message ||
-        'Unable to login. Please try again.';
-  
-      Alert.alert('Login Failed', message);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
+  try {
+    setLoading(true);
+
+    const response = await login(
+      email.trim(),
+      password,
+      'HOSP1'
+    );
+
+    // 🔐 Save auth (token etc.)
+    await saveAuth(response.accessToken, response.userInfo);
+
+    // 👤 SAVE USER CONTEXT (THIS WAS MISSING)
+    await saveUserContext(
+      response.userInfo.userId,
+      response.userInfo.fullName,
+      response.userInfo.tenantCode
+    );
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'PatientScreen' }],
+    });
+  } catch (error: any) {
+    console.error('Login error', error);
+    Alert.alert(
+      'Login Failed',
+      error?.response?.data?.message ||
+        'Unable to login. Please try again.'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleSocial = (provider: string) => {
     Alert.alert('Social Login', `${provider} login clicked`);

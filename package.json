@@ -20,6 +20,7 @@
     "@reduxjs/toolkit": "^2.11.2",
     "@shopify/react-native-skia": "^2.4.3",
     "axios": "^1.13.2",
+    "buffer": "^6.0.3",
     "deprecated-react-native-prop-types": "^5.0.0",
     "install": "^0.13.0",
     "npm": "^11.6.4",

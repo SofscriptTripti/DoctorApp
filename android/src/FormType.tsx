@@ -17,6 +17,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDocumentPages, getDocuments } from './api/documentsApi';
+const DOCUMENT_STORAGE_KEY = 'documentId';
+  const saveDocumentContext = async (documentId: string) => {
+  try {
+    await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, documentId);
+    console.log('📄 Document ID saved:', documentId);
+  } catch (e) {
+    console.error('❌ Failed to save documentId', e);
+  }
+};
 
 
 type ApiForm = {
@@ -39,6 +48,8 @@ function makeStorageKey(patientName: string, formName: string) {
   const safeForm = formName.replace(/\s+/g, '_');
   return `DoctorApp:${safePatient}:${safeForm}:pagesBitmaps:v1`;
 }
+
+
 
 
 export default function FormTypeScreen() {
@@ -66,6 +77,14 @@ export default function FormTypeScreen() {
     admissionNo,
     categoryCode,
   });
+
+useEffect(() => {
+  AsyncStorage.getItem('documentId').then(id => {
+    console.log('📄 Current documentId:', id);
+  });
+}, []);
+
+
 
   useEffect(() => {
     const loadDocuments = async () => {
@@ -104,36 +123,29 @@ export default function FormTypeScreen() {
     loadDocuments();
   }, [categoryCode]);
 
+useEffect(() => {
+  if (forms.length === 0) return;
 
-  useEffect(() => {
-    const updateTotalPages = async () => {
-      if (forms.length === 0) return;
+  const updateTotalPages = async () => {
+    const updated = await Promise.all(
+      forms.map(async form => {
+        if (form.totalPages && form.totalPages > 0) return form;
 
-      const updatedForms = [...forms];
-      for (let i = 0; i < updatedForms.length; i++) {
-        const form = updatedForms[i];
-        if (!form.totalPages || form.totalPages === 0) {
-          try {
-            const pages = await getDocumentPages(form.documentId);
-            const pageCount = Array.isArray(pages) ? pages.length : 0;
-            updatedForms[i] = {
-              ...form,
-              totalPages: pageCount,
-            };
-          } catch (err) {
-            console.error(`Failed to load pages for ${form.documentId}:`, err);
-            updatedForms[i] = {
-              ...form,
-              totalPages: 0,
-            };
-          }
+        try {
+          const pages = await getDocumentPages(form.documentId);
+          return { ...form, totalPages: Array.isArray(pages) ? pages.length : 0 };
+        } catch {
+          return { ...form, totalPages: 0 };
         }
-      }
-      setForms(updatedForms);
-    };
+      })
+    );
 
-    updateTotalPages();
-  }, [forms.length]);
+    setForms(updated);
+  };
+
+  updateTotalPages();
+}, [forms]);
+
 
   /* ================= LOAD FILLED COUNTS ================= */
 
@@ -209,54 +221,61 @@ export default function FormTypeScreen() {
 
   /* ================= HANDLE FORM SELECTION ================= */
 
-  const handlePress = async (form: ApiForm) => {
-    try {
-      // Load pages if not already loaded
-      let totalPages = form.totalPages;
-      if (!totalPages || totalPages === 0) {
-        try {
-          const pages = await getDocumentPages(form.documentId);
-          totalPages = Array.isArray(pages) ? pages.length : 0;
-        } catch (err) {
-          console.error('Error loading pages:', err);
-          totalPages = 0;
-        }
+const handlePress = async (form: ApiForm) => {
+  try {
+    // ✅ SAVE DOCUMENT ID (GLOBAL CONTEXT)
+    await saveDocumentContext(form.documentId);
+
+    // Load pages if not already loaded
+    let totalPages = form.totalPages;
+
+    if (!totalPages || totalPages === 0) {
+      try {
+        const pages = await getDocumentPages(form.documentId);
+        totalPages = Array.isArray(pages) ? pages.length : 0;
+      } catch (err) {
+        console.error('Error loading pages:', err);
+        totalPages = 0;
       }
-
-      const storageKey = makeStorageKey(patientName, form.title);
-
-      navigation.navigate('FormImageScreen', {
-        patientName,
-        documentId: form.documentId,
-        patientId,
-        patientIP,
-        admissionNo,
-        formName: form.title,
-        formKey: form.documentId,
-        storageKey,
-        totalPages,
-        backgroundColor: form.backgroundColor,
-        textColor: form.textColor,
-      });
-    } catch (err) {
-      console.error('Error navigating to form:', err);
-      // Fallback navigation
-      const storageKey = makeStorageKey(patientName, form.title);
-      navigation.navigate('FormImageScreen', {
-        patientName,
-        documentId: form.documentId,
-        patientId,
-        patientIP,
-        admissionNo,
-        formName: form.title,
-        formKey: form.documentId,
-        storageKey,
-        totalPages: form.totalPages || 0,
-        backgroundColor: form.backgroundColor,
-        textColor: form.textColor,
-      });
     }
-  };
+
+    const storageKey = makeStorageKey(patientName, form.title);
+
+    navigation.navigate('FormImageScreen', {
+      patientName,
+      documentId: form.documentId,
+      patientId,
+      patientIP,
+      admissionNo,
+      formName: form.title,
+      formKey: form.documentId,
+      storageKey,
+      totalPages,
+      backgroundColor: form.backgroundColor,
+      textColor: form.textColor,
+    });
+  } catch (err) {
+    console.error('Error navigating to form:', err);
+
+    // Fallback navigation (still navigates even if save fails)
+    const storageKey = makeStorageKey(patientName, form.title);
+
+    navigation.navigate('FormImageScreen', {
+      patientName,
+      documentId: form.documentId,
+      patientId,
+      patientIP,
+      admissionNo,
+      formName: form.title,
+      formKey: form.documentId,
+      storageKey,
+      totalPages: form.totalPages || 0,
+      backgroundColor: form.backgroundColor,
+      textColor: form.textColor,
+    });
+  }
+};
+
 
   /* ================= RENDER ITEM ================= */
 
@@ -527,6 +546,7 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: '#F1F5F9' 
   },
+  filterTitle:{},
 
   header: {
     flexDirection: 'row',
