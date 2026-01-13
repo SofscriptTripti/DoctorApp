@@ -35,7 +35,7 @@ const STORAGE_KEYS = {
   patientId: 'patientId',
   admissionNo: 'admissionNo',
   documentId: 'documentId',
-  documentInstanceId: 'documentInstanceId' // New key for document instance ID
+  documentInstanceId: 'documentInstanceId'
 };
 
 /* ---------------- TYPES ---------------- */
@@ -65,6 +65,7 @@ const FormImageScreen = () => {
 
   const [documentInstanceId, setDocumentInstanceId] = useState<string | undefined>(params.documentInstanceId);
   const [documentId, setDocumentId] = useState<string | undefined>(params.documentId);
+  const [storedDocumentId, setStoredDocumentId] = useState<string>(''); // New state for stored ID
   const formName = params.formName ?? 'Document';
   const formKey = params.formKey;
   const patientName = params.patientName ?? 'Unknown Patient';
@@ -91,7 +92,7 @@ const FormImageScreen = () => {
   const loadedDocumentInstanceIdRef = useRef<string | null>(null);
   const isLoadingRef = useRef(false);
 
-  /* ---------- GET DOCUMENT INSTANCE ID FROM STORAGE ---------- */
+  /* ---------- GET DOCUMENT CONTEXT FROM STORAGE ---------- */
   const getDocumentContextFromStorage = useCallback(async (): Promise<{
     patientNo: string;
     admissionNo: string;
@@ -104,7 +105,7 @@ const FormImageScreen = () => {
           STORAGE_KEYS.patientId,
           STORAGE_KEYS.admissionNo,
           STORAGE_KEYS.documentId,
-          STORAGE_KEYS.documentInstanceId, // Get document instance ID
+          STORAGE_KEYS.documentInstanceId,
         ]);
 
       console.log('Retrieved from AsyncStorage:', { 
@@ -114,15 +115,15 @@ const FormImageScreen = () => {
         documentInstanceId 
       });
 
+      // Store the retrieved documentId for display
+      if (documentId) {
+        setStoredDocumentId(documentId);
+      }
+
       // We need documentInstanceId for API calls
       if (!documentInstanceId) {
         console.warn('Missing documentInstanceId in AsyncStorage');
         return null;
-      }
-
-      // We still need documentId for getDocumentPages API
-      if (!documentId) {
-        console.warn('Missing documentId in AsyncStorage');
       }
 
       return {
@@ -134,6 +135,21 @@ const FormImageScreen = () => {
     } catch (e) {
       console.error('❌ Failed to read document context from AsyncStorage', e);
       return null;
+    }
+  }, []);
+
+  /* ---------- LOAD DOCUMENT ID FROM STORAGE ---------- */
+  const loadDocumentIdFromStorage = useCallback(async () => {
+    try {
+      // Directly get documentId from AsyncStorage
+      const storedDocId = await AsyncStorage.getItem(STORAGE_KEYS.documentId);
+      console.log('Loaded documentId from AsyncStorage:', storedDocId);
+      
+      if (storedDocId) {
+        setStoredDocumentId(storedDocId);
+      }
+    } catch (error) {
+      console.error('Error loading documentId from storage:', error);
     }
   }, []);
 
@@ -252,6 +268,10 @@ const FormImageScreen = () => {
     useCallback(() => {
       console.log('FormImageScreen focused');
       
+      // Load document ID from storage for display
+      loadDocumentIdFromStorage();
+      
+      // Load full document context
       loadDocumentContext();
 
       const p = route.params || {};
@@ -292,13 +312,16 @@ const FormImageScreen = () => {
         sub.remove();
         console.log('FormImageScreen blur');
       };
-    }, [route.params, documentInstanceId, navigation, loadDocumentContext])
+    }, [route.params, documentInstanceId, navigation, loadDocumentContext, loadDocumentIdFromStorage])
   );
 
   /* ---------- LOAD PAGES & IMAGES ---------- */
   const loadAllPages = useCallback(async () => {
-    if (!documentId || !documentInstanceId || isLoadingRef.current) {
-      console.log('Skipping load: documentId =', documentId, 'documentInstanceId =', documentInstanceId, 'isLoading =', isLoadingRef.current);
+    // Use documentId from props if available, otherwise use stored documentId
+    const effectiveDocumentId = documentId || storedDocumentId;
+    
+    if (!effectiveDocumentId || !documentInstanceId || isLoadingRef.current) {
+      console.log('Skipping load: effectiveDocumentId =', effectiveDocumentId, 'documentInstanceId =', documentInstanceId, 'isLoading =', isLoadingRef.current);
       return;
     }
 
@@ -307,7 +330,7 @@ const FormImageScreen = () => {
       return;
     }
 
-    console.log('Loading pages for document:', documentId, 'document instance:', documentInstanceId);
+    console.log('Loading pages for document:', effectiveDocumentId, 'document instance:', documentInstanceId);
     
     isLoadingRef.current = true;
     
@@ -318,11 +341,11 @@ const FormImageScreen = () => {
       setHasValidImages(false);
       
       // First, get the page list using documentId
-      const res = await getDocumentPages(documentId);
+      const res = await getDocumentPages(effectiveDocumentId);
       console.log('Received', res.length, 'pages from API');
 
       if (res.length === 0) {
-        console.warn('No pages returned from API for document:', documentId);
+        console.warn('No pages returned from API for document:', effectiveDocumentId);
       }
 
       // Sort by display order and initialize with loading state
@@ -354,7 +377,7 @@ const FormImageScreen = () => {
           try {
             console.log(`Loading image ${index + 1}/${sortedPages.length} for page ${page.pageId}`);
             
-            const response = await getDocumentPageImage(documentId, page.pageId);
+            const response = await getDocumentPageImage(effectiveDocumentId, page.pageId);
             
             if (response && typeof response === 'string') {
               if (response.startsWith('data:image/') || response.length > 1000) {
@@ -428,16 +451,20 @@ const FormImageScreen = () => {
       setLoading(false);
       isLoadingRef.current = false;
     }
-  }, [documentId, documentInstanceId, shouldReload, loadAllOverlays]);
+  }, [documentId, documentInstanceId, storedDocumentId, shouldReload, loadAllOverlays]);
 
-  // Load pages when documentId or documentInstanceId changes or when shouldReload changes
+  // Load pages when documentId, storedDocumentId, or documentInstanceId changes
   useEffect(() => {
-    console.log('useEffect triggered - documentId:', documentId, 'documentInstanceId:', documentInstanceId, 'shouldReload:', shouldReload);
+    console.log('useEffect triggered - documentId:', documentId, 'storedDocumentId:', storedDocumentId, 'documentInstanceId:', documentInstanceId, 'shouldReload:', shouldReload);
     
-    if (documentId && documentInstanceId && shouldReload) {
+    // Use either documentId from props or storedDocumentId
+    const effectiveDocumentId = documentId || storedDocumentId;
+    
+    if (effectiveDocumentId && documentInstanceId && shouldReload) {
       loadAllPages();
     }
-  }, [documentId, documentInstanceId, shouldReload, loadAllPages]);
+  }, [documentId, storedDocumentId, documentInstanceId, shouldReload, loadAllPages]);
+
   useEffect(() => {
     if (
       documentInstanceId &&
@@ -451,8 +478,6 @@ const FormImageScreen = () => {
     }
   }, [documentInstanceId, pages, loadAllOverlays]);
   
-  
-
   // Add a manual refresh function
   const refreshPages = useCallback(() => {
     console.log('Manual refresh triggered');
@@ -591,7 +616,10 @@ const FormImageScreen = () => {
       return;
     }
     
-    if (!documentId) {
+    // Use either documentId from props or storedDocumentId
+    const effectiveDocumentId = documentId || storedDocumentId;
+    
+    if (!effectiveDocumentId) {
       console.error('Cannot open editor: documentId is undefined');
       alert('Document ID is missing. Please try again.');
       return;
@@ -603,7 +631,7 @@ const FormImageScreen = () => {
       return;
     }
     
-    console.log('Opening editor with', pages.length, 'pages, documentId:', documentId, 'documentInstanceId:', documentInstanceId);
+    console.log('Opening editor with', pages.length, 'pages, documentId:', effectiveDocumentId, 'documentInstanceId:', documentInstanceId);
     
     const validPages = pages.filter(page => page.hasImage && page.imageData);
     
@@ -625,11 +653,14 @@ const FormImageScreen = () => {
       patientName,
       patientId,
       patientIP,
-      documentId,
+      documentId: effectiveDocumentId,
       documentInstanceId, // Pass documentInstanceId to editor
       apiPages: pagesWithOverlays,
     });
-  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, documentInstanceId, pages, hasValidImages]);
+  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages]);
+
+  // Determine which document ID to display
+  const displayDocumentId = documentId || storedDocumentId || 'Not available';
 
   /* ---------- UI ---------- */
   return (
@@ -675,8 +706,8 @@ const FormImageScreen = () => {
         <View style={styles.fullLoading}>
           <ActivityIndicator size="large" color="#0EA5A4" />
           <Text style={styles.loadingText}>Loading document pages...</Text>
-          <Text style={styles.documentIdText}>Document ID: {documentId}</Text>
-          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId}</Text>
+          <Text style={styles.documentIdText}>Document ID: {displayDocumentId}</Text>
+          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
         </View>
       ) : pages.length > 0 ? (
         <>
@@ -704,8 +735,8 @@ const FormImageScreen = () => {
       ) : (
         <View style={styles.noPagesContainer}>
           <Text style={styles.noPagesText}>No pages found for this document</Text>
-          <Text style={styles.documentIdText}>Document ID: {documentId}</Text>
-          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId}</Text>
+          <Text style={styles.documentIdText}>Document ID: {displayDocumentId}</Text>
+          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
           <TouchableOpacity onPress={refreshPages} style={styles.retryButton}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
@@ -724,7 +755,7 @@ const FormImageScreen = () => {
       </TouchableOpacity>
 
       {/* Open Full Editor Button */}
-      {pages.length > 0 && documentInstanceId && documentId && hasValidImages && (
+      {pages.length > 0 && documentInstanceId && displayDocumentId && hasValidImages && (
         <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
           <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
             <Ionicons name="create-outline" size={22} color="#fff" />
@@ -734,7 +765,7 @@ const FormImageScreen = () => {
       )}
 
       {/* Disabled Editor Button */}
-      {pages.length > 0 && documentInstanceId && (!documentId || !hasValidImages) && (
+      {pages.length > 0 && documentInstanceId && (!displayDocumentId || !hasValidImages) && (
         <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
           <View style={[styles.btn, styles.btnDisabled]}>
             <Ionicons name="create-outline" size={22} color="#94a3b8" />
