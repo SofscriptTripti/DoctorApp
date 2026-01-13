@@ -6,6 +6,7 @@ import React, {
   useMemo,
   forwardRef,
 } from 'react';
+import RNFS from 'react-native-fs';
 import {
   View,
   Text,
@@ -30,7 +31,6 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import Feather from "react-native-vector-icons/Feather";
-// import type { EditorHistoryItem } from './android/src/EditorHistory';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -45,6 +45,12 @@ import NativeDrawingView, { DrawingRef } from './components/NativeDrawingView';
 // 🔊 VoiceKit
 import { useVoice, VoiceMode } from 'react-native-voicekit';
 
+// Import APIs
+import { 
+  createPatientDocument, 
+  savePageOverlay 
+} from './api/patientDocumentsApi';
+
 // We TRY AsyncStorage, but we don't depend on it.
 let AsyncStorage: any = null;
 try {
@@ -55,7 +61,7 @@ try {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
+const PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
 const PAGE_SPACING = 16;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
@@ -65,11 +71,51 @@ import PATIENT_STICKER_SOURCE from './Images/NameStick.jpg';
 import DOCTOR_STICKER_SOURCE from './Images/Doctor_Sticker.jpg';
 
 type SavedMeta = { bitmapPath?: string | null };
+const DOCUMENT_INSTANCE_KEY = 'documentInstanceId';
+
+const saveDocumentInstanceId = async (id: string) => {
+  try {
+    await AsyncStorage.setItem(DOCUMENT_INSTANCE_KEY, id);
+    console.log('✅ documentInstanceId saved:', id);
+  } catch (e) {
+    console.error('❌ Failed to save documentInstanceId', e);
+  }
+};
+
+const STORAGE_KEYS = {
+  patientId: 'patientId',
+  admissionNo: 'admissionNo',
+  documentId: 'documentId'
+};
+
+const getDocumentContextFromStorage = async () => {
+  try {
+    const [[, patientNo], [, admissionNo], [, documentCd]] =
+      await AsyncStorage.multiGet([
+        STORAGE_KEYS.patientId,
+        STORAGE_KEYS.admissionNo,
+        STORAGE_KEYS.documentId,
+      ]);
+
+    if (!patientNo || !admissionNo || !documentCd) {
+      throw new Error('Missing patient/document context in AsyncStorage');
+    }
+
+    return {
+      patientNo,
+      admissionNo,
+      documentCd,
+    };
+  } catch (e) {
+    console.error('❌ Failed to read document context', e);
+    throw e;
+  }
+};
 
 // Voice text note type
 export type VoiceNote = {
   id: string;
-  pageId?: string; // Added pageId to match with FormImageScreen
+  pageId?: string;
   pageIndex: number;
   text: string;
   color: string;
@@ -83,7 +129,7 @@ export type VoiceNote = {
 // Image sticker type
 export type ImageSticker = {
   id: string;
-  pageId?: string; // Added pageId to match with FormImageScreen
+  pageId?: string;
   pageIndex: number;
   x: number;
   y: number;
@@ -1242,6 +1288,8 @@ export default function FormImageEditor() {
     'idle' | 'saving' | 'success' | 'error'
   >('idle');
   const lastPayloadRef = useRef<any | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string>('');
+
 
   const colorRef = useRef(color);
   useEffect(() => {
@@ -1461,10 +1509,10 @@ export default function FormImageEditor() {
 
     const newNote: VoiceNote = {
       id: `${Date.now()}-${Math.random()}`,
-      pageId: currentPage?.pageId, // Add pageId to match FormImageScreen
+      pageId: currentPage?.pageId,
       pageIndex,
       text: trimmed,
-      color,
+      color: color,
       x: SCREEN_W * 0.15,
       y: PAGE_HEIGHT * 0.15,
       fontSize: 14,
@@ -1488,7 +1536,7 @@ export default function FormImageEditor() {
 
     const newSticker: ImageSticker = {
       id: `${Date.now()}-${Math.random()}`,
-      pageId: currentPage?.pageId, // Add pageId to match FormImageScreen
+      pageId: currentPage?.pageId,
       pageIndex,
       x,
       y,
@@ -1784,27 +1832,47 @@ export default function FormImageEditor() {
   const CONTENT_BOTTOM_PADDING = Math.max(160, SCREEN_H - PAGE_HEIGHT + PAGE_SPACING + 24);
 
   const PALETTE = [
-    '#073694ff', // Pen Ink Blue
+    '#073694ff',
 
-    '#066666', // Dark Teal
-    '#B13120', // Dark Brick Red
-    '#CC3F5C', // Deep Pink-Red
-    '#B45A73', // Dusty Rose
-    '#C97A3A', // Burnt Orange
-    '#C8A31F', // Deep Mustard Yellow
-    '#4F8B45', // Dark Leaf Green
-    '#008080', // Dark Cyan
-    '#0069A8', // Deep Sky Blue
-    '#5870C2', // Steel Blue
-    '#7A52B3', // Deep Violet
-    '#555555', // Dark Grey
-    '#000000', // Black
+    '#066666',
+    '#B13120',
+    '#CC3F5C',
+    '#B45A73',
+    '#C97A3A',
+    '#C8A31F',
+    '#4F8B45',
+    '#008080',
+    '#0069A8',
+    '#5870C2',
+    '#7A52B3',
+    '#555555',
+    '#000000',
   ];
+
+  // ========== UPDATED SECTION: Scroll handle positioning ==========
+  // Calculate header heights
+  const COMBINED_HEADER_PADDING_TOP = 8;
+  const COMBINED_HEADER_PADDING_BOTTOM = 6;
+  const TOP_ROW_PADDING_BOTTOM = 6;
+  const TOOLS_ROW_HEIGHT = 50;
+  
+  // Total height of header section (from top of screen to bottom of tools)
+  const HEADER_TOTAL_HEIGHT = 
+    COMBINED_HEADER_PADDING_TOP + 
+    TOP_ROW_PADDING_BOTTOM + 
+    TOOLS_ROW_HEIGHT + 
+    COMBINED_HEADER_PADDING_BOTTOM;
 
   const RIGHT_HANDLE_WIDTH = 36;
   const RIGHT_HANDLE_HEIGHT = 100;
+
+  // Start handle right below the tools section with some margin
+  const MIN_HANDLE_TOP = HEADER_TOTAL_HEIGHT + (insets.top ?? 0) + 20;
+  const MAX_HANDLE_TOP = SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
+
+  // Initialize handle position to start below tools
   const rightTopAnim = useRef(
-    new Animated.Value((SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2 + 60)
+    new Animated.Value(MIN_HANDLE_TOP)
   ).current;
   const rightStartTopRef = useRef(0);
 
@@ -1813,9 +1881,6 @@ export default function FormImageEditor() {
     CONTENT_TOP_PADDING +
     CONTENT_BOTTOM_PADDING;
   const maxScrollY = Math.max(0, totalContentHeight - SCREEN_H);
-
-  const MIN_HANDLE_TOP = (insets.top ?? 0) + 130;
-  const MAX_HANDLE_TOP = SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
 
   const clampRightTop = (val: number) => {
     const minTop = MIN_HANDLE_TOP;
@@ -1856,9 +1921,9 @@ export default function FormImageEditor() {
         try {
           rightStartTopRef.current = (rightTopAnim as any).__getValue
             ? (rightTopAnim as any).__getValue()
-            : (SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2;
+            : MIN_HANDLE_TOP;
         } catch (e) {
-          rightStartTopRef.current = (SCREEN_H - RIGHT_HANDLE_HEIGHT) / 2;
+          rightStartTopRef.current = MIN_HANDLE_TOP;
         }
       },
       onPanResponderMove: (
@@ -1950,6 +2015,7 @@ export default function FormImageEditor() {
     const clampedY = clamp(ty, -maxOffsetY, maxOffsetY);
     return { clampedX, clampedY };
   };
+  
   const disableDrawingImmediately = (disable: boolean) => {
   try {
     multiTouchActiveRef.current = disable;
@@ -2217,7 +2283,7 @@ const pinchResponder = useRef(
     applyZoomForPage(pageIndex, current - ZOOM_STEP);
   };
 
-  const APP_FILES_DIR = '/data/data/com.doctor/files';
+ const APP_FILES_DIR = RNFS.DocumentDirectoryPath;
 
   const makePageFilePath = (pageIndex: number) => {
     const safeKey = (STORAGE_KEY || DEFAULT_STORAGE_KEY).replace(
@@ -2228,71 +2294,417 @@ const pinchResponder = useRef(
     return `${APP_FILES_DIR}/${filename}`;
   };
 
-  const onSaveAll = async () => {
-  if (saveStatus === 'saving') return;
-
-  setSaveStatus('saving');
-
-  const allMeta: SavedMeta[] = IMAGES.map(() => ({ bitmapPath: null }));
-
-  for (let i = 0; i < IMAGES.length; i++) {
-    const c = canvasRefs.current[i];
-    if (!c || typeof c.saveToFile !== 'function') {
-      allMeta[i] = savedMeta[i] || { bitmapPath: null };
-      continue;
+  // =============================================
+  // ✅ FIXED: Enhanced getDrawingAsBase64 with better file waiting
+  // =============================================
+  const getDrawingAsBase64 = async (
+    canvas: DrawingRef | null
+  ): Promise<string | null> => {
+    if (!canvas) {
+      console.log('❌ [BASE64] No canvas available');
+      return null;
     }
+  
+    console.log('🟢 [BASE64] START extracting drawing');
+  
+    /* ======================================================
+     * Helper: wait for file existence
+     * ====================================================== */
+    const waitForFile = async (
+      filePath: string,
+      timeoutMs = 8000,
+      intervalMs = 100
+    ): Promise<boolean> => {
+      const startTime = Date.now();
+      let attempts = 0;
+  
+      console.log(`⏳ [BASE64] Waiting for file: ${filePath}`);
+  
+      while (Date.now() - startTime < timeoutMs) {
+        attempts++;
+        try {
+          const exists = await RNFS.exists(filePath);
+          if (exists) {
+            console.log(
+              `✅ [BASE64] File exists after ${attempts} attempts (${Date.now() - startTime}ms)`
+            );
+            return true;
+          }
+          await new Promise(res => setTimeout(res, intervalMs));
+        } catch (e) {
+          console.warn(`⚠️ [BASE64] Attempt ${attempts} error`, e);
+        }
+      }
+  
+      console.error('⛔ [BASE64] Timeout waiting for file');
+      return false;
+    };
+  
+    /* ======================================================
+     * 1️⃣ METHOD 1: Native getBase64 (BEST)
+     * ====================================================== */
+    if (typeof (canvas as any).getBase64 === 'function') {
+      try {
+        console.log('📱 [BASE64] Using canvas.getBase64()');
+  
+        const base64Raw = await (canvas as any).getBase64();
+  
+        // 🔥 ADDED THIS LINE TO LOG FULL BASE64 IMAGE LINK
+        console.log('🔗 [BASE64] Full base64 image link:', `data:image/png;base64,${base64Raw}`);
+  
+        console.log(
+          '📥 [BASE64] Raw base64 preview:',
+          base64Raw?.slice(0, 80)
+        );
+        console.log(
+          '📏 [BASE64] Raw base64 length:',
+          base64Raw?.length
+        );
+  
+        if (typeof base64Raw === 'string' && base64Raw.length > 0) {
+          const cleaned = base64Raw.startsWith('data:image')
+            ? base64Raw.replace(/^data:image\/\w+;base64,/, '')
+            : base64Raw;
+  
+          console.log(
+            '🧼 [BASE64] Cleaned base64 preview:',
+            cleaned.slice(0, 80)
+          );
+          console.log(
+            '📏 [BASE64] Cleaned base64 length:',
+            cleaned.length
+          );
+  
+          console.log('✅ [BASE64] Returning BASE64 (native)');
+          return cleaned;
+        }
+  
+        console.warn('⚠️ [BASE64] getBase64 returned empty string');
+      } catch (err) {
+        console.warn(
+          '❌ [BASE64] getBase64 failed → fallback to file',
+          err
+        );
+      }
+    }
+  
+    /* ======================================================
+     * 2️⃣ METHOD 2: saveToFile → readFile (FALLBACK)
+     * ====================================================== */
+    let tempFilePath = '';
+  
+    try {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).slice(2);
+  
+      tempFilePath = `${RNFS.DocumentDirectoryPath}/overlay_${timestamp}_${random}.png`;
+  
+      console.log('📁 [BASE64] Saving drawing to file:');
+      console.log('📂 [BASE64] FILE PATH →', tempFilePath);
+  
+      console.log('🎨 [BASE64] Calling canvas.saveToFile()');
+      const saved = await canvas.saveToFile(tempFilePath);
+  
+      if (!saved) {
+        console.error('⛔ [BASE64] saveToFile returned false');
+        return null;
+      }
+  
+      const fileExists = await waitForFile(tempFilePath);
+      if (!fileExists) {
+        console.error('⛔ [BASE64] File never appeared:', tempFilePath);
+        return null;
+      }
+  
+      const stat = await RNFS.stat(tempFilePath);
+      console.log(
+        `📊 [BASE64] File confirmed | size=${stat.size} bytes`
+      );
+  
+      if (stat.size === 0) {
+        console.error('⛔ [BASE64] File size is 0 bytes');
+        return null;
+      }
+  
+      console.log('📖 [BASE64] Reading file as base64');
+      const base64FromFile = await RNFS.readFile(tempFilePath, 'base64');
+  
+      // 🔥 ADDED THIS LINE TO LOG FULL BASE64 IMAGE LINK
+      console.log('🔗 [BASE64] Full base64 image link:', `data:image/png;base64,${base64FromFile}`);
+  
+      console.log(
+        '📥 [BASE64] File base64 preview:',
+        base64FromFile.slice(0, 80)
+      );
+      console.log(
+        '📏 [BASE64] File base64 length:',
+        base64FromFile.length
+      );
+  
+      console.log('🧹 [BASE64] Deleting temp file');
+      await RNFS.unlink(tempFilePath);
+  
+      console.log('✅ [BASE64] Returning BASE64 (file)');
+      return base64FromFile;
+  
+    } catch (err: any) {
+      console.error('❌ [BASE64] File fallback failed', err);
+  
+      if (tempFilePath) {
+        try {
+          const exists = await RNFS.exists(tempFilePath);
+          if (exists) {
+            await RNFS.unlink(tempFilePath);
+          }
+        } catch {}
+      }
+  
+      return null;
+    }
+  };
 
-    const path = makePageFilePath(i);
+  // =============================================
+  // ✅ FIXED: onSaveAll function with better error handling
+  // =============================================
+  const onSaveAll = async () => {
+    if (saveStatus === 'saving') return;
+
+    console.log('💾 Starting save process...');
+    setSaveStatus('saving');
+    setSaveMessage('Starting save process...');
 
     try {
-      const result = await c.saveToFile(path);
-      allMeta[i] = result ? { bitmapPath: path } : savedMeta[i];
-    } catch {
-      allMeta[i] = savedMeta[i];
-    }
-  }
+      // ✅ STEP 1: Read from AsyncStorage (GLOBAL CONTEXT)
+      console.log('🔍 Reading document context from storage...');
+      setSaveMessage('Reading document context...');
+      
+      const { patientNo, admissionNo, documentCd } =
+        await getDocumentContextFromStorage();
 
-  console.log('[onSaveAll] allMeta =', allMeta);
+      console.log('📋 Document context:', { patientNo, admissionNo, documentCd });
 
-  const uiPayload = { color, penWidth, eraserWidth };
-  const fullSaveBlob = { bitmaps: allMeta, voiceNotes, imageStickers };
+      // ✅ STEP 2: Create document instance
+      console.log('📄 Creating document instance...');
+      setSaveMessage('Creating document instance...');
+      
+      const docRes = await createPatientDocument(
+        patientNo,
+        admissionNo,
+        documentCd
+      );
+      console.log('✅ Document instance created:', docRes);
 
-  try {
+      const documentInstanceId = docRes?.documentInstanceId;
+
+      if (!documentInstanceId) {
+        throw new Error('documentInstanceId missing in response');
+      }
+
     if (AsyncStorage) {
-      await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(uiPayload));
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fullSaveBlob));
+  await AsyncStorage.setItem('documentInstanceId', documentInstanceId);
+}
 
-      const now = new Date();
-      const savedDateKey = now.toISOString().split('T')[0];
+      console.log('📄 documentInstanceId saved:', documentInstanceId);
 
-      const historyRaw = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
-      const history: EditorHistoryItem[] = historyRaw
-        ? JSON.parse(historyRaw)
-        : [];
+      // ✅ STEP 3: Save overlays for each page
+      console.log(`🎨 Saving overlays for ${IMAGES.length} pages...`);
+      setSaveMessage(`Preparing overlays (0/${IMAGES.length})...`);
 
-      history.unshift({
-        id: `${Date.now()}`,
-        title: route.params?.formName || 'Untitled Form',
-        formKey: formKeyParam || '',
+      const overlayResults = [];
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < IMAGES.length; i++) {
+        const page = IMAGES[i];
+        const canvas = canvasRefs.current[i];
+        
+        setSaveMessage(`Processing page ${i + 1}/${IMAGES.length}...`);
+        
+        console.log(`\n📄 Processing page ${i + 1}/${IMAGES.length}: ${page.pageId}`);
+        
+        if (!canvas) {
+          console.log(`📝 No canvas for page ${i}`);
+          overlayResults.push({
+            pageId: page.pageId,
+            pageIndex: i,
+            success: true,
+            message: 'No canvas available - nothing to save',
+          });
+          continue;
+        }
+
+        // Get drawing as base64
+        console.log(`🔍 Getting base64 for page ${i}...`);
+        const base64Data = await getDrawingAsBase64(canvas);
+
+        if (base64Data) {
+          try {
+            console.log(`📤 Sending overlay for page ${i} (${base64Data.length} chars)...`);
+            setSaveMessage(`Uploading page ${i + 1}/${IMAGES.length}...`);
+
+            const result = await savePageOverlay(
+              documentInstanceId,
+              page.pageId,
+              base64Data
+            );
+
+            console.log(`✅ Overlay saved for page ${i}`);
+            successCount++;
+
+            overlayResults.push({
+              pageId: page.pageId,
+              pageIndex: i,
+              success: true,
+              message: result?.message || 'Overlay saved successfully',
+            });
+          } catch (error: any) {
+            const apiMessage =
+              error?.response?.data?.message ||
+              error?.message ||
+              'Failed to save overlay';
+
+            console.error(`❌ Failed to save overlay for page ${i}:`, apiMessage);
+            failCount++;
+
+            overlayResults.push({
+              pageId: page.pageId,
+              pageIndex: i,
+              success: false,
+              error: apiMessage,
+            });
+          }
+        } else {
+          console.log(`📝 No drawing data for page ${i}, skipping overlay save`);
+          overlayResults.push({
+            pageId: page.pageId,
+            pageIndex: i,
+            success: true,
+            message: 'No overlay data to save',
+          });
+        }
+      }
+
+      // --------------------------------------------------
+      // ⬇️ Save local copy
+      // --------------------------------------------------
+      console.log('\n💾 Saving local copy...');
+      setSaveMessage('Saving local copy...');
+      const bitmapsToSave = [];
+
+      for (let i = 0; i < IMAGES.length; i++) {
+        const canvas = canvasRefs.current[i];
+        if (canvas) {
+          try {
+            // Save current page drawing to file
+            const filePath = makePageFilePath(i);
+            console.log(`💾 Saving local copy for page ${i}: ${filePath}`);
+            
+            const saved = await canvas.saveToFile(filePath);
+
+            if (saved) {
+              bitmapsToSave.push({
+                pageIndex: i,
+                bitmapPath: filePath,
+              });
+              // Update savedMeta state
+              setSavedMeta(prev => {
+                const newMeta = [...prev];
+                newMeta[i] = { ...newMeta[i], bitmapPath: filePath };
+                return newMeta;
+              });
+              console.log(`📁 Local copy saved for page ${i}`);
+            }
+          } catch (err) {
+            console.warn(`Failed to save local copy for page ${i}:`, err);
+          }
+        }
+      }
+
+      // Prepare payload
+      const payload = {
+        savedStrokes: savedMeta,
+        editorUI: {
+          color,
+          penWidth,
+          eraserWidth,
+        },
+        editorSavedAt: Date.now(),
         storageKey: STORAGE_KEY,
-        totalPages: IMAGES.length,
-        savedAt: now.getTime(),
-        savedDate: savedDateKey,
+        formName: route.params?.formName,
+        voiceNotes,
+        imageStickers,
+        documentInstanceId,
+        overlaySaveResults: overlayResults,
+        overlayStats: {
+          totalPages: IMAGES.length,
+          successful: successCount,
+          failed: failCount
+        }
+      };
+
+      lastPayloadRef.current = payload;
+
+      // Save to AsyncStorage
+      if (AsyncStorage) {
+        try {
+          console.log('💾 Saving to AsyncStorage...');
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+          await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(payload.editorUI));
+          console.log('✅ Local data saved to AsyncStorage');
+        } catch (storageErr) {
+          console.warn('Failed to save to AsyncStorage:', storageErr);
+        }
+      }
+
+      // Show success
+      console.log('\n🎉 Save completed successfully!');
+      setSaveStatus('success');
+      
+      if (failCount > 0) {
+        setSaveMessage(`Saved ${successCount} of ${IMAGES.length} overlays. ${failCount} failed.`);
+      } else if (successCount > 0) {
+        setSaveMessage(`All ${successCount} overlays saved successfully!`);
+      } else {
+        setSaveMessage('No changes to save.');
+      }
+
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        if (saveStatus === 'success') {
+          console.log('🚀 Navigating back...');
+          handleSaveOk();
+        }
+      }, 3000);
+
+    } catch (error: any) {
+      console.error('\n❌ Save failed:', error);
+      setSaveStatus('error');
+      
+      let errorMessage = 'Could not save changes. Please try again.';
+      
+      if (error.message?.includes('Missing patient/document context')) {
+        errorMessage = 'Missing patient information. Please go back and try again.';
+      } else if (error.message?.includes('documentInstanceId')) {
+        errorMessage = 'Failed to create document. Please check your connection.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setSaveMessage(errorMessage);
+
+      // Show error details for debugging
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
       });
 
-      await AsyncStorage.setItem(
-        HISTORY_STORAGE_KEY,
-        JSON.stringify(history)
-      );
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => {
+        handleSaveOk();
+      }, 5000);
     }
-
-    setSavedMeta(allMeta);
-    setSaveStatus('success');
-  } catch (err) {
-    console.warn('[onSaveAll] Error saving', err);
-    setSaveStatus('error');
-  }
-};
+  };
 
   const handleSaveOk = () => {
     const payload =
@@ -2319,6 +2731,8 @@ const pinchResponder = useRef(
       storageKey: STORAGE_KEY,
       formName: route.params?.formName,
       formKey: formKeyParam,
+      documentInstanceId: payload.documentInstanceId,
+      overlayStats: payload.overlayStats
     });
   };
 
@@ -2328,6 +2742,44 @@ const pinchResponder = useRef(
 
   const getStickerImageSource = (stickerType: 'patient' | 'doctor') => {
     return stickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE;
+  };
+
+  // =============================================
+  // ✅ ADD DEBUG FUNCTION (optional)
+  // =============================================
+  const debugFileSystem = async () => {
+    try {
+      console.log('🔍 Debugging file system...');
+      
+      // Check if DocumentDirectory exists
+      const docDirExists = await RNFS.exists(RNFS.DocumentDirectoryPath);
+      console.log(`📁 DocumentDirectory exists: ${docDirExists} (${RNFS.DocumentDirectoryPath})`);
+      
+      if (docDirExists) {
+        // List files in directory
+        const files = await RNFS.readDir(RNFS.DocumentDirectoryPath);
+        console.log(`📂 Files in DocumentDirectory (${files.length}):`);
+        files.forEach((file, index) => {
+          console.log(`  ${index + 1}. ${file.name} (${file.size} bytes, ${file.type})`);
+        });
+      }
+      
+      // Test writing a small file
+      const testFilePath = `${RNFS.DocumentDirectoryPath}/test_write_${Date.now()}.txt`;
+      await RNFS.writeFile(testFilePath, 'Test content', 'utf8');
+      const testFileExists = await RNFS.exists(testFilePath);
+      console.log(`✏️ Test file created: ${testFileExists} (${testFilePath})`);
+      
+      if (testFileExists) {
+        await RNFS.unlink(testFilePath);
+        console.log('🧹 Test file cleaned up');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ File system debug failed:', error);
+      return false;
+    }
   };
 
   return (
@@ -2549,6 +3001,16 @@ const pinchResponder = useRef(
                 </TouchableOpacity>
               </TouchableOpacity>
             </View>
+
+            {/* Optional: Debug button (remove in production) */}
+            {/* <TouchableOpacity
+              onPress={debugFileSystem}
+              style={[styles.toolButton]}
+              disabled={saveStatus === 'saving'}
+            >
+              <Ionicons name="bug" size={20} color="#ffffff" />
+              <Text style={styles.toolButtonText}>Debug</Text>
+            </TouchableOpacity> */}
           </ScrollView>
         </View>
       </View>
@@ -2740,7 +3202,7 @@ const pinchResponder = useRef(
         </ScrollView>
       </View>
 
-      {/* Right scroll handle */}
+      {/* Right scroll handle - NOW STARTS BELOW TOOLS SECTION */}
       <Animated.View style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]} {...rightPanResponder.panHandlers} pointerEvents="auto">
         <View style={styles.rightHandleInner}>
           <View style={styles.rightGrip} />
@@ -2915,7 +3377,7 @@ const pinchResponder = useRef(
               <>
                 <ActivityIndicator size="large" />
                 <Text style={styles.saveTitle}>Saving...</Text>
-                <Text style={styles.saveMessage}>Please wait while we save your changes.</Text>
+                <Text style={styles.saveMessage}>{saveMessage}</Text>
               </>
             )}
 
@@ -2923,7 +3385,10 @@ const pinchResponder = useRef(
               <>
                 <Ionicons name="checkmark-circle" size={52} color="#16a34a" style={{ marginBottom: 8 }} />
                 <Text style={styles.saveTitle}>Changes saved</Text>
-                <Text style={styles.saveMessage}>Your changes have been saved successfully.</Text>
+                <Text style={styles.saveMessage}>
+                  {saveMessage}
+                </Text>
+
                 <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveOk}>
                   <Text style={styles.saveOkButtonText}>OK</Text>
                 </TouchableOpacity>
@@ -2934,7 +3399,9 @@ const pinchResponder = useRef(
               <>
                 <Ionicons name="alert-circle" size={52} color="#dc2626" style={{ marginBottom: 8 }} />
                 <Text style={styles.saveTitle}>Save failed</Text>
-                <Text style={styles.saveMessage}>Could not save changes. Please try again.</Text>
+                <Text style={styles.saveMessage}>
+                  {saveMessage}
+                </Text>
                 <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveErrorOk}>
                   <Text style={styles.saveOkButtonText}>OK</Text>
                 </TouchableOpacity>
