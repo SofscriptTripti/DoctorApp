@@ -4,7 +4,31 @@ import { Buffer } from 'buffer';
 
 /**
  * Get documents list
+ * 
+ * 
+ * 
  */
+
+/**
+ * ✅ Admissions → Allowed Documents for Admission
+ * Postman Verified API
+ */
+export const getFormList = async (
+  admissionNo: string,
+  loginUserId: string
+) => {
+  const res = await api.get(
+    `/Admissions/${admissionNo}/documents`,
+    {
+      params: {
+        loginUserId,
+      },
+    }
+  );
+
+  return res.data;
+};
+
 export const getDocuments = async (categoryCode?: string) => {
   const res = await api.get('/Documents', {
     params: {

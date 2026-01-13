@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+// src/FormImageScreen.tsx
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,7 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AntDesign from 'react-native-vector-icons/AntDesign';
-import { getDocumentPageImage, getDocumentPages } from './api/documentsApi';
+import { 
+  getDocumentPageImage, 
+  getDocumentPages, 
+} from './api/documentsApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getpagewiseoverlay } from './api/patientDocumentsApi';
 
 /* ---------------- STICKERS ---------------- */
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
@@ -22,14 +28,28 @@ const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 
 /* ---------------- CONSTS ---------------- */
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PAGE_HEIGHT = Math.round(SCREEN_H * 0.75);
+const PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
+
+// AsyncStorage keys
+const STORAGE_KEYS = {
+  patientId: 'patientId',
+  admissionNo: 'admissionNo',
+  documentId: 'documentId',
+  documentInstanceId: 'documentInstanceId' // New key for document instance ID
+};
 
 /* ---------------- TYPES ---------------- */
 type PageItem = {
   pageId: string;
   displayOrderNo: number;
   imageData?: string;
+  overlayData?: string;
   loading?: boolean;
+  overlayLoading?: boolean;
+  overlayExists?: boolean;
+  hasImage: boolean;
+  errorMessage?: string;
+  overlayErrorMessage?: string;
 };
 
 type PageMeta = {
@@ -43,7 +63,8 @@ const FormImageScreen = () => {
   const navigation = useNavigation<any>();
   const params = route.params || {};
 
-  const documentId = params.documentId;
+  const [documentInstanceId, setDocumentInstanceId] = useState<string | undefined>(params.documentInstanceId);
+  const [documentId, setDocumentId] = useState<string | undefined>(params.documentId);
   const formName = params.formName ?? 'Document';
   const formKey = params.formKey;
   const patientName = params.patientName ?? 'Unknown Patient';
@@ -61,17 +82,187 @@ const FormImageScreen = () => {
     Array.isArray(params.imageStickers) ? params.imageStickers : []
   );
   const [reloadToken, setReloadToken] = useState(0);
+  const [shouldReload, setShouldReload] = useState(true);
+  const [hasDocumentContext, setHasDocumentContext] = useState(false);
+  const [hasValidImages, setHasValidImages] = useState(false);
+  const [loadingOverlays, setLoadingOverlays] = useState(false);
+  const overlayLoadedRef = useRef(false);
+
+  const loadedDocumentInstanceIdRef = useRef<string | null>(null);
+  const isLoadingRef = useRef(false);
+
+  /* ---------- GET DOCUMENT INSTANCE ID FROM STORAGE ---------- */
+  const getDocumentContextFromStorage = useCallback(async (): Promise<{
+    patientNo: string;
+    admissionNo: string;
+    documentId: string;
+    documentInstanceId: string;
+  } | null> => {
+    try {
+      const [[, patientNo], [, admissionNo], [, documentId], [, documentInstanceId]] =
+        await AsyncStorage.multiGet([
+          STORAGE_KEYS.patientId,
+          STORAGE_KEYS.admissionNo,
+          STORAGE_KEYS.documentId,
+          STORAGE_KEYS.documentInstanceId, // Get document instance ID
+        ]);
+
+      console.log('Retrieved from AsyncStorage:', { 
+        patientNo, 
+        admissionNo, 
+        documentId,
+        documentInstanceId 
+      });
+
+      // We need documentInstanceId for API calls
+      if (!documentInstanceId) {
+        console.warn('Missing documentInstanceId in AsyncStorage');
+        return null;
+      }
+
+      // We still need documentId for getDocumentPages API
+      if (!documentId) {
+        console.warn('Missing documentId in AsyncStorage');
+      }
+
+      return {
+        patientNo: patientNo || '',
+        admissionNo: admissionNo || '',
+        documentId: documentId || '',
+        documentInstanceId: documentInstanceId || ''
+      };
+    } catch (e) {
+      console.error('❌ Failed to read document context from AsyncStorage', e);
+      return null;
+    }
+  }, []);
+
+  const loadDocumentContext = useCallback(async () => {
+    try {
+      // First check if we have documentInstanceId in params
+      if (params.documentInstanceId) {
+        console.log('Using documentInstanceId from params:', params.documentInstanceId);
+        setDocumentInstanceId(params.documentInstanceId);
+        setDocumentId(params.documentId);
+        setHasDocumentContext(true);
+        return;
+      }
+
+      console.log('documentInstanceId not in params, checking AsyncStorage...');
+      const context = await getDocumentContextFromStorage();
+      
+      if (context?.documentInstanceId) {
+        console.log('Found document context in AsyncStorage:', context);
+        setDocumentInstanceId(context.documentInstanceId);
+        setDocumentId(context.documentId);
+        setHasDocumentContext(true);
+      } else {
+        console.error('No document instance ID found in params or AsyncStorage');
+        setHasDocumentContext(false);
+      }
+    } catch (error) {
+      console.error('Error loading document context:', error);
+      setHasDocumentContext(false);
+    }
+  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage]);
+
+  /* ---------- LOAD ALL OVERLAYS USING PAGE-WISE API ---------- */
+  const loadAllOverlays = useCallback(async () => {
+    if (!documentInstanceId || pages.length === 0) {
+      console.log('Cannot load overlays: documentInstanceId =', documentInstanceId, 'pages.length =', pages.length);
+      return;
+    }
+    
+    console.log(`[OVERLAY] Loading overlays via page-wise API for document instance: ${documentInstanceId}, ${pages.length} pages...`);
+    setLoadingOverlays(true);
+    
+    try {
+      // 🔥 Fetch ALL overlays in a single API call using documentInstanceId
+      const pageWiseOverlayData = await getpagewiseoverlay(documentInstanceId);
+      console.log('[OVERLAY] Page-wise API response received');
+      
+      // Create a map for quick lookup
+      const overlayMap = new Map();
+      if (Array.isArray(pageWiseOverlayData)) {
+        console.log(`[OVERLAY] Found ${pageWiseOverlayData.length} overlays in response`);
+        pageWiseOverlayData.forEach((item: any) => {
+          if (item.pageId && item.overlayDataBase64) {
+            console.log(`[OVERLAY] Overlay found for page ${item.pageId}, hasOverlay: ${item.hasOverlay}`);
+            overlayMap.set(item.pageId, {
+              base64: item.overlayDataBase64,
+              contentType: item.contentType || 'image/png',
+              hasOverlay: item.hasOverlay
+            });
+          }
+        });
+      } else {
+        console.log('[OVERLAY] Response is not an array or is empty');
+      }
+      
+      // Update all pages with overlay data
+      setPages(prev => 
+        prev.map(page => {
+          const overlayInfo = overlayMap.get(page.pageId);
+          
+          if (overlayInfo && overlayInfo.hasOverlay && overlayInfo.base64) {
+            const overlayUri = `data:${overlayInfo.contentType};base64,${overlayInfo.base64}`;
+            console.log(`[OVERLAY] Created overlay URI for page ${page.pageId}`);
+            return {
+              ...page,
+              overlayData: overlayUri,
+              overlayExists: true,
+              overlayLoading: false
+            };
+          } else {
+            console.log(`[OVERLAY] No overlay for page ${page.pageId}`);
+            return {
+              ...page,
+              overlayData: undefined,
+              overlayExists: false,
+              overlayLoading: false
+            };
+          }
+        })
+      );
+      
+      console.log('[OVERLAY] Finished updating all pages with overlay data');
+    } catch (error: any) {
+      console.error('[OVERLAY] Error loading overlays:', {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data
+      });
+      
+      // Set all pages to have no overlay
+      setPages(prev => 
+        prev.map(page => ({
+          ...page,
+          overlayData: undefined,
+          overlayExists: false,
+          overlayLoading: false
+        }))
+      );
+    } finally {
+      setLoadingOverlays(false);
+    }
+  }, [documentInstanceId, pages.length]);
 
   /* ---------- FOCUS EFFECT ---------- */
   useFocusEffect(
     useCallback(() => {
+      console.log('FormImageScreen focused');
+      
+      loadDocumentContext();
+
       const p = route.params || {};
 
       if (Array.isArray(p.savedStrokes)) {
+        console.log('Received updated data from editor');
         setPageMeta(p.savedStrokes);
         setVoiceNotes(p.voiceNotes || []);
         setImageStickers(p.imageStickers || []);
         setReloadToken(t => t + 1);
+        setShouldReload(true);
 
         setTimeout(() => {
           navigation.setParams({
@@ -80,10 +271,15 @@ const FormImageScreen = () => {
             imageStickers: undefined,
           });
         }, 100);
+      } else {
+        if (documentInstanceId && documentInstanceId !== loadedDocumentInstanceIdRef.current) {
+          console.log('New document instance ID detected, should reload');
+          setShouldReload(true);
+        }
       }
 
       const onBackPress = () => {
-        navigation.goBack();
+        navigation.navigate('FormType');
         return true;
       };
 
@@ -92,67 +288,184 @@ const FormImageScreen = () => {
         onBackPress
       );
 
-      return () => sub.remove();
-    }, [route.params])
+      return () => {
+        sub.remove();
+        console.log('FormImageScreen blur');
+      };
+    }, [route.params, documentInstanceId, navigation, loadDocumentContext])
   );
 
   /* ---------- LOAD PAGES & IMAGES ---------- */
-  useEffect(() => {
-    if (!documentId) return;
+  const loadAllPages = useCallback(async () => {
+    if (!documentId || !documentInstanceId || isLoadingRef.current) {
+      console.log('Skipping load: documentId =', documentId, 'documentInstanceId =', documentInstanceId, 'isLoading =', isLoadingRef.current);
+      return;
+    }
 
-    const loadPages = async () => {
-      try {
-        setLoading(true);
+    if (loadedDocumentInstanceIdRef.current === documentInstanceId && !shouldReload) {
+      console.log('Already loaded this document instance, skipping reload');
+      return;
+    }
 
-        const res = await getDocumentPages(documentId);
+    console.log('Loading pages for document:', documentId, 'document instance:', documentInstanceId);
+    
+    isLoadingRef.current = true;
+    
+    try {
+      setLoading(true);
+      
+      loadedDocumentInstanceIdRef.current = null;
+      setHasValidImages(false);
+      
+      // First, get the page list using documentId
+      const res = await getDocumentPages(documentId);
+      console.log('Received', res.length, 'pages from API');
 
-        const sortedPages: PageItem[] = (Array.isArray(res) ? res : res.pages ?? [])
-          .sort((a: any, b: any) => a.displayOrderNo - b.displayOrderNo)
-          .map((p: any) => ({
-            pageId: p.pageId,
-            displayOrderNo: p.displayOrderNo,
-            loading: true,
-          }));
-
-        setPages(sortedPages);
-        
-        // Initialize page metadata
-        setPageMeta(
-          sortedPages.map((p: any) => ({
-            pageId: p.pageId,
-            bitmapPath: null,
-          }))
-        );
-
-        const pagesWithImages = await Promise.all(
-          sortedPages.map(async (page) => {
-            try {
-              const imageData = await getDocumentPageImage(
-                documentId,
-                page.pageId
-              );
-              return { ...page, imageData, loading: false };
-            } catch (e) {
-              console.error('Image load failed:', page.pageId, e);
-              return { ...page, loading: false };
-            }
-          })
-        );
-
-        setPages(pagesWithImages);
-      } catch (e) {
-        console.error('Failed to load pages', e);
-        setPages([]);
-      } finally {
-        setLoading(false);
+      if (res.length === 0) {
+        console.warn('No pages returned from API for document:', documentId);
       }
-    };
 
-    loadPages();
-  }, [documentId]);
+      // Sort by display order and initialize with loading state
+      const sortedPages = res
+        .sort((a, b) => a.displayOrderNo - b.displayOrderNo)
+        .map(p => ({
+          pageId: p.pageId,
+          displayOrderNo: p.displayOrderNo,
+          loading: true,
+          overlayLoading: false,
+          overlayExists: undefined,
+          hasImage: false,
+        }));
+
+      // Update pages with loading state
+      setPages(sortedPages);
+
+      // Initialize page metadata
+      const initialMeta = sortedPages.map(p => ({
+        pageId: p.pageId,
+        bitmapPath: null,
+      }));
+      setPageMeta(initialMeta);
+
+      // Now load images for each page using documentId
+      console.log('Loading images for each page...');
+      const pagesWithImages = await Promise.all(
+        sortedPages.map(async (page, index) => {
+          try {
+            console.log(`Loading image ${index + 1}/${sortedPages.length} for page ${page.pageId}`);
+            
+            const response = await getDocumentPageImage(documentId, page.pageId);
+            
+            if (response && typeof response === 'string') {
+              if (response.startsWith('data:image/') || response.length > 1000) {
+                console.log(`✅ Page ${page.pageId} has valid image data`);
+                return { 
+                  ...page, 
+                  imageData: response, 
+                  loading: false, 
+                  hasImage: true 
+                };
+              } else {
+                console.log(`⚠️ Page ${page.pageId} returned non-image response:`, response.substring(0, 100));
+                return { 
+                  ...page, 
+                  imageData: undefined, 
+                  loading: false, 
+                  hasImage: false,
+                  errorMessage: response
+                };
+              }
+            } else {
+              console.log(`❌ Page ${page.pageId} returned invalid response type:`, typeof response);
+              return { 
+                ...page, 
+                imageData: undefined, 
+                loading: false, 
+                hasImage: false,
+                errorMessage: 'Invalid response format'
+              };
+            }
+          } catch (error) {
+            console.error(`Failed to load image for page ${page.pageId}:`, error);
+            return { 
+              ...page, 
+              loading: false, 
+              hasImage: false,
+              errorMessage: error instanceof Error ? error.message : 'Network error'
+            };
+          }
+        })
+      );
+
+      // Update with loaded images
+      setPages(pagesWithImages);
+      
+      // Check if any page has a valid image
+      const anyValidImage = pagesWithImages.some(page => page.hasImage);
+      setHasValidImages(anyValidImage);
+      
+      console.log(`Image loading complete. Valid images found: ${anyValidImage}`);
+      
+      // Now load overlays for pages with valid images using documentInstanceId
+      if (anyValidImage) {
+        console.log('Starting overlay loading via page-wise API using document instance ID...');
+        // Start overlay loading immediately
+      
+      }
+      
+      // Mark this document as loaded
+      loadedDocumentInstanceIdRef.current = documentInstanceId;
+      setShouldReload(false);
+      
+      console.log('All pages loaded successfully');
+      
+    } catch (error) {
+      console.error('Failed to load document pages:', error);
+      loadedDocumentInstanceIdRef.current = null;
+      setHasValidImages(false);
+      setShouldReload(true);
+    } finally {
+      setLoading(false);
+      isLoadingRef.current = false;
+    }
+  }, [documentId, documentInstanceId, shouldReload, loadAllOverlays]);
+
+  // Load pages when documentId or documentInstanceId changes or when shouldReload changes
+  useEffect(() => {
+    console.log('useEffect triggered - documentId:', documentId, 'documentInstanceId:', documentInstanceId, 'shouldReload:', shouldReload);
+    
+    if (documentId && documentInstanceId && shouldReload) {
+      loadAllPages();
+    }
+  }, [documentId, documentInstanceId, shouldReload, loadAllPages]);
+  useEffect(() => {
+    if (
+      documentInstanceId &&
+      pages.length > 0 &&
+      pages.some(p => p.hasImage) &&
+      !overlayLoadedRef.current
+    ) {
+      overlayLoadedRef.current = true;
+      console.log('[OVERLAY] Triggering overlay API call');
+      loadAllOverlays();
+    }
+  }, [documentInstanceId, pages, loadAllOverlays]);
+  
+  
+
+  // Add a manual refresh function
+  const refreshPages = useCallback(() => {
+    console.log('Manual refresh triggered');
+    loadedDocumentInstanceIdRef.current = null;
+    setShouldReload(true);
+    setPages([]);
+    setPageMeta([]);
+    setHasValidImages(false);
+    setLoadingOverlays(false);
+  }, []);
 
   /* ---------- PAGE CARD ---------- */
-  const PageCard = ({ page, index }: { page: PageItem; index: number }) => {
+  const PageCard = React.useCallback(({ page, index }: { page: PageItem; index: number }) => {
     const savedPath = pageMeta.find(p => p.pageId === page.pageId)?.bitmapPath;
     
     const overlaySrc = savedPath
@@ -162,32 +475,69 @@ const FormImageScreen = () => {
     return (
       <View style={styles.pageCard}>
         <View style={[styles.imageBox, { width: SCREEN_W, height: PAGE_HEIGHT }]}>
-          {page.imageData ? (
-            <Image
-              source={{ uri: page.imageData }}
-              style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
-              resizeMode="contain"
-            />
+          {page.imageData && page.hasImage ? (
+            <View style={styles.imageContainer}>
+              {/* Base Image */}
+              <Image
+                source={{ uri: page.imageData }}
+                style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
+                resizeMode="contain"
+              />
+              
+              {/* API Overlay Image (from page-wise API) */}
+              {page.overlayData && (
+                <Image
+                  source={{ uri: page.overlayData }}
+                  style={[StyleSheet.absoluteFill, styles.overlayImage]}
+                  resizeMode="contain"
+                />
+              )}
+              
+              {/* Local Editor Overlay */}
+              {overlaySrc && (
+                <Image
+                  source={overlaySrc}
+                  style={[StyleSheet.absoluteFill, styles.overlayImage]}
+                  resizeMode="contain"
+                />
+              )}
+              
+              {/* Overlay Loading Indicator */}
+              {page.overlayLoading && (
+                <View style={styles.overlayLoadingContainer}>
+                  <ActivityIndicator size="small" color="#0EA5A4" />
+                  <Text style={styles.overlayLoadingText}>Loading overlay...</Text>
+                </View>
+              )}
+              
+              {/* No Overlay Indicator */}
+              {page.overlayExists === false && !page.overlayLoading && (
+                <View style={styles.noOverlayIndicator}>
+                  <Text style={styles.noOverlayText}>No overlay available</Text>
+                </View>
+              )}
+            </View>
           ) : page.loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#0EA5A4" />
               <Text style={styles.loadingText}>Loading image...</Text>
             </View>
+          ) : page.errorMessage ? (
+            <View style={styles.messageContainer}>
+              <Ionicons name="warning-outline" size={48} color="#dc2626" />
+              <Text style={styles.errorTitle}>No Image Available</Text>
+              <Text style={styles.errorMessageText}>{page.errorMessage}</Text>
+            </View>
           ) : (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>Failed to load image</Text>
+              <Ionicons name="image-off-outline" size={48} color="#9ca3af" />
+              <Text style={styles.errorTitle}>No Image</Text>
+              <Text style={styles.errorMessageText}>Image data not available</Text>
             </View>
           )}
 
-          {overlaySrc && (
-            <Image
-              source={overlaySrc}
-              style={StyleSheet.absoluteFill}
-              resizeMode="stretch"
-            />
-          )}
-
-          {imageStickers
+          {/* Render image stickers */}
+          {page.hasImage && imageStickers
             .filter(s => s.pageId === page.pageId)
             .map(s => {
               const stickerSource =
@@ -206,6 +556,7 @@ const FormImageScreen = () => {
                     width: s.width || 140,
                     height: s.height || 90,
                     resizeMode: 'contain',
+                    zIndex: 20,
                   }}
                 />
               );
@@ -216,13 +567,53 @@ const FormImageScreen = () => {
           <Text style={styles.footerTxt}>
             Page {index + 1} of {pages.length}
           </Text>
+          {page.overlayData && (
+            <Text style={styles.overlayIndicator}>✓ Overlay Applied</Text>
+          )}
+          {page.overlayExists === false && !page.overlayLoading && (
+            <Text style={styles.noOverlayFooter}>No overlay</Text>
+          )}
         </View>
       </View>
     );
-  };
+  }, [pageMeta, reloadToken, imageStickers, pages.length]);
+
+  /* ---------- RENDER ITEM ---------- */
+  const renderItem = useCallback(({ item, index }: { item: PageItem; index: number }) => {
+    return <PageCard page={item} index={index} />;
+  }, [PageCard]);
 
   /* ---------- OPEN EDITOR ---------- */
-  const openFullEditor = () => {
+  const openFullEditor = useCallback(() => {
+    if (!documentInstanceId) {
+      console.error('Cannot open editor: documentInstanceId is undefined');
+      alert('Document Instance ID is missing. Please try again.');
+      return;
+    }
+    
+    if (!documentId) {
+      console.error('Cannot open editor: documentId is undefined');
+      alert('Document ID is missing. Please try again.');
+      return;
+    }
+    
+    if (!hasValidImages) {
+      console.error('Cannot open editor: No valid images found');
+      alert('Cannot open editor because no valid images are available for this document.');
+      return;
+    }
+    
+    console.log('Opening editor with', pages.length, 'pages, documentId:', documentId, 'documentInstanceId:', documentInstanceId);
+    
+    const validPages = pages.filter(page => page.hasImage && page.imageData);
+    
+    const pagesWithOverlays = validPages.map(p => ({
+      pageId: p.pageId,
+      displayOrderNo: p.displayOrderNo,
+      imageData: p.imageData,
+      overlayData: p.overlayData,
+    }));
+    
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
       storageKey: perFormStorageKey,
@@ -235,13 +626,10 @@ const FormImageScreen = () => {
       patientId,
       patientIP,
       documentId,
-      apiPages: pages.map(p => ({
-        pageId: p.pageId,
-        displayOrderNo: p.displayOrderNo,
-        imageData: p.imageData,
-      })),
+      documentInstanceId, // Pass documentInstanceId to editor
+      apiPages: pagesWithOverlays,
     });
-  };
+  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, documentInstanceId, pages, hasValidImages]);
 
   /* ---------- UI ---------- */
   return (
@@ -252,26 +640,77 @@ const FormImageScreen = () => {
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.title}>{formName}</Text>
-          <View style={{ width: 30 }} />
+          
+          <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={refreshPages} style={styles.headerButton}>
+              <Ionicons name="refresh" size={22} color="#fff" />
+            </TouchableOpacity>
+            
+            {/* Debug button for overlays */}
+            <TouchableOpacity onPress={loadAllOverlays} style={styles.headerButton}>
+              <Ionicons name="layers-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
 
-      {pages.length > 0 ? (
-        <FlatList
-          data={pages}
-          horizontal
-          pagingEnabled
-          keyExtractor={(item) => item.pageId}
-          renderItem={({ item, index }) => (
-            <PageCard page={item} index={index} />
+      {!hasDocumentContext ? (
+        <View style={styles.errorContainerFull}>
+          <Ionicons name="alert-circle-outline" size={64} color="#dc2626" />
+          <Text style={styles.errorTitle}>Document Context Missing</Text>
+          <Text style={styles.errorMessage}>
+            Unable to load document. Please go back and select a document again.
+          </Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => {
+              loadDocumentContext();
+              refreshPages();
+            }}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : loading && pages.length === 0 ? (
+        <View style={styles.fullLoading}>
+          <ActivityIndicator size="large" color="#0EA5A4" />
+          <Text style={styles.loadingText}>Loading document pages...</Text>
+          <Text style={styles.documentIdText}>Document ID: {documentId}</Text>
+          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId}</Text>
+        </View>
+      ) : pages.length > 0 ? (
+        <>
+          <FlatList
+            data={pages}
+            horizontal
+            pagingEnabled
+            keyExtractor={(item) => item.pageId}
+            renderItem={renderItem}
+            showsHorizontalScrollIndicator={false}
+            extraData={reloadToken}
+            initialNumToRender={1}
+            maxToRenderPerBatch={3}
+            windowSize={3}
+          />
+          
+          {/* Show loading indicator for overlays */}
+          {loadingOverlays && (
+            <View style={styles.overlayGlobalLoading}>
+              <ActivityIndicator size="small" color="#0EA5A4" />
+              <Text style={styles.overlayGlobalLoadingText}>Loading overlays...</Text>
+            </View>
           )}
-          showsHorizontalScrollIndicator={false}
-        />
-      ) : !loading ? (
+        </>
+      ) : (
         <View style={styles.noPagesContainer}>
           <Text style={styles.noPagesText}>No pages found for this document</Text>
+          <Text style={styles.documentIdText}>Document ID: {documentId}</Text>
+          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId}</Text>
+          <TouchableOpacity onPress={refreshPages} style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
+      )}
 
       {/* History FAB Button */}
       <TouchableOpacity
@@ -285,17 +724,23 @@ const FormImageScreen = () => {
       </TouchableOpacity>
 
       {/* Open Full Editor Button */}
-      <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
-        <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
-          <Ionicons name="create-outline" size={22} color="#fff" />
-          <Text style={styles.btnTxt}>Open Full Editor</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      {pages.length > 0 && documentInstanceId && documentId && hasValidImages && (
+        <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
+          <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
+            <Ionicons name="create-outline" size={22} color="#fff" />
+            <Text style={styles.btnTxt}>Open Full Editor</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      )}
 
-      {loading && (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color="#0EA5A4" />
-        </View>
+      {/* Disabled Editor Button */}
+      {pages.length > 0 && documentInstanceId && (!documentId || !hasValidImages) && (
+        <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
+          <View style={[styles.btn, styles.btnDisabled]}>
+            <Ionicons name="create-outline" size={22} color="#94a3b8" />
+            <Text style={[styles.btnTxt, styles.btnTxtDisabled]}>Open Full Editor</Text>
+          </View>
+        </SafeAreaView>
       )}
     </View>
   );
@@ -314,56 +759,196 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  title: { 
+    color: '#fff', 
+    fontSize: 17, 
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+  },
   pageCard: { flex: 1 },
   imageBox: {
     backgroundColor: '#f8fafc',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  imageContainer: {
+    width: SCREEN_W,
+    height: PAGE_HEIGHT,
+    position: 'relative',
+  },
+  overlayImage: {
+    width: SCREEN_W,
+    height: PAGE_HEIGHT,
   },
   footer: {
     padding: 12,
     backgroundColor: '#f1f5f9',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
+    alignItems: 'center',
   },
-  footerTxt: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  loading: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+  footerTxt: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#374151',
+    marginBottom: 4,
+  },
+  overlayIndicator: {
+    fontSize: 12,
+    color: '#0EA5A4',
+    fontWeight: '500',
+  },
+  noOverlayFooter: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
+  fullLoading: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#fff',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  overlayLoadingContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    padding: 8,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  noOverlayIndicator: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  noOverlayText: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
+  overlayLoadingText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
   loadingText: {
     marginTop: 10,
     color: '#666',
     fontSize: 14,
+    fontWeight: '500',
+  },
+  overlayGlobalLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#f0f9ff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0f2fe',
+  },
+  overlayGlobalLoadingText: {
+    marginLeft: 8,
+    fontSize: 12,
+    color: '#0EA5A4',
+  },
+  documentIdText: {
+    marginTop: 5,
+    color: '#999',
+    fontSize: 12,
+    fontFamily: 'monospace',
+    textAlign: 'center',
+  },
+  messageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8d7da',
+    padding: 20,
   },
-  errorText: { 
-    color: '#721c24', 
-    fontSize: 16,
+  errorContainerFull: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#fff',
+  },
+  errorTitle: {
+    fontSize: 20,
     fontWeight: '600',
+    color: '#dc2626',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  errorMessageText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
   },
   noPagesContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   noPagesText: {
     fontSize: 16,
     color: '#666',
     fontWeight: '500',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#0EA5A4',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   historyFab: {
     position: 'absolute',
@@ -399,10 +984,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  btnDisabled: {
+    backgroundColor: '#e5e7eb',
+  },
   btnTxt: { 
     color: '#fff', 
     marginLeft: 10, 
     fontSize: 16, 
     fontWeight: '700' 
   },
-}); 
+  btnTxtDisabled: {
+    color: '#94a3b8',
+  },
+});

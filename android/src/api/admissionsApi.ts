@@ -17,7 +17,7 @@ export const getAdmittedPatients = async (params: {
   return res.data;
 };
 
-export const getAllowedDocuments = async (
+export const getAllowedDocuments = async (                                                                                              
   admissionNo: string,
   loginUserId: string
 ) => {

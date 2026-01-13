@@ -16,29 +16,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getDocumentPages, getDocuments } from './api/documentsApi';
+import { getDocumentPages, getFormList } from './api/documentsApi';
+
 const DOCUMENT_STORAGE_KEY = 'documentId';
-  const saveDocumentContext = async (documentId: string) => {
-  try {
-    await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, documentId);
-    console.log('📄 Document ID saved:', documentId);
-  } catch (e) {
-    console.error('❌ Failed to save documentId', e);
-  }
-};
-
-
-type ApiForm = {
-  documentId: string;
-  title: string;
-  description?: string;
-  categoryCode?: string;
-  genderApplicability?: string;
-  backgroundColor?: string | null;
-  textColor?: string | null;
-  totalPages?: number;
-  editedPages?: number;
-  pageProgress?: string;
+const STORAGE_KEYS = {
+  admissionNo: 'admissionNo',
+  loginUserId: 'userId',
 };
 
 /* ================= UTILS ================= */
@@ -49,7 +32,42 @@ function makeStorageKey(patientName: string, formName: string) {
   return `DoctorApp:${safePatient}:${safeForm}:pagesBitmaps:v1`;
 }
 
+const saveDocumentContext = async (documentId: string, pageData?: any[]) => {
+  try {
+    await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, documentId);
+    
+    if (pageData && Array.isArray(pageData)) {
+      await AsyncStorage.setItem(
+        'documentPages',
+        JSON.stringify(pageData)
+      );
+      
+      const pageIds = pageData.map(page => page.pageId).filter(Boolean);
+      if (pageIds.length > 0) {
+        await AsyncStorage.setItem(
+          'pageIds',
+          JSON.stringify(pageIds)
+        );
+      }
+    }
+  } catch (e) {
+    console.error('❌ Failed to save document context', e);
+  }
+};
 
+type ApiForm = {
+  documentId: string;
+  title: string;
+  description?: string;
+  categoryCode?: string;
+  categoryName?: string;
+  genderApplicability?: string;
+  backgroundColor?: string | null;
+  textColor?: string | null;
+  totalPages?: number;
+  editedPages?: number;
+  pageProgress?: string;
+};
 
 
 export default function FormTypeScreen() {
@@ -67,85 +85,151 @@ export default function FormTypeScreen() {
   const patientName: string = route.params?.patientName ?? 'Unknown Patient';
   const patientId: string | undefined = route.params?.patientId;
   const patientIP: number | undefined = route.params?.patientIP;
-  const admissionNo: string | undefined = route.params?.admissionNo;
-  const categoryCode: string | undefined = route.params?.categoryCode;
+const [admissionNo, setAdmissionNo] = useState<string | null>(null);
+const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
-  console.log('FormTypeScreen params:', {
-    patientName,
-    patientId,
-    patientIP,
-    admissionNo,
-    categoryCode,
-  });
 
-useEffect(() => {
-  AsyncStorage.getItem('documentId').then(id => {
-    console.log('📄 Current documentId:', id);
-  });
+
+
+  // const loginUserId: string | undefined = route.params?.loginUserId; // Add this to params
+
+  useEffect(() => {
+  const loadContextFromStorage = async () => {
+    try {
+      const [[, admNo], [, userId]] = await AsyncStorage.multiGet([
+        STORAGE_KEYS.admissionNo,
+        STORAGE_KEYS.loginUserId,
+      ]);
+
+     if (!admNo || !userId) {
+  console.error('❌ Missing admissionNo or loginUserId in AsyncStorage', admNo,userId);
+  setLoading(false);
+  return;
+}
+
+
+      setAdmissionNo(admNo);
+      setLoginUserId(userId);
+
+      console.log('✅ Loaded context from storage:', {
+        admissionNo: admNo,
+        loginUserId: userId,
+      });
+    } catch (e) {
+      console.error('❌ Failed to load context from AsyncStorage', e);
+    }
+  };
+
+  loadContextFromStorage();
 }, []);
 
 
-
   useEffect(() => {
-    const loadDocuments = async () => {
+    const loadFormList = async () => {
       try {
         setLoading(true);
-        console.log('Loading documents with categoryCode:', categoryCode);
+  if (!admissionNo || !loginUserId) {
+  console.error('Missing admissionNo or loginUserId');
+  setForms([]);
+  return;
+}
 
-        const documents = await getDocuments
-        (categoryCode);
-        console.log('Documents loaded:', documents);
+
+        console.log('Loading form list for admission:', admissionNo, 'userId:', loginUserId);
+
+        // Use getFormList API instead of getDocuments
+        const formListData = await getFormList(admissionNo, loginUserId);
+        console.log('Form list loaded:', formListData);
 
         // Transform API response to match ApiForm type
-        const transformedForms: ApiForm[] = Array.isArray(documents) 
-          ? documents.map(doc => ({
+        let transformedForms: ApiForm[] = [];
+        
+        if (Array.isArray(formListData)) {
+          transformedForms = formListData.map((doc: any) => {
+            // Parse pageProgress string like "1/0" to get totalPages and editedPages
+            let totalPages = doc.totalPages || 0;
+            let editedPages = doc.editedPages || 0;
+            
+            // If pageProgress exists and is in format "total/edited", parse it
+            if (doc.pageProgress && typeof doc.pageProgress === 'string') {
+              const parts = doc.pageProgress.split('/');
+              if (parts.length === 2) {
+                totalPages = parseInt(parts[0]) || 0;
+                editedPages = parseInt(parts[1]) || 0;
+              }
+            }
+            
+            // Use categoryName from API if available, otherwise use categoryCode
+            const categoryName = doc.categoryName || doc.categoryCode || 'Uncategorized';
+            
+            return {
               documentId: doc.documentId,
-              title: doc.title,
-              description: doc.description,
+              title: doc.title || 'Untitled Form',
+              description: doc.description || '',
               categoryCode: doc.categoryCode,
+              categoryName: categoryName,
               genderApplicability: doc.genderApplicability,
               backgroundColor: doc.backgroundColor || '#FFFFFF',
               textColor: doc.textColor || '#0F172A',
-              totalPages: 0, // Will be updated when we load pages
-            }))
-          : [];
+              totalPages: totalPages,
+              editedPages: editedPages,
+              pageProgress: doc.pageProgress,
+            };
+          });
+        }
 
+        // // If categoryCode is provided, filter forms by category
+        // if (categoryCode) {
+        //   transformedForms = transformedForms.filter(
+        //     form => form.categoryCode === categoryCode
+        //   );
+        // }
+
+        console.log('Transformed forms count:', transformedForms.length);
         setForms(transformedForms);
 
       } catch (err) {
-        console.error('Failed to load documents', err);
+        console.error('Failed to load form list', err);
         setForms([]);
       } finally {
         setLoading(false);
       }
     };
 
-    loadDocuments();
-  }, [categoryCode]);
+    loadFormList();
+  }, [admissionNo, loginUserId]);
 
-useEffect(() => {
-  if (forms.length === 0) return;
+  // Optional: Load additional page details if needed
+  useEffect(() => {
+    if (forms.length === 0) return;
 
-  const updateTotalPages = async () => {
-    const updated = await Promise.all(
-      forms.map(async form => {
-        if (form.totalPages && form.totalPages > 0) return form;
+    // Only update if forms don't have totalPages
+    const formsWithoutPages = forms.filter(f => !f.totalPages || f.totalPages === 0);
+    if (formsWithoutPages.length === 0) return;
 
-        try {
-          const pages = await getDocumentPages(form.documentId);
-          return { ...form, totalPages: Array.isArray(pages) ? pages.length : 0 };
-        } catch {
-          return { ...form, totalPages: 0 };
-        }
-      })
-    );
+    const updateTotalPages = async () => {
+      const updated = await Promise.all(
+        forms.map(async form => {
+          // If form already has totalPages from API, keep it
+          if (form.totalPages && form.totalPages > 0) return form;
 
-    setForms(updated);
-  };
+          try {
+            const pages = await getDocumentPages(form.documentId);
+            return { 
+              ...form, 
+              totalPages: Array.isArray(pages) ? pages.length : 0 
+            };
+          } catch {
+            return { ...form, totalPages: 0 };
+          }
+        })
+      );
 
-  updateTotalPages();
-}, [forms]);
+      setForms(updated);
+    };
 
+    updateTotalPages();
+  }, [forms]);
 
   /* ================= LOAD FILLED COUNTS ================= */
 
@@ -201,7 +285,8 @@ useEffect(() => {
       const matchesSearch =
         !q || 
         f.title.toLowerCase().includes(q) ||
-        (f.description && f.description.toLowerCase().includes(q));
+        (f.description && f.description.toLowerCase().includes(q)) ||
+        (f.categoryName && f.categoryName.toLowerCase().includes(q));
 
       const matchesColor =
         selectedColors.length === 0 ||
@@ -221,61 +306,76 @@ useEffect(() => {
 
   /* ================= HANDLE FORM SELECTION ================= */
 
-const handlePress = async (form: ApiForm) => {
-  try {
-    // ✅ SAVE DOCUMENT ID (GLOBAL CONTEXT)
-    await saveDocumentContext(form.documentId);
+  const handlePress = async (form: ApiForm) => {
+    try {
+      console.log('🟡 Starting form navigation for:', form.title);
+      
+      let totalPages = form.totalPages || 0;
+      let pageData: any[] = [];
 
-    // Load pages if not already loaded
-    let totalPages = form.totalPages;
-
-    if (!totalPages || totalPages === 0) {
       try {
+        console.log('📥 Loading pages for document:', form.documentId);
         const pages = await getDocumentPages(form.documentId);
+        
         totalPages = Array.isArray(pages) ? pages.length : 0;
+        
+        if (Array.isArray(pages)) {
+          pageData = pages;
+          await saveDocumentContext(form.documentId, pageData);
+        }
       } catch (err) {
-        console.error('Error loading pages:', err);
-        totalPages = 0;
+        console.error('❌ Error loading pages:', err);
+        await saveDocumentContext(form.documentId, []);
       }
+
+      const storageKey = makeStorageKey(patientName, form.title);
+
+      console.log('🚀 Navigating to FormImageScreen with:', {
+        documentId: form.documentId,
+        totalPages,
+        editedPages: form.editedPages,
+        pageProgress: form.pageProgress
+      });
+
+      navigation.navigate('FormImageScreen', {
+        patientName,
+        documentId: form.documentId,
+        patientId,
+        patientIP,
+        admissionNo,
+        loginUserId, // Pass loginUserId forward
+        formName: form.title,
+        formKey: form.documentId,
+        storageKey,
+        totalPages,
+        editedPages: form.editedPages || 0,
+        backgroundColor: form.backgroundColor,
+        textColor: form.textColor,
+        pageData,
+      });
+    } catch (err) {
+      console.error('❌ Error navigating to form:', err);
+
+      const storageKey = makeStorageKey(patientName, form.title);
+
+      navigation.navigate('FormImageScreen', {
+        patientName,
+        documentId: form.documentId,
+        patientId,
+        patientIP,
+        admissionNo,
+        loginUserId,
+        formName: form.title,
+        formKey: form.documentId,
+        storageKey,
+        totalPages: form.totalPages || 0,
+        editedPages: form.editedPages || 0,
+        backgroundColor: form.backgroundColor,
+        textColor: form.textColor,
+        pageData: [],
+      });
     }
-
-    const storageKey = makeStorageKey(patientName, form.title);
-
-    navigation.navigate('FormImageScreen', {
-      patientName,
-      documentId: form.documentId,
-      patientId,
-      patientIP,
-      admissionNo,
-      formName: form.title,
-      formKey: form.documentId,
-      storageKey,
-      totalPages,
-      backgroundColor: form.backgroundColor,
-      textColor: form.textColor,
-    });
-  } catch (err) {
-    console.error('Error navigating to form:', err);
-
-    // Fallback navigation (still navigates even if save fails)
-    const storageKey = makeStorageKey(patientName, form.title);
-
-    navigation.navigate('FormImageScreen', {
-      patientName,
-      documentId: form.documentId,
-      patientId,
-      patientIP,
-      admissionNo,
-      formName: form.title,
-      formKey: form.documentId,
-      storageKey,
-      totalPages: form.totalPages || 0,
-      backgroundColor: form.backgroundColor,
-      textColor: form.textColor,
-    });
-  }
-};
-
+  };
 
   /* ================= RENDER ITEM ================= */
 
@@ -283,7 +383,11 @@ const handlePress = async (form: ApiForm) => {
     const bgColor = item?.backgroundColor ?? '#FFFFFF';
     const textColor = item.textColor ?? '#0F172A';
     const totalPages = item.totalPages || 0;
+    const editedPages = item.editedPages || 0;
     const filledCount = filledCounts[item.documentId] || 0;
+    
+    // Use filledCount if available, otherwise use editedPages from API
+    const displayCount = filledCount > 0 ? filledCount : editedPages;
 
     return (
       <TouchableOpacity
@@ -292,12 +396,6 @@ const handlePress = async (form: ApiForm) => {
         onPress={() => handlePress(item)}
       >
         <View style={styles.cardRow}>
-         ` {/* <View style={[styles.iconCircle, { backgroundColor: `${textColor}15` }]}>
-            <Text style={[styles.iconText, { color: textColor }]}>
-              {item.title?.charAt(0) ?? '?'}
-            </Text>
-          </View>` */}
-
           <View style={styles.cardTextBlock}>
             <Text
               style={[styles.formName, { color: textColor }]}
@@ -305,28 +403,32 @@ const handlePress = async (form: ApiForm) => {
             >
               {item.title}
             </Text>
-            {/* {item.description && (
-              <Text
-                style={[styles.formDescription, { color: textColor }]}
+            {item.categoryName && (
+              <Text style={[styles.categoryText, { color: textColor, opacity: 0.7 }]}>
+                {item.categoryName}
+              </Text>
+            )}
+            {item.description && (
+              <Text 
+                style={[styles.formDescription, { color: textColor, opacity: 0.8 }]}
                 numberOfLines={1}
               >
                 {item.description}
               </Text>
-            )} */}
-            {/* {item.categoryCode && (
-              <Text
-                style={[styles.categoryText, { color: textColor }]}
-                numberOfLines={1}
-              >
-                {item.categoryCode}
-              </Text>
-            )} */}
+            )}
           </View>
 
           <View style={styles.pageInfoWrap}>
-            <Text style={[styles.pageInfoText, { color: textColor }]}>
-              {filledCount}/{totalPages}
-            </Text>
+            <View style={styles.pageInfoContainer}>
+              <Text style={[styles.pageInfoText, { color: textColor }]}>
+                {editedPages}/{totalPages}
+              </Text>
+              {/* {item.pageProgress && (
+                <Text style={[styles.pageProgressText, { color: textColor, opacity: 0.7 }]}>
+                  {item.pageProgress}
+                </Text>
+              )} */}
+            </View>
           </View>
 
           <View style={styles.chevronWrap}>
@@ -336,7 +438,6 @@ const handlePress = async (form: ApiForm) => {
       </TouchableOpacity>
     );
   };
-
 
   if (loading) {
     return (
@@ -443,7 +544,7 @@ const handlePress = async (form: ApiForm) => {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Icon name="arrow-back" size={22} color="#fff" />
+            <Icon name="arrow-back" size={22} color="#fff" />?
           </TouchableOpacity>
 
           <View style={{ flex: 1, alignItems: 'center' }}>
@@ -457,6 +558,8 @@ const handlePress = async (form: ApiForm) => {
                 patientName,
                 patientId,
                 patientIP,
+                admissionNo,
+                loginUserId,
               })
             }
           >
@@ -472,6 +575,12 @@ const handlePress = async (form: ApiForm) => {
                 <Text style={styles.patientLabel}>Patient</Text>
                 <Text style={styles.patientValue} numberOfLines={1}>
                   {patientName}
+                </Text>
+              </View>
+              <View style={styles.patientInfoColCenter}>
+                <Text style={styles.patientLabel}>Admission</Text>
+                <Text style={styles.patientValue} numberOfLines={1}>
+                  {admissionNo || 'N/A'}
                 </Text>
               </View>
               {patientIP && (
@@ -493,7 +602,6 @@ const handlePress = async (form: ApiForm) => {
                 style={styles.searchInputContent}
               />
 
-              {/* FILTER ICON */}
               <TouchableOpacity 
                 onPress={() => setFilterVisible(v => !v)}
                 style={styles.filterIconButton}
@@ -513,7 +621,6 @@ const handlePress = async (form: ApiForm) => {
               </TouchableOpacity>
             </View>
 
-            {/* Filter Summary */}
             {selectedColors.length > 0 && (
               <View style={styles.filterSummary}>
                 <Text style={styles.filterSummaryText}>
@@ -546,7 +653,13 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: '#F1F5F9' 
   },
-  filterTitle:{},
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
 
   header: {
     flexDirection: 'row',
@@ -627,6 +740,12 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
 
+  patientInfoColCenter: {
+    flexShrink: 0,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+
   patientInfoColRight: {
     flexShrink: 0,
     alignItems: 'flex-end',
@@ -634,15 +753,15 @@ const styles = StyleSheet.create({
   },
 
   patientLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.8)',
     textTransform: 'uppercase',
-    marginBottom: 3,
+    marginBottom: 2,
     fontWeight: '500',
   },
 
   patientValue: {
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -734,20 +853,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-
-  iconText: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-
   cardTextBlock: {
     flex: 1,
     marginRight: 8,
@@ -760,15 +865,16 @@ const styles = StyleSheet.create({
   },
 
   formDescription: {
-    fontSize: 13,
+    fontSize: 12,
     opacity: 0.8,
     marginBottom: 2,
   },
 
   categoryText: {
-    fontSize: 12,
+    fontSize: 11,
     opacity: 0.6,
     fontStyle: 'italic',
+    marginBottom: 4,
   },
 
   pageInfoWrap: {
@@ -778,9 +884,18 @@ const styles = StyleSheet.create({
     minWidth: 50,
   },
 
+  pageInfoContainer: {
+    alignItems: 'center',
+  },
+
   pageInfoText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  pageProgressText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
 
   chevronWrap: { 

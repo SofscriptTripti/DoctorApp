@@ -65,7 +65,6 @@ export default function ImagePdfViewer({ route, navigation }: Props) {
     }
   };
 
-  /* ---------- RENDER ---------- */
 
   return (
     <SafeAreaView style={styles.safe}>

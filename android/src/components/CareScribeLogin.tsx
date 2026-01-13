@@ -119,10 +119,8 @@ const handleLogin = async () => {
       'HOSP1'
     );
 
-    // 🔐 Save auth (token etc.)
     await saveAuth(response.accessToken, response.userInfo);
 
-    // 👤 SAVE USER CONTEXT (THIS WAS MISSING)
     await saveUserContext(
       response.userInfo.userId,
       response.userInfo.fullName,
@@ -199,7 +197,6 @@ const handleLogin = async () => {
            
             </View>
 
-            {/* Full Screen Card */}
             <Animated.View
               style={[
                 styles.fullScreenCard,
