@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   BackHandler,
   FlatList,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -20,7 +21,10 @@ import {
   getDocumentPages, 
 } from './api/documentsApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getpagewiseoverlay } from './api/patientDocumentsApi';
+import { 
+  getpagewiseoverlay,
+  createPatientDocument 
+} from './api/patientDocumentsApi';
 
 /* ---------------- STICKERS ---------------- */
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
@@ -35,7 +39,8 @@ const STORAGE_KEYS = {
   patientId: 'patientId',
   admissionNo: 'admissionNo',
   documentId: 'documentId',
-  documentInstanceId: 'documentInstanceId'
+  documentInstanceId: 'documentInstanceId',
+  documentCd: 'documentId'
 };
 
 /* ---------------- TYPES ---------------- */
@@ -65,7 +70,7 @@ const FormImageScreen = () => {
 
   const [documentInstanceId, setDocumentInstanceId] = useState<string | undefined>(params.documentInstanceId);
   const [documentId, setDocumentId] = useState<string | undefined>(params.documentId);
-  const [storedDocumentId, setStoredDocumentId] = useState<string>(''); // New state for stored ID
+  const [storedDocumentId, setStoredDocumentId] = useState<string>('');
   const formName = params.formName ?? 'Document';
   const formKey = params.formKey;
   const patientName = params.patientName ?? 'Unknown Patient';
@@ -87,10 +92,87 @@ const FormImageScreen = () => {
   const [hasDocumentContext, setHasDocumentContext] = useState(false);
   const [hasValidImages, setHasValidImages] = useState(false);
   const [loadingOverlays, setLoadingOverlays] = useState(false);
+  const [isCreatingDocument, setIsCreatingDocument] = useState(false);
   const overlayLoadedRef = useRef(false);
 
   const loadedDocumentInstanceIdRef = useRef<string | null>(null);
   const isLoadingRef = useRef(false);
+
+  /* ---------- CREATE DOCUMENT INSTANCE ---------- */
+  const createNewDocumentInstance = useCallback(async (): Promise<string | null> => {
+    try {
+      setIsCreatingDocument(true);
+      
+      // Get required data from AsyncStorage
+      const [[, patientNo], [, admissionNo], [, documentId], [, documentCd]] =
+        await AsyncStorage.multiGet([
+          STORAGE_KEYS.patientId,
+          STORAGE_KEYS.admissionNo,
+          STORAGE_KEYS.documentId,
+          STORAGE_KEYS.documentCd,
+        ]);
+
+      console.log('Creating document instance with:', {
+        patientNo,
+        admissionNo,
+        documentId,
+        documentCd
+      });
+
+      // Validate required data
+      if (!patientNo || !admissionNo || !documentCd) {
+        console.error('Missing required data for creating document instance:', {
+          patientNo,
+          admissionNo,
+          documentCd
+        });
+        Alert.alert(
+          'Missing Information',
+          'Cannot create document instance. Missing patient, admission, or document information.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        return null;
+      }
+
+      // Call API to create document instance
+      const response = await createPatientDocument(
+        patientNo,
+        admissionNo,
+        documentCd
+      );
+
+      console.log('Document instance created:', response);
+
+      if (response?.documentInstanceId) {
+        // Save documentInstanceId to AsyncStorage
+        await AsyncStorage.setItem(
+          STORAGE_KEYS.documentInstanceId,
+          response.documentInstanceId
+        );
+
+        console.log('Saved documentInstanceId to AsyncStorage:', response.documentInstanceId);
+        return response.documentInstanceId;
+      } else {
+        console.error('No documentInstanceId in API response:', response);
+        Alert.alert(
+          'Error',
+          'Failed to create document instance. No instance ID returned.',
+          [{ text: 'OK' }]
+        );
+        return null;
+      }
+    } catch (error: any) {
+      console.error('Failed to create document instance:', error);
+      Alert.alert(
+        'Error',
+        `Failed to create document instance: ${error.message || 'Unknown error'}`,
+        [{ text: 'OK' }]
+      );
+      return null;
+    } finally {
+      setIsCreatingDocument(false);
+    }
+  }, [navigation]);
 
   /* ---------- GET DOCUMENT CONTEXT FROM STORAGE ---------- */
   const getDocumentContextFromStorage = useCallback(async (): Promise<{
@@ -120,18 +202,17 @@ const FormImageScreen = () => {
         setStoredDocumentId(documentId);
       }
 
-      // We need documentInstanceId for API calls
-      if (!documentInstanceId) {
-        console.warn('Missing documentInstanceId in AsyncStorage');
-        return null;
+      // If we have documentInstanceId, use it
+      if (documentInstanceId) {
+        return {
+          patientNo: patientNo || '',
+          admissionNo: admissionNo || '',
+          documentId: documentId || '',
+          documentInstanceId: documentInstanceId || ''
+        };
       }
 
-      return {
-        patientNo: patientNo || '',
-        admissionNo: admissionNo || '',
-        documentId: documentId || '',
-        documentInstanceId: documentInstanceId || ''
-      };
+      return null;
     } catch (e) {
       console.error('❌ Failed to read document context from AsyncStorage', e);
       return null;
@@ -153,6 +234,7 @@ const FormImageScreen = () => {
     }
   }, []);
 
+  /* ---------- LOAD OR CREATE DOCUMENT CONTEXT ---------- */
   const loadDocumentContext = useCallback(async () => {
     try {
       // First check if we have documentInstanceId in params
@@ -165,22 +247,41 @@ const FormImageScreen = () => {
       }
 
       console.log('documentInstanceId not in params, checking AsyncStorage...');
+      
+      // Try to get existing document context
       const context = await getDocumentContextFromStorage();
       
       if (context?.documentInstanceId) {
-        console.log('Found document context in AsyncStorage:', context);
+        console.log('Found existing document context in AsyncStorage:', context);
         setDocumentInstanceId(context.documentInstanceId);
         setDocumentId(context.documentId);
         setHasDocumentContext(true);
       } else {
-        console.error('No document instance ID found in params or AsyncStorage');
-        setHasDocumentContext(false);
+        console.log('No existing document instance found, creating new one...');
+        
+        // Create new document instance
+        const newInstanceId = await createNewDocumentInstance();
+        
+        if (newInstanceId) {
+          console.log('New document instance created:', newInstanceId);
+          setDocumentInstanceId(newInstanceId);
+          setHasDocumentContext(true);
+          
+          // Load document ID from storage again
+          const storedDocId = await AsyncStorage.getItem(STORAGE_KEYS.documentId);
+          if (storedDocId) {
+            setStoredDocumentId(storedDocId);
+          }
+        } else {
+          console.error('Failed to create document instance');
+          setHasDocumentContext(false);
+        }
       }
     } catch (error) {
       console.error('Error loading document context:', error);
       setHasDocumentContext(false);
     }
-  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage]);
+  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage, createNewDocumentInstance]);
 
   /* ---------- LOAD ALL OVERLAYS USING PAGE-WISE API ---------- */
   const loadAllOverlays = useCallback(async () => {
@@ -271,7 +372,7 @@ const FormImageScreen = () => {
       // Load document ID from storage for display
       loadDocumentIdFromStorage();
       
-      // Load full document context
+      // Load or create document context
       loadDocumentContext();
 
       const p = route.params || {};
@@ -685,7 +786,13 @@ const FormImageScreen = () => {
         </View>
       </SafeAreaView>
 
-      {!hasDocumentContext ? (
+      {isCreatingDocument ? (
+        <View style={styles.fullLoading}>
+          <ActivityIndicator size="large" color="#0EA5A4" />
+          <Text style={styles.loadingText}>Creating document instance...</Text>
+          <Text style={styles.documentIdText}>Please wait</Text>
+        </View>
+      ) : !hasDocumentContext ? (
         <View style={styles.errorContainerFull}>
           <Ionicons name="alert-circle-outline" size={64} color="#dc2626" />
           <Text style={styles.errorTitle}>Document Context Missing</Text>
