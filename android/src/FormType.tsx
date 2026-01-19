@@ -82,6 +82,7 @@ export default function FormTypeScreen() {
   const [loading, setLoading] = useState(true);
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [tempSelectedColors, setTempSelectedColors] = useState<string[]>([]); // NEW: Temp state for modal
 
   const patientName: string = route.params?.patientName ?? 'Unknown Patient';
   const patientId: string | undefined = route.params?.patientId;
@@ -503,47 +504,55 @@ export default function FormTypeScreen() {
           style={styles.filterOverlay}
           onPress={() => setFilterVisible(false)}
         >
+          {/* Prevent closing when clicking inside the box */}
           <TouchableOpacity
             activeOpacity={1}
             style={styles.filterBox}
             onPress={() => { }}
           >
-            <Text style={styles.filterTitle}>Filter by Color</Text>
+            {/* Header Row: Title + Close Button */}
+            <View style={styles.filterHeaderRow}>
+              <Text style={styles.filterTitle}>Filter by Color</Text>
+              <TouchableOpacity onPress={() => setFilterVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Icon name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
 
-            <View style={styles.colorGrid}>
+            <View style={styles.colorList}>
               {availableColors.map(color => {
-                const selected = selectedColors.includes(color);
+                const isSelected = tempSelectedColors.includes(color);
 
                 return (
                   <TouchableOpacity
                     key={color}
-                    style={[
-                      styles.colorItem,
-                      { backgroundColor: color },
-                      selected && styles.colorItemSelected,
-                    ]}
+                    style={styles.colorRow}
+                    activeOpacity={0.7}
                     onPress={() =>
-                      setSelectedColors(prev =>
+                      setTempSelectedColors(prev =>
                         prev.includes(color)
                           ? prev.filter(c => c !== color)
                           : [...prev, color]
                       )
                     }
-                  />
+                  >
+                    <View style={[styles.colorCheckbox, isSelected && styles.colorCheckboxSelected]}>
+                      {isSelected && <Icon name="checkmark" size={12} color="#fff" />}
+                    </View>
+
+                    <View style={[styles.colorSwatch, { backgroundColor: color }]} />
+
+
+                  </TouchableOpacity>
                 );
               })}
             </View>
 
             <TouchableOpacity
-              style={styles.filterClear}
-              onPress={() => setSelectedColors([])}
-            >
-              <Text style={styles.filterClearText}>Clear All</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={styles.filterDone}
-              onPress={() => setFilterVisible(false)}
+              onPress={() => {
+                setSelectedColors(tempSelectedColors); // Apply changes
+                setFilterVisible(false);
+              }}
             >
               <Text style={styles.filterDoneText}>Done</Text>
             </TouchableOpacity>
@@ -617,7 +626,10 @@ export default function FormTypeScreen() {
               />
 
               <TouchableOpacity
-                onPress={() => setFilterVisible(v => !v)}
+                onPress={() => {
+                  setTempSelectedColors(selectedColors); // Init temp with current
+                  setFilterVisible(v => !v);
+                }}
                 style={styles.filterIconButton}
               >
                 <Icon
@@ -928,67 +940,86 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'transparent', // Transparent to not block view, but block interaction
     zIndex: 999,
     elevation: 999,
   },
 
   filterBox: {
-    width: '85%',
+    position: 'absolute',
+    top: 180, // Approximate position below filter icon
+    right: 24,
+    width: 220,
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-  },
-
-  colorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginVertical: 8,
-  },
-
-  colorItem: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    margin: 6,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#E2E8F0',
   },
 
-  colorItemSelected: {
-    borderWidth: 3,
+  filterHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  colorList: {
+    flexDirection: 'column',
+    marginBottom: 8,
+  },
+
+  colorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+
+  colorCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  colorCheckboxSelected: {
+    backgroundColor: '#0EA5A4',
     borderColor: '#0EA5A4',
   },
 
-  filterClear: {
-    marginTop: 8,
-    paddingVertical: 6,
-    alignItems: 'center',
+  colorSwatch: {
+    flex: 1,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
 
-  filterClearText: {
-    color: '#EF4444',
-    fontWeight: '600',
-    fontSize: 14,
-  },
+
 
   filterDone: {
-    marginTop: 12,
+    marginTop: 8,
     alignSelf: 'stretch',
     backgroundColor: '#0EA5A4',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
   },
 
   filterDoneText: {
     color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
+    fontWeight: '600',
+    fontSize: 14,
   },
 
   listContent: {
