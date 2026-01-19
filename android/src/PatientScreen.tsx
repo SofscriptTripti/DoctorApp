@@ -18,6 +18,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import FA5 from 'react-native-vector-icons/FontAwesome5';
 import Feather from "react-native-vector-icons/Feather";
 import { PanResponder } from 'react-native';
+import { clearAuth } from './storage/authStorage';
 import { getAdmittedPatients } from './api/admissionsApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -76,10 +77,6 @@ const clearPatientSession = async () => {
     STORAGE_KEYS.doctorCode,
   ]);
 };
-
-
-
-
 
 export default function PatientScreen() {
   const navigation = useNavigation<any>();
@@ -228,10 +225,14 @@ export default function PatientScreen() {
     setConfirmLogoutVisible(true);
   };
 
+
   /* ✅ NEW: Perform actual logout */
   const performLogout = async () => {
     setConfirmLogoutVisible(false);
+
+    // Clear both patient session AND auth token
     await clearPatientSession();
+    await clearAuth();
 
     navigation.reset({
       index: 0,
@@ -845,7 +846,7 @@ export default function PatientScreen() {
             </View>
 
             {/* Filter icon on same row */}
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[
                 styles.filterButton,
                 filtersActive && styles.filterButtonActive,
@@ -858,7 +859,7 @@ export default function PatientScreen() {
                 size={18}
                 color={filtersActive ? '#0EA5A4' : '#64748B'}
               />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </View>
 

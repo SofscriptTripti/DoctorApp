@@ -15,10 +15,11 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { login } from '../api/authApi';
-import { saveAuth } from '../storage/authStorage';
+import { saveAuth, getAccessToken } from '../storage/authStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
@@ -30,6 +31,7 @@ const USER_STORAGE_KEYS = {
   tenantCode: 'tenantCode',
 };
 
+// ... (saveUserContext function remains same)
 const saveUserContext = async (
   userId: string,
   fullName: string,
@@ -74,74 +76,97 @@ export default function CareScribeLogin({ navigation }: any) {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [pwdError, setPwdError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // Auto-login check
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const token = await getAccessToken();
+        if (token) {
+          console.log('🔄 Found existing token, auto-logging in...');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'PatientScreen' }],
+          });
+        }
+      } catch (e) {
+        console.error('Auto-login check failed', e);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+    checkUser();
+  }, []);
 
   // animation
   const cardAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(cardAnim, {
-      toValue: 1,
-      duration: 550,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [cardAnim]);
+    if (!checkingAuth) {
+      Animated.timing(cardAnim, {
+        toValue: 1,
+        duration: 550,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [cardAnim, checkingAuth]);
 
   const validate = () => {
     let ok = true;
-  
+
     if (!email.trim()) {
       setEmailError('Username is required');
       ok = false;
     } else {
       setEmailError(null);
     }
-  
+
     if (password.length < 6) {
       setPwdError('Password must be at least 6 characters');
       ok = false;
     } else {
       setPwdError(null);
     }
-  
+
     return ok;
   };
-  
-const handleLogin = async () => {
-  if (!validate()) return;
 
-  try {
-    setLoading(true);
+  const handleLogin = async () => {
+    if (!validate()) return;
 
-    const response = await login(
-      email.trim(),
-      password,
-      'HOSP1'
-    );
+    try {
+      setLoading(true);
 
-    await saveAuth(response.accessToken, response.userInfo);
+      const response = await login(
+        email.trim(),
+        password,
+        'HOSP1'
+      );
 
-    await saveUserContext(
-      response.userInfo.userId,
-      response.userInfo.fullName,
-      response.userInfo.tenantCode
-    );
+      await saveAuth(response.accessToken, response.userInfo);
 
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'PatientScreen' }],
-    });
-  } catch (error: any) {
-    console.error('Login error', error);
-    Alert.alert(
-      'Login Failed',
-      error?.response?.data?.message ||
+      await saveUserContext(
+        response.userInfo.userId,
+        response.userInfo.fullName,
+        response.userInfo.tenantCode
+      );
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'PatientScreen' }],
+      });
+    } catch (error: any) {
+      console.error('Login error', error);
+      Alert.alert(
+        'Login Failed',
+        error?.response?.data?.message ||
         'Unable to login. Please try again.'
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   const handleSocial = (provider: string) => {
@@ -165,6 +190,14 @@ const handleLogin = async () => {
     Keyboard.dismiss();
   };
 
+  if (checkingAuth) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }, bg.container]}>
+        <ActivityIndicator size="large" color={BRAND.primary} />
+      </View>
+    );
+  }
+
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
       <SafeAreaView style={[styles.container, bg.container]}>
@@ -181,20 +214,20 @@ const handleLogin = async () => {
           >
             {/* Logo Header */}
             <View style={styles.logoContainer}>
-            {/* <View style={styles.logoBadge}> */}
-  <Image
-    source={require('../Images/Carescribe_logo with text-01.png')}
-    style={styles.logo}
-    resizeMode="contain"
-  />
-  <Text style={styles.logoTagline}>
-  Turning data into compassionate care ...
-</Text>
+              {/* <View style={styles.logoBadge}> */}
+              <Image
+                source={require('../Images/Carescribe_logo with text-01.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <Text style={styles.logoTagline}>
+                Turning data into compassionate care ...
+              </Text>
 
-{/* </View> */}
+              {/* </View> */}
 
 
-           
+
             </View>
 
             <Animated.View
@@ -230,6 +263,8 @@ const handleLogin = async () => {
                     placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    textContentType="username"
+                    autoComplete="email"
                     value={email}
                     onChangeText={setEmail}
                     returnKeyType="next"
@@ -256,6 +291,8 @@ const handleLogin = async () => {
                     placeholder="Your secure password"
                     placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
                     secureTextEntry={!showPwd}
+                    textContentType="password"
+                    autoComplete="password"
                     value={password}
                     onChangeText={setPassword}
                     returnKeyType="done"
@@ -268,24 +305,24 @@ const handleLogin = async () => {
 
                 {/* Security Footer (kept, just colored line) */}
                 <View style={styles.securityFooter}>
-               
+
                 </View>
               </View>
 
               {/* Sign In Button at bottom INSIDE card */}
               <View style={styles.cardBottomSection}>
-              <TouchableOpacity
-  style={[
-    styles.bottomButton,
-    { backgroundColor: loading ? '#94A3B8' : BRAND.primary },
-  ]}
-  onPress={handleLogin}
-  disabled={loading}
->
+                <TouchableOpacity
+                  style={[
+                    styles.bottomButton,
+                    { backgroundColor: loading ? '#94A3B8' : BRAND.primary },
+                  ]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
 
-<Text style={styles.bottomButtonText}>
-  {loading ? 'Signing in...' : 'Sign in to Continue'}
-</Text>
+                  <Text style={styles.bottomButtonText}>
+                    {loading ? 'Signing in...' : 'Sign in to Continue'}
+                  </Text>
 
                 </TouchableOpacity>
               </View>
@@ -308,37 +345,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 24,
   },
-logoContainer: {
-  width: '100%',
-  alignItems: 'center',
-  paddingTop: 0,
-  paddingBottom: 20,
-   paddingHorizontal: 20, 
-},
-logoTagline: {
-  fontSize: 14,
-  fontWeight: '600',
-  color: '#010e0eff',       // CareScribe primary color
-  // marginTop: 8,
-  textAlign: 'center',
-  letterSpacing: 0.3,
-  // bottom:75
-},
+  logoContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: 0,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  logoTagline: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#010e0eff',       // CareScribe primary color
+    // marginTop: 8,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+    // bottom:75
+  },
 
   logoBadge: {
-     // ensures image stays inside circle
+    // ensures image stays inside circle
   },
-  
- logo: {
-   width: Dimensions.get('window').width -140,
-  height: Dimensions.get('window').width * 0.25, // keep aspect ratio (adjust as needed)
-  resizeMode: 'contain', // or 'contain'
-  padding:10,
-  color:"#0EA5A4",
-  // backgroundColor:"red"
-  
-},
-  
+
+  logo: {
+    width: Dimensions.get('window').width - 140,
+    height: Dimensions.get('window').width * 0.25, // keep aspect ratio (adjust as needed)
+    resizeMode: 'contain', // or 'contain'
+    padding: 10,
+    color: "#0EA5A4",
+    // backgroundColor:"red"
+
+  },
+
 
   logoText: {
     fontSize: 30,
