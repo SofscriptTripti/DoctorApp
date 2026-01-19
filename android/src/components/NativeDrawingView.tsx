@@ -20,6 +20,7 @@ type NativeProps = {
   strokeWidth?: number;
   eraseMode?: boolean;
   savedPath?: string | null;
+  strokesJson?: string | null;
 };
 
 const COMPONENT_NAME = 'RNDrawingView';

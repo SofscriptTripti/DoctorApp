@@ -29,8 +29,10 @@ public class DrawingView extends View {
     // Background form image (from backgroundBase64)
     private Bitmap bgBitmap;
 
-    // Previous saved overlay loaded from file (savedPath)
-    private Bitmap savedOverlayBitmap;
+    // We no longer rely on a static bitmap for "saved" overlays because
+    // we want them to remain editable vectors.
+    // However, if we receive a raw bitmap (legacy), we can still display it.
+    private Bitmap legacyOverlayBitmap;
 
     // Base paint
     private final Paint paint;
@@ -38,7 +40,7 @@ public class DrawingView extends View {
     // Current live stroke (while moving)
     private Stroke currentStroke;
 
-    // All finished strokes in this session
+    // All finished strokes in this session (and loaded from JSON)
     private final ArrayList<Stroke> strokes = new ArrayList<>();
     private final ArrayList<Stroke> undoneStrokes = new ArrayList<>();
 
@@ -73,7 +75,7 @@ public class DrawingView extends View {
     }
 
     // ----------------------------------------------------
-    // Background + saved overlay
+    // Background + Legacy Overlay
     // ----------------------------------------------------
 
     public void setBackgroundBitmap(@Nullable Bitmap bitmap) {
@@ -82,11 +84,50 @@ public class DrawingView extends View {
     }
 
     /**
-     * Called from DrawingViewManager.savedPath.
-     * This is the previously saved PNG overlay.
+     * Legacy support: if we still want to show a flat PNG overlay
      */
     public void setDrawingBitmap(@Nullable Bitmap bitmap) {
-        savedOverlayBitmap = bitmap;
+        legacyOverlayBitmap = bitmap;
+        invalidate();
+    }
+
+    // ----------------------------------------------------
+    // JSON Strokes (The new "Editable" way)
+    // ----------------------------------------------------
+
+    public void setStrokesJson(@Nullable String json) {
+        strokes.clear();
+        undoneStrokes.clear();
+
+        if (json == null || json.isEmpty()) {
+            invalidate();
+            return;
+        }
+
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(json);
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject obj = arr.getJSONObject(i);
+                Stroke s = new Stroke();
+                s.color = obj.optInt("color", Color.BLACK);
+                s.brushSize = (float) obj.optDouble("width", 5.0);
+                s.isEraser = obj.optBoolean("eraser", false);
+                s.isHighlighter = obj.optBoolean("highlighter", false);
+
+                org.json.JSONArray pointsArr = obj.optJSONArray("points");
+                if (pointsArr != null) {
+                    for (int j = 0; j < pointsArr.length(); j++) {
+                        org.json.JSONObject pObj = pointsArr.getJSONObject(j);
+                        float x = (float) pObj.optDouble("x", 0);
+                        float y = (float) pObj.optDouble("y", 0);
+                        s.points.add(new PointF(x, y));
+                    }
+                }
+                strokes.add(s);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to parse strokes JSON", e);
+        }
         invalidate();
     }
 
@@ -97,35 +138,40 @@ public class DrawingView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        // 1) Background form (drawn directly to main canvas)
+        // 1) Background form
         if (bgBitmap != null) {
             canvas.drawBitmap(bgBitmap, 0, 0, null);
         }
 
-        // 2) Draw overlay (saved overlay + strokes) on a separate layer
-        int saveCount = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
-
-        // 2a) Previously saved overlay (from disk)
-        if (savedOverlayBitmap != null) {
-            canvas.drawBitmap(savedOverlayBitmap, 0, 0, null);
+        // 2) Legacy overlay (if any)
+        if (legacyOverlayBitmap != null) {
+            canvas.drawBitmap(legacyOverlayBitmap, 0, 0, null);
         }
 
-        // 2b) Draw all finished strokes from this session
+        // 3) Draw all strokes (loaded + new)
+        // We do this on a layer so Eraser works properly (clearing pixels)
+        // if we decide to treat "Eraser" as a clear operation.
+        // HOWEVER: For true vector editing, "Eraser" is visually clearing,
+        // but if we just draw clear on top, it might clear the background too if we are
+        // not careful.
+        // To behave like an overlay eraser (only erasing strokes), we need a saveLayer.
+
+        int saveCount = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
+
         for (Stroke s : strokes) {
             drawStroke(canvas, s);
         }
 
-        // 2c) Draw the live stroke being drawn
         if (currentStroke != null && !currentStroke.points.isEmpty()) {
             drawStroke(canvas, currentStroke);
         }
 
-        // 2d) Merge layer back onto main canvas
         canvas.restoreToCount(saveCount);
     }
 
     private void drawStroke(Canvas canvas, @NonNull Stroke s) {
-        if (s.points.isEmpty()) return;
+        if (s.points.isEmpty())
+            return;
 
         Path path = new Path();
         path.moveTo(s.points.get(0).x, s.points.get(0).y);
@@ -142,7 +188,7 @@ public class DrawingView extends View {
             p.setAlpha(100);
             p.setXfermode(null);
         } else if (s.isEraser) {
-            // REAL ERASER on overlay layer: clear pixels instead of painting white
+            // "Clear" means erase pixels on this layer
             p.setColor(Color.TRANSPARENT);
             p.setAlpha(0);
             p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
@@ -160,7 +206,8 @@ public class DrawingView extends View {
     // ----------------------------------------------------
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (!isEnabled()) return false;
+        if (!isEnabled())
+            return false;
 
         float x = event.getX();
         float y = event.getY();
@@ -222,23 +269,22 @@ public class DrawingView extends View {
     }
 
     public void setBrushSize(float size) {
-        if (size <= 0) size = 1f;
+        if (size <= 0)
+            size = 1f;
         brushSize = size;
         paint.setStrokeWidth(size);
     }
 
     public void setEraser(boolean eraser) {
         isEraser = eraser;
-        if (eraser) {
+        if (eraser)
             isHighlighter = false;
-        }
     }
 
     public void setHighlighter(boolean highlight) {
         isHighlighter = highlight;
-        if (highlight) {
+        if (highlight)
             isEraser = false;
-        }
     }
 
     public void undo() {
@@ -263,79 +309,47 @@ public class DrawingView extends View {
     }
 
     /**
-     * Called by DrawingViewManager "saveToFile" command.
-     * We create a transparent bitmap and draw this session's strokes + previous overlay.
+     * NOW SAVES AS JSON!
      */
     public boolean saveToFile(@NonNull File outFile) {
         try {
-            int w = getWidth();
-            int h = getHeight();
-            if (w <= 0 || h <= 0) {
-                Log.w(TAG, "saveToFile: invalid size " + w + "x" + h);
-                return false;
-            }
-
-            Bitmap output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(output);
-
-            // Start fully transparent
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-
-            // 1) Draw previously saved overlay (if any) as base
-            if (savedOverlayBitmap != null) {
-                canvas.drawBitmap(savedOverlayBitmap, 0, 0, null);
-            }
-
-            // 2) Draw all strokes in this session on top (with proper eraser transparency)
-            Paint p = new Paint(paint);
-            p.setAntiAlias(true);
-            p.setStyle(Paint.Style.STROKE);
-            p.setStrokeCap(Paint.Cap.ROUND);
-            p.setStrokeJoin(Paint.Join.ROUND);
+            org.json.JSONArray arr = new org.json.JSONArray();
 
             for (Stroke s : strokes) {
-                if (s.points.isEmpty()) continue;
+                if (s.points.isEmpty())
+                    continue;
+                org.json.JSONObject obj = new org.json.JSONObject();
+                obj.put("color", s.color);
+                obj.put("width", s.brushSize);
+                obj.put("eraser", s.isEraser);
+                obj.put("highlighter", s.isHighlighter);
 
-                Path path = new Path();
-                path.moveTo(s.points.get(0).x, s.points.get(0).y);
-                for (int i = 1; i < s.points.size(); i++) {
-                    PointF pt = s.points.get(i);
-                    path.lineTo(pt.x, pt.y);
+                org.json.JSONArray pts = new org.json.JSONArray();
+                for (PointF p : s.points) {
+                    org.json.JSONObject ptObj = new org.json.JSONObject();
+                    ptObj.put("x", p.x);
+                    ptObj.put("y", p.y);
+                    pts.put(ptObj);
                 }
+                obj.put("points", pts);
 
-                p.setStrokeWidth(s.brushSize);
-
-                if (s.isHighlighter) {
-                    p.setXfermode(null);
-                    p.setColor(s.color);
-                    p.setAlpha(100);
-                } else if (s.isEraser) {
-                    // In the PNG overlay, eraser = make those pixels transparent again
-                    p.setColor(Color.TRANSPARENT);
-                    p.setAlpha(0);
-                    p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
-                } else {
-                    p.setXfermode(null);
-                    p.setColor(s.color);
-                    p.setAlpha(255);
-                }
-
-                canvas.drawPath(path, p);
+                arr.put(obj);
             }
 
-            // Write PNG
+            String jsonString = arr.toString();
+
             File parent = outFile.getParentFile();
             if (parent != null && !parent.exists()) {
-                //noinspection ResultOfMethodCallIgnored
+                // noinspection ResultOfMethodCallIgnored
                 parent.mkdirs();
             }
 
             FileOutputStream fos = new FileOutputStream(outFile);
-            output.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            fos.write(jsonString.getBytes("UTF-8"));
             fos.flush();
             fos.close();
 
-            Log.d(TAG, "saveToFile: saved to " + outFile.getAbsolutePath());
+            Log.d(TAG, "saveToFile (JSON): saved to " + outFile.getAbsolutePath());
             return true;
         } catch (Exception e) {
             Log.e(TAG, "saveToFile error", e);
@@ -344,7 +358,7 @@ public class DrawingView extends View {
     }
 
     // ----------------------------------------------------
-    // Stroke model (same spirit as your pure version)
+    // Stroke model
     // ----------------------------------------------------
     public static class Stroke {
         public int color;

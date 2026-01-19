@@ -1,4 +1,3 @@
-// src/FormImageEditor.tsx
 import React, {
   useRef,
   useState,
@@ -7,6 +6,7 @@ import React, {
   forwardRef,
   useCallback,
 } from 'react';
+import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
 import {
   View,
@@ -47,8 +47,8 @@ import NativeDrawingView, { DrawingRef } from './components/NativeDrawingView';
 import { useVoice, VoiceMode } from 'react-native-voicekit';
 
 // Import APIs - UPDATED
-import { 
-  savePageOverlay 
+import {
+  savePageOverlay
 } from './api/patientDocumentsApi';
 
 // Import getpagewiseoverlay API
@@ -108,6 +108,21 @@ export type ImageSticker = {
   stickerType: 'patient' | 'doctor';
 };
 
+const tryParseStrokesJson = (base64?: string): string | null => {
+  if (!base64) return null;
+  try {
+    // Attempt decoding
+    const decoded = Buffer.from(base64, 'base64').toString('utf8');
+    // Simple heuristic: if it starts with '[', assuming it's our JSON array
+    if (decoded.trim().startsWith('[')) {
+      return decoded;
+    }
+  } catch (e) {
+    // If it fails, likely a binary PNG that doesn't decode to text nicely
+  }
+  return null;
+};
+
 // Page type matching FormImageScreen
 type PageData = {
   pageId: string;
@@ -120,13 +135,14 @@ type PageData = {
 type DrawingCanvasProps = {
   index: number;
   savedPath?: string | null;
+  strokesJson?: string | null;
   drawingEnabled?: boolean;
 };
 
 // --- stable memoized drawing canvas
 const DrawingCanvas = React.memo(
   forwardRef(function DrawingCanvasInternal(
-    { index, savedPath, drawingEnabled = true }: DrawingCanvasProps,
+    { index, savedPath, strokesJson, drawingEnabled = true }: DrawingCanvasProps,
     forwardedRef: React.Ref<DrawingRef | null>
   ) {
     return (
@@ -134,12 +150,14 @@ const DrawingCanvas = React.memo(
         ref={forwardedRef}
         style={styles.canvasOverlay}
         savedPath={savedPath ?? undefined}
+        strokesJson={strokesJson ?? undefined}
       />
     );
   }),
   (prev, next) =>
-    prev.index === next.index && 
+    prev.index === next.index &&
     prev.savedPath === next.savedPath &&
+    prev.strokesJson === next.strokesJson &&
     prev.drawingEnabled === next.drawingEnabled
 );
 
@@ -175,13 +193,13 @@ function DraggableVoiceText({
   const DEFAULT_WIDTH = 180;
   const DEFAULT_HEIGHT = 60;
   const DEFAULT_FONT_SIZE = 14;
-  
+
   const IMAGE_WIDTH = SCREEN_W;
   const IMAGE_HEIGHT = PAGE_HEIGHT;
-  
+
   const MIN_WIDTH = 40;
   const MIN_HEIGHT = 30;
-  
+
   const MIN_FONT_SIZE = 10;
   const MAX_FONT_SIZE = 36;
 
@@ -219,7 +237,7 @@ function DraggableVoiceText({
       height: currentHeightRef.current,
     }
   );
-  
+
 
   const currentFontSize = note.fontSize ?? DEFAULT_FONT_SIZE;
 
@@ -235,7 +253,7 @@ function DraggableVoiceText({
   const calculateDynamicMaximums = (x: number, y: number) => {
     const maxAvailableWidth = IMAGE_WIDTH - x - 10;
     const maxAvailableHeight = IMAGE_HEIGHT - y - 10;
-    
+
     return {
       maxWidth: Math.max(MIN_WIDTH, Math.min(maxAvailableWidth, IMAGE_WIDTH * 0.8)),
       maxHeight: Math.max(MIN_HEIGHT, Math.min(maxAvailableHeight, IMAGE_HEIGHT * 0.8))
@@ -278,9 +296,9 @@ function DraggableVoiceText({
   useEffect(() => {
     if ((note.boxWidth == null || note.boxHeight == null) && measuredContentSizeRef.current) {
       const c = measuredContentSizeRef.current;
-      
+
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
-      
+
       const buffer = 16;
       const autoW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
       const autoH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
@@ -294,9 +312,9 @@ function DraggableVoiceText({
   }, [measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
 
   const handleContentLayout = (layout: LayoutRectangle) => {
-    measuredContentSizeRef.current = { 
-      w: layout.width, 
-      h: layout.height 
+    measuredContentSizeRef.current = {
+      w: layout.width,
+      h: layout.height
     };
     setMeasuredFlag((v) => v + 1);
   };
@@ -446,7 +464,7 @@ function DraggableVoiceText({
 
       onPanResponderMove: (_evt: GestureResponderEvent, gs) => {
         if (!writingEnabled) return;
-        
+
         let newWidth = sizeStartRef.current.width;
         let newHeight = sizeStartRef.current.height;
 
@@ -480,13 +498,13 @@ function DraggableVoiceText({
 
       onPanResponderRelease: () => {
         if (!writingEnabled) return;
-        
+
         onBoxSizeChange(
           note.id,
           currentWidthRef.current,
           currentHeightRef.current
         );
-        
+
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
       },
@@ -534,11 +552,11 @@ function DraggableVoiceText({
     const widthListener = widthAnim.addListener(({ value }) => {
       currentWidthRef.current = value;
     });
-    
+
     const heightListener = heightAnim.addListener(({ value }) => {
       currentHeightRef.current = value;
     });
-    
+
     return () => {
       widthAnim.removeListener(widthListener);
       heightAnim.removeListener(heightListener);
@@ -547,27 +565,27 @@ function DraggableVoiceText({
 
   const autoResizeForFontSize = (newFontSize: number) => {
     if (!writingEnabled || !measuredContentSizeRef.current) return;
-    
+
     const measured = measuredContentSizeRef.current;
     if (!measured) return;
 
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
-    
+
     const oldFontSize = note.fontSize || DEFAULT_FONT_SIZE;
     const sizeRatio = newFontSize / oldFontSize;
-    
+
     const buffer = 16;
     const neededWidth = Math.round((measured.w * sizeRatio) + PADDING_H * 2 + buffer);
     const neededHeight = Math.round((measured.h * sizeRatio) + PADDING_V * 2 + buffer);
-    
+
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
-    
+
     widthAnim.setValue(newWidth);
     heightAnim.setValue(newHeight);
     currentWidthRef.current = newWidth;
     currentHeightRef.current = newHeight;
-    
+
     onBoxSizeChange(note.id, newWidth, newHeight);
   };
 
@@ -599,24 +617,24 @@ function DraggableVoiceText({
 
   const handleManualResize = () => {
     if (!writingEnabled) return;
-    
+
     const measured = measuredContentSizeRef.current;
     if (!measured) return;
 
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
-    
+
     const buffer = 16;
     const neededWidth = Math.round(measured.w + PADDING_H * 2 + buffer);
     const neededHeight = Math.round(measured.h + PADDING_V * 2 + buffer);
-    
+
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
-    
+
     widthAnim.setValue(newWidth);
     heightAnim.setValue(newHeight);
     currentWidthRef.current = newWidth;
     currentHeightRef.current = newHeight;
-    
+
     onBoxSizeChange(note.id, newWidth, newHeight);
   };
 
@@ -742,8 +760,8 @@ function DraggableVoiceText({
           >
             <Text
               style={[
-                styles.voiceTextDrag, 
-                { 
+                styles.voiceTextDrag,
+                {
                   color: note.color,
                   fontSize: currentFontSize,
                   flexWrap: 'wrap',
@@ -847,9 +865,9 @@ function DraggableVoiceText({
         <Text
           style={[
             styles.voiceTextDrag,
-            { 
-              position: 'absolute', 
-              opacity: 0, 
+            {
+              position: 'absolute',
+              opacity: 0,
               left: -10000,
               maxWidth: Math.min(SCREEN_W * 0.7, 300),
               includeFontPadding: false,
@@ -936,14 +954,14 @@ function DraggableImageSticker({
       pan.setValue({ x: sticker.x, y: sticker.y });
       currentPosRef.current = { x: sticker.x, y: sticker.y };
     }
-    
+
     if (scaleStartRef.current !== sticker.scale) {
       scaleAnim.setValue(sticker.scale ?? 1);
       scaleStartRef.current = sticker.scale ?? 1;
     }
-    
-    if (currentSizeRef.current.width !== (sticker.width ?? DEFAULT_WIDTH) || 
-        currentSizeRef.current.height !== (sticker.height ?? DEFAULT_HEIGHT)) {
+
+    if (currentSizeRef.current.width !== (sticker.width ?? DEFAULT_WIDTH) ||
+      currentSizeRef.current.height !== (sticker.height ?? DEFAULT_HEIGHT)) {
       currentSizeRef.current = {
         width: sticker.width ?? DEFAULT_WIDTH,
         height: sticker.height ?? DEFAULT_HEIGHT,
@@ -986,20 +1004,20 @@ function DraggableImageSticker({
         const scale = pageScaleRef.current || 1;
         let nx = startPosRef.current.x + gestureState.dx / scale;
         let ny = startPosRef.current.y + gestureState.dy / scale;
-        
+
         const maxX = IMAGE_WIDTH - currentSizeRef.current.width - 5;
         const maxY = IMAGE_HEIGHT - currentSizeRef.current.height - 5;
-        
+
         nx = clamp(nx, 5, maxX);
         ny = clamp(ny, 5, maxY);
-        
+
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
         if (!writingEnabled) return;
-        
+
         const dx = gestureState.dx;
         const dy = gestureState.dy;
         const moveDist = Math.sqrt(dx * dx + dy * dy);
@@ -1030,13 +1048,13 @@ function DraggableImageSticker({
         const scale = pageScaleRef.current || 1;
         let nx = startPosRef.current.x + gestureState.dx / scale;
         let ny = startPosRef.current.y + gestureState.dy / scale;
-        
+
         const maxX = IMAGE_WIDTH - currentSizeRef.current.width - 5;
         const maxY = IMAGE_HEIGHT - currentSizeRef.current.height - 5;
-        
+
         nx = clamp(nx, 5, maxX);
         ny = clamp(ny, 5, maxY);
-        
+
         pan.setValue({ x: nx, y: ny });
         currentPosRef.current = { x: nx, y: ny };
         onPositionChange(sticker.id, nx, ny);
@@ -1069,14 +1087,14 @@ function DraggableImageSticker({
         if (!writingEnabled) return;
         const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
         let newScale = scaleStartRef.current * factor;
-        
+
         const maxWidthScale = (IMAGE_WIDTH - currentPosRef.current.x - 10) / DEFAULT_WIDTH;
         const maxHeightScale = (IMAGE_HEIGHT - currentPosRef.current.y - 10) / DEFAULT_HEIGHT;
         const maxScaleByBoundary = Math.min(maxWidthScale, maxHeightScale, MAX_SCALE);
-        
+
         if (newScale < MIN_SCALE) newScale = MIN_SCALE;
         if (newScale > maxScaleByBoundary) newScale = maxScaleByBoundary;
-        
+
         scaleAnim.setValue(newScale);
       },
 
@@ -1084,17 +1102,17 @@ function DraggableImageSticker({
         if (!writingEnabled) return;
         const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
         let newScale = scaleStartRef.current * factor;
-        
+
         const maxWidthScale = (IMAGE_WIDTH - currentPosRef.current.x - 10) / DEFAULT_WIDTH;
         const maxHeightScale = (IMAGE_HEIGHT - currentPosRef.current.y - 10) / DEFAULT_HEIGHT;
         const maxScaleByBoundary = Math.min(maxWidthScale, maxHeightScale, MAX_SCALE);
-        
+
         if (newScale < MIN_SCALE) newScale = MIN_SCALE;
         if (newScale > maxScaleByBoundary) newScale = maxScaleByBoundary;
-        
+
         const newWidth = DEFAULT_WIDTH * newScale;
         const newHeight = DEFAULT_HEIGHT * newScale;
-        
+
         onSizeChange(sticker.id, newWidth, newHeight);
         isResizingRef.current = false;
       },
@@ -1111,8 +1129,8 @@ function DraggableImageSticker({
 
   const resizePan = useRef(createResizePan({ signX: 1, signY: 1 })).current;
 
-  const stickerImageSource = sticker.stickerType === 'doctor' 
-    ? DOCTOR_STICKER_SOURCE 
+  const stickerImageSource = sticker.stickerType === 'doctor'
+    ? DOCTOR_STICKER_SOURCE
     : PATIENT_STICKER_SOURCE;
 
   return (
@@ -1364,13 +1382,13 @@ export default function FormImageEditor() {
 
       console.log('🔄 Loading previous overlays for document instance:', documentInstanceId);
       setLoadingPreviousOverlays(true);
-      
+
       try {
         const overlayData = await getpagewiseoverlay(documentInstanceId);
         console.log('📥 Previous overlays API response:', overlayData);
-        
+
         const overlayMap = new Map<string, string>();
-        
+
         if (Array.isArray(overlayData)) {
           overlayData.forEach((item: any) => {
             if (item.pageId && item.overlayDataBase64 && item.hasOverlay) {
@@ -1381,11 +1399,11 @@ export default function FormImageEditor() {
             }
           });
         }
-        
+
         setPreviousOverlays(overlayMap);
         previousOverlaysLoadedRef.current = true;
         console.log(`📊 Loaded ${overlayMap.size} previous overlays`);
-        
+
       } catch (error: any) {
         console.error('❌ Error loading previous overlays:', error);
         Alert.alert('Warning', 'Could not load previous overlays. You can still add new drawings.');
@@ -1403,44 +1421,44 @@ export default function FormImageEditor() {
   // 🎯 NEW: Combine previous + new overlays
   // =============================================
   const combineOverlays = useCallback(async (
-    canvas: DrawingRef | null, 
+    canvas: DrawingRef | null,
     pageId: string
   ): Promise<string | null> => {
     console.log(`🔄 Combining overlays for page ${pageId}`);
-    
+
     // Get previous overlay base64
     const previousOverlayBase64 = previousOverlays.get(pageId);
-    
+
     // Get new drawing as base64
     const newDrawingBase64 = await getDrawingAsBase64(canvas);
-    
+
     if (!previousOverlayBase64 && !newDrawingBase64) {
       console.log(`📭 No overlays to combine for page ${pageId}`);
       return null;
     }
-    
+
     if (previousOverlayBase64 && !newDrawingBase64) {
       // Only previous overlay exists - keep it as is
       console.log(`📋 Only previous overlay exists for page ${pageId}`);
       return previousOverlayBase64;
     }
-    
+
     if (!previousOverlayBase64 && newDrawingBase64) {
       // Only new drawing exists
       console.log(`🆕 Only new drawing exists for page ${pageId}`);
       return newDrawingBase64;
     }
-    
+
     // Both exist - we need to combine them
     console.log(`🔗 Combining previous overlay + new drawing for page ${pageId}`);
-    
+
     // Note: In this implementation, we're just returning the new drawing
     // because the API should handle combining. If you need to combine locally,
     // you would need an image processing library.
-    
+
     // For now, return new drawing (or you could return previous + new if your API expects both)
     return newDrawingBase64;
-    
+
   }, [previousOverlays]);
 
   const ensureMicPermission = async () => {
@@ -1579,7 +1597,7 @@ export default function FormImageEditor() {
 
     let x = SCREEN_W * 0.7;
     let y;
-    
+
     if (stickerType === 'patient') {
       y = PAGE_HEIGHT * 0.05 + 20;
     } else {
@@ -1774,10 +1792,10 @@ export default function FormImageEditor() {
 
   useEffect(() => {
     const activeWidth = tool === 'eraser' ? eraserWidth : penWidth;
-  
+
     canvasRefs.current.forEach((c) => {
       if (!c) return;
-  
+
       if (tool === 'eraser') {
         if (typeof c.setEraser === 'function') {
           c.setEraser(true);
@@ -1790,7 +1808,7 @@ export default function FormImageEditor() {
           c.setColor(color);
         }
       }
-  
+
       if (typeof c.setBrushSize === 'function') {
         c.setBrushSize(activeWidth);
       }
@@ -1874,7 +1892,7 @@ export default function FormImageEditor() {
     if (!writingEnabled) return;
     setTool('pen');
   };
-  
+
   const activateEraser = () => {
     if (!writingEnabled) return;
     setTool('eraser');
@@ -1906,11 +1924,11 @@ export default function FormImageEditor() {
   const COMBINED_HEADER_PADDING_BOTTOM = 6;
   const TOP_ROW_PADDING_BOTTOM = 6;
   const TOOLS_ROW_HEIGHT = 50;
-  
-  const HEADER_TOTAL_HEIGHT = 
-    COMBINED_HEADER_PADDING_TOP + 
-    TOP_ROW_PADDING_BOTTOM + 
-    TOOLS_ROW_HEIGHT + 
+
+  const HEADER_TOTAL_HEIGHT =
+    COMBINED_HEADER_PADDING_TOP +
+    TOP_ROW_PADDING_BOTTOM +
+    TOOLS_ROW_HEIGHT +
     COMBINED_HEADER_PADDING_BOTTOM;
 
   const RIGHT_HANDLE_WIDTH = 36;
@@ -1947,11 +1965,11 @@ export default function FormImageEditor() {
   };
 
   useEffect(() => {
-    const id = rightTopAnim.addListener(() => {});
+    const id = rightTopAnim.addListener(() => { });
     return () => {
       try {
         rightTopAnim.removeListener(id);
-      } catch (e) {}
+      } catch (e) { }
     };
   }, [rightTopAnim]);
 
@@ -1991,7 +2009,7 @@ export default function FormImageEditor() {
               animated: false,
             });
             scrollY.current = newScroll;
-          } catch (e) {}
+          } catch (e) { }
         }
       },
       onPanResponderRelease: (_evt, gs) => {
@@ -2063,136 +2081,92 @@ export default function FormImageEditor() {
     const clampedY = clamp(ty, -maxOffsetY, maxOffsetY);
     return { clampedX, clampedY };
   };
-  
+
   const disableDrawingImmediately = (disable: boolean) => {
-  try {
-    multiTouchActiveRef.current = disable;
-    canvasRefs.current.forEach((c) => {
-      if (!c) return;
-      if (typeof (c as any).setDrawingEnabled === 'function') {
-        (c as any).setDrawingEnabled(!disable ? true : false);
-      }
-      if (disable) {
-        if (typeof (c as any).cancelStroke === 'function') {
-          (c as any).cancelStroke();
-        }
-        if (typeof (c as any).endStroke === 'function') {
-          (c as any).endStroke();
-        }
-        if (typeof (c as any).finishStroke === 'function') {
-          (c as any).finishStroke();
-        }
-        if (typeof (c as any).abortCurrentStroke === 'function') {
-          (c as any).abortCurrentStroke();
-        }
-      } else {
+    try {
+      multiTouchActiveRef.current = disable;
+      canvasRefs.current.forEach((c) => {
+        if (!c) return;
         if (typeof (c as any).setDrawingEnabled === 'function') {
-          (c as any).setDrawingEnabled(true);
+          (c as any).setDrawingEnabled(!disable ? true : false);
         }
-      }
-    });
-  } catch (e) {
-    console.warn('[FormImageEditor] disableDrawingImmediately error', e);
-  }
+        if (disable) {
+          if (typeof (c as any).cancelStroke === 'function') {
+            (c as any).cancelStroke();
+          }
+          if (typeof (c as any).endStroke === 'function') {
+            (c as any).endStroke();
+          }
+          if (typeof (c as any).finishStroke === 'function') {
+            (c as any).finishStroke();
+          }
+          if (typeof (c as any).abortCurrentStroke === 'function') {
+            (c as any).abortCurrentStroke();
+          }
+        } else {
+          if (typeof (c as any).setDrawingEnabled === 'function') {
+            (c as any).setDrawingEnabled(true);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('[FormImageEditor] disableDrawingImmediately error', e);
+    }
 
-  setMultiTouchActive(disable);
-};
+    setMultiTouchActive(disable);
+  };
 
-const pinchResponder = useRef(
-  PanResponder.create({
-    onStartShouldSetPanResponder: (evt) => {
-      if (editingNoteId || editingStickerId) return false;
+  const pinchResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt) => {
+        if (editingNoteId || editingStickerId) return false;
 
-      const touches = evt.nativeEvent.touches || [];
-      const count = touches.length;
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+        const touches = evt.nativeEvent.touches || [];
+        const count = touches.length;
+        const pageIndex = getCurrentPageIndex();
+        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      if (count === 2) return true;
-      if (count === 1 && currentScale > 1.01) return !writingEnabled;
-      return false;
-    },
+        if (count === 2) return true;
+        if (count === 1 && currentScale > 1.01) return !writingEnabled;
+        return false;
+      },
 
-    onMoveShouldSetPanResponder: (evt) => {
-      if (editingNoteId || editingStickerId) return false;
+      onMoveShouldSetPanResponder: (evt) => {
+        if (editingNoteId || editingStickerId) return false;
 
-      const touches = evt.nativeEvent.touches || [];
-      const count = touches.length;
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+        const touches = evt.nativeEvent.touches || [];
+        const count = touches.length;
+        const pageIndex = getCurrentPageIndex();
+        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      if (count === 2) return true;
-      if (count === 1 && currentScale > 1.01) return !writingEnabled;
-      return false;
-    },
+        if (count === 2) return true;
+        if (count === 1 && currentScale > 1.01) return !writingEnabled;
+        return false;
+      },
 
-    onPanResponderGrant: (evt) => {
-      const touches = evt.nativeEvent.touches || [];
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+      onPanResponderGrant: (evt) => {
+        const touches = evt.nativeEvent.touches || [];
+        const pageIndex = getCurrentPageIndex();
+        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-      if (touches.length === 2) {
-        setMultiTouchActive(true);
-      }
-
-      if (touches.length === 2) {
-        const [t1, t2] = touches;
-        const dx = t1.pageX - t2.pageX;
-        const dy = t1.pageY - t2.pageY;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const midX = (t1.pageX + t2.pageX) / 2;
-        const midY = (t1.pageY + t2.pageY) / 2;
-
-        pinchStateRef.current = {
-          initialDistance: distance,
-          startScale: currentScale,
-          pageIndex,
-        };
-
-        try {
-          panStartPerPageRef[pageIndex] = {
-            x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
-            y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
-          };
-        } catch (e) {
-          panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
+        if (touches.length === 2) {
+          setMultiTouchActive(true);
         }
 
-        activePanPageRef.current = null;
-      } else if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
-        activePanPageRef.current = pageIndex;
-        try {
-          panStartPerPageRef[pageIndex] = {
-            x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
-            y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
-          };
-        } catch (e) {
-          panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
-        }
-      } else {
-        activePanPageRef.current = null;
-      }
-    },
+        if (touches.length === 2) {
+          const [t1, t2] = touches;
+          const dx = t1.pageX - t2.pageX;
+          const dy = t1.pageY - t2.pageY;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          const midX = (t1.pageX + t2.pageX) / 2;
+          const midY = (t1.pageY + t2.pageY) / 2;
 
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches || [];
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-
-      if (touches.length === 2) {
-        const [t1, t2] = touches;
-        const dx = t1.pageX - t2.pageX;
-        const dy = t1.pageY - t2.pageY;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const midX = (t1.pageX + t2.pageX) / 2;
-        const midY = (t1.pageY + t2.pageY) / 2;
-
-        if (!pinchStateRef.current || pinchStateRef.current.pageIndex !== pageIndex) {
           pinchStateRef.current = {
             initialDistance: distance,
             startScale: currentScale,
             pageIndex,
           };
+
           try {
             panStartPerPageRef[pageIndex] = {
               x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
@@ -2201,102 +2175,146 @@ const pinchResponder = useRef(
           } catch (e) {
             panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
           }
+
+          activePanPageRef.current = null;
+        } else if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
+          activePanPageRef.current = pageIndex;
+          try {
+            panStartPerPageRef[pageIndex] = {
+              x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
+              y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
+            };
+          } catch (e) {
+            panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
+          }
+        } else {
+          activePanPageRef.current = null;
+        }
+      },
+
+      onPanResponderMove: (evt, gestureState) => {
+        const touches = evt.nativeEvent.touches || [];
+        const pageIndex = getCurrentPageIndex();
+        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+        if (touches.length === 2) {
+          const [t1, t2] = touches;
+          const dx = t1.pageX - t2.pageX;
+          const dy = t1.pageY - t2.pageY;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          const midX = (t1.pageX + t2.pageX) / 2;
+          const midY = (t1.pageY + t2.pageY) / 2;
+
+          if (!pinchStateRef.current || pinchStateRef.current.pageIndex !== pageIndex) {
+            pinchStateRef.current = {
+              initialDistance: distance,
+              startScale: currentScale,
+              pageIndex,
+            };
+            try {
+              panStartPerPageRef[pageIndex] = {
+                x: (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0,
+                y: (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0,
+              };
+            } catch (e) {
+              panStartPerPageRef[pageIndex] = { x: 0, y: 0 };
+            }
+          }
+
+          const { initialDistance, startScale } = pinchStateRef.current;
+          const scaleFactor = distance / (initialDistance || 1);
+          let requestedScale = startScale * scaleFactor;
+          if (requestedScale < MIN_ZOOM) requestedScale = MIN_ZOOM;
+          if (requestedScale > MAX_ZOOM) requestedScale = MAX_ZOOM;
+          lastScalePerPageRef[pageIndex] = requestedScale;
+
+          if (requestedScale <= 1.01) {
+            lastScalePerPageRef[pageIndex] = 1;
+            pageScaleAnimsRef[pageIndex].setValue(1);
+            pageTranslateXRef[pageIndex].setValue(0);
+            pageTranslateYRef[pageIndex].setValue(0);
+          } else {
+            pageScaleAnimsRef[pageIndex].setValue(requestedScale);
+          }
+
+          const panStart = panStartPerPageRef[pageIndex] ?? { x: 0, y: 0 };
+          const deltaX = midX - (t1.pageX + t2.pageX) / 2;
+          const deltaY = midY - (t1.pageY + t2.pageY) / 2;
+
+          const rawTx = panStart.x + deltaX;
+          const rawTy = panStart.y + deltaY;
+
+          const { clampedX, clampedY } = clampPanForPage(pageIndex, rawTx, rawTy, requestedScale);
+          pageTranslateXRef[pageIndex].setValue(clampedX);
+          pageTranslateYRef[pageIndex].setValue(clampedY);
+
+          return;
         }
 
-        const { initialDistance, startScale } = pinchStateRef.current;
-        const scaleFactor = distance / (initialDistance || 1);
-        let requestedScale = startScale * scaleFactor;
-        if (requestedScale < MIN_ZOOM) requestedScale = MIN_ZOOM;
-        if (requestedScale > MAX_ZOOM) requestedScale = MAX_ZOOM;
-        lastScalePerPageRef[pageIndex] = requestedScale;
+        if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
+          const pIndex = activePanPageRef.current ?? pageIndex;
+          const start = panStartPerPageRef[pIndex];
+          const rawTx = start.x + gestureState.dx;
+          const rawTy = start.y + gestureState.dy;
+          const { clampedX, clampedY } = clampPanForPage(pIndex, rawTx, rawTy, currentScale);
+          pageTranslateXRef[pIndex].setValue(clampedX);
+          pageTranslateYRef[pIndex].setValue(clampedY);
+        }
+      },
 
-        if (requestedScale <= 1.01) {
+      onPanResponderRelease: () => {
+        const pageIndex = getCurrentPageIndex();
+        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
+
+        setMultiTouchActive(false);
+
+        if (currentScale <= 1.01) {
           lastScalePerPageRef[pageIndex] = 1;
           pageScaleAnimsRef[pageIndex].setValue(1);
           pageTranslateXRef[pageIndex].setValue(0);
           pageTranslateYRef[pageIndex].setValue(0);
         } else {
-          pageScaleAnimsRef[pageIndex].setValue(requestedScale);
+          try {
+            const tx = (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0;
+            const ty = (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0;
+            const { clampedX, clampedY } = clampPanForPage(pageIndex, tx, ty, currentScale);
+            pageTranslateXRef[pageIndex].setValue(clampedX);
+            pageTranslateYRef[pageIndex].setValue(clampedY);
+          } catch (e) { }
         }
 
-        const panStart = panStartPerPageRef[pageIndex] ?? { x: 0, y: 0 };
-        const deltaX = midX - (t1.pageX + t2.pageX) / 2;
-        const deltaY = midY - (t1.pageY + t2.pageY) / 2;
+        pinchStateRef.current = null;
+        activePanPageRef.current = null;
+      },
 
-        const rawTx = panStart.x + deltaX;
-        const rawTy = panStart.y + deltaY;
+      onPanResponderTerminationRequest: () => true,
 
-        const { clampedX, clampedY } = clampPanForPage(pageIndex, rawTx, rawTy, requestedScale);
-        pageTranslateXRef[pageIndex].setValue(clampedX);
-        pageTranslateYRef[pageIndex].setValue(clampedY);
+      onPanResponderTerminate: () => {
+        const pageIndex = getCurrentPageIndex();
+        const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-        return;
-      }
+        setMultiTouchActive(false);
 
-      if (touches.length === 1 && currentScale > 1.01 && !writingEnabled) {
-        const pIndex = activePanPageRef.current ?? pageIndex;
-        const start = panStartPerPageRef[pIndex];
-        const rawTx = start.x + gestureState.dx;
-        const rawTy = start.y + gestureState.dy;
-        const { clampedX, clampedY } = clampPanForPage(pIndex, rawTx, rawTy, currentScale);
-        pageTranslateXRef[pIndex].setValue(clampedX);
-        pageTranslateYRef[pIndex].setValue(clampedY);
-      }
-    },
+        if (currentScale <= 1.01) {
+          lastScalePerPageRef[pageIndex] = 1;
+          pageScaleAnimsRef[pageIndex].setValue(1);
+          pageTranslateXRef[pageIndex].setValue(0);
+          pageTranslateYRef[pageIndex].setValue(0);
+        } else {
+          try {
+            const tx = (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0;
+            const ty = (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0;
+            const { clampedX, clampedY } = clampPanForPage(pageIndex, tx, ty, currentScale);
+            pageTranslateXRef[pageIndex].setValue(clampedX);
+            pageTranslateYRef[pageIndex].setValue(clampedY);
+          } catch (e) { }
+        }
 
-    onPanResponderRelease: () => {
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-
-      setMultiTouchActive(false);
-
-      if (currentScale <= 1.01) {
-        lastScalePerPageRef[pageIndex] = 1;
-        pageScaleAnimsRef[pageIndex].setValue(1);
-        pageTranslateXRef[pageIndex].setValue(0);
-        pageTranslateYRef[pageIndex].setValue(0);
-      } else {
-        try {
-          const tx = (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0;
-          const ty = (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0;
-          const { clampedX, clampedY } = clampPanForPage(pageIndex, tx, ty, currentScale);
-          pageTranslateXRef[pageIndex].setValue(clampedX);
-          pageTranslateYRef[pageIndex].setValue(clampedY);
-        } catch (e) {}
-      }
-
-      pinchStateRef.current = null;
-      activePanPageRef.current = null;
-    },
-
-    onPanResponderTerminationRequest: () => true,
-
-    onPanResponderTerminate: () => {
-      const pageIndex = getCurrentPageIndex();
-      const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
-
-      setMultiTouchActive(false);
-
-      if (currentScale <= 1.01) {
-        lastScalePerPageRef[pageIndex] = 1;
-        pageScaleAnimsRef[pageIndex].setValue(1);
-        pageTranslateXRef[pageIndex].setValue(0);
-        pageTranslateYRef[pageIndex].setValue(0);
-      } else {
-        try {
-          const tx = (pageTranslateXRef[pageIndex] as any).__getValue?.() ?? 0;
-          const ty = (pageTranslateYRef[pageIndex] as any).__getValue?.() ?? 0;
-          const { clampedX, clampedY } = clampPanForPage(pageIndex, tx, ty, currentScale);
-          pageTranslateXRef[pageIndex].setValue(clampedX);
-          pageTranslateYRef[pageIndex].setValue(clampedY);
-        } catch (e) {}
-      }
-
-      pinchStateRef.current = null;
-      activePanPageRef.current = null;
-    },
-  })
-).current;
+        pinchStateRef.current = null;
+        activePanPageRef.current = null;
+      },
+    })
+  ).current;
 
   const ZOOM_STEP = 0.25;
 
@@ -2316,7 +2334,7 @@ const pinchResponder = useRef(
       pageScaleAnimsRef[pageIndex].setValue(newScale);
     }
   }
-  
+
   const handleZoomInPress = () => {
     if (saveStatus === 'saving') return;
     const pageIndex = getCurrentPageIndex();
@@ -2331,7 +2349,7 @@ const pinchResponder = useRef(
     applyZoomForPage(pageIndex, current - ZOOM_STEP);
   };
 
- const APP_FILES_DIR = RNFS.DocumentDirectoryPath;
+  const APP_FILES_DIR = RNFS.DocumentDirectoryPath;
 
   const makePageFilePath = (pageIndex: number) => {
     const safeKey = (STORAGE_KEY || DEFAULT_STORAGE_KEY).replace(
@@ -2352,9 +2370,9 @@ const pinchResponder = useRef(
       console.log('❌ [BASE64] No canvas available');
       return null;
     }
-  
+
     console.log('🟢 [BASE64] START extracting drawing');
-  
+
     const waitForFile = async (
       filePath: string,
       timeoutMs = 8000,
@@ -2362,9 +2380,9 @@ const pinchResponder = useRef(
     ): Promise<boolean> => {
       const startTime = Date.now();
       let attempts = 0;
-  
+
       console.log(`⏳ [BASE64] Waiting for file: ${filePath}`);
-  
+
       while (Date.now() - startTime < timeoutMs) {
         attempts++;
         try {
@@ -2380,22 +2398,22 @@ const pinchResponder = useRef(
           console.warn(`⚠️ [BASE64] Attempt ${attempts} error`, e);
         }
       }
-  
+
       console.error('⛔ [BASE64] Timeout waiting for file');
       return false;
     };
-  
+
     /* ======================================================
      * 1️⃣ METHOD 1: Native getBase64 (BEST)
      * ====================================================== */
     if (typeof (canvas as any).getBase64 === 'function') {
       try {
         console.log('📱 [BASE64] Using canvas.getBase64()');
-  
+
         const base64Raw = await (canvas as any).getBase64();
-  
+
         console.log('🔗 [BASE64] Full base64 image link:', `data:image/png;base64,${base64Raw}`);
-  
+
         console.log(
           '📥 [BASE64] Raw base64 preview:',
           base64Raw?.slice(0, 80)
@@ -2404,12 +2422,12 @@ const pinchResponder = useRef(
           '📏 [BASE64] Raw base64 length:',
           base64Raw?.length
         );
-  
+
         if (typeof base64Raw === 'string' && base64Raw.length > 0) {
           const cleaned = base64Raw.startsWith('data:image')
             ? base64Raw.replace(/^data:image\/\w+;base64,/, '')
             : base64Raw;
-  
+
           console.log(
             '🧼 [BASE64] Cleaned base64 preview:',
             cleaned.slice(0, 80)
@@ -2418,11 +2436,11 @@ const pinchResponder = useRef(
             '📏 [BASE64] Cleaned base64 length:',
             cleaned.length
           );
-  
+
           console.log('✅ [BASE64] Returning BASE64 (native)');
           return cleaned;
         }
-  
+
         console.warn('⚠️ [BASE64] getBase64 returned empty string');
       } catch (err) {
         console.warn(
@@ -2431,50 +2449,50 @@ const pinchResponder = useRef(
         );
       }
     }
-  
+
     /* ======================================================
      * 2️⃣ METHOD 2: saveToFile → readFile (FALLBACK)
      * ====================================================== */
     let tempFilePath = '';
-  
+
     try {
       const timestamp = Date.now();
       const random = Math.random().toString(36).slice(2);
-  
+
       tempFilePath = `${RNFS.DocumentDirectoryPath}/overlay_${timestamp}_${random}.png`;
-  
+
       console.log('📁 [BASE64] Saving drawing to file:');
       console.log('📂 [BASE64] FILE PATH →', tempFilePath);
-  
+
       console.log('🎨 [BASE64] Calling canvas.saveToFile()');
       const saved = await canvas.saveToFile(tempFilePath);
-  
+
       if (!saved) {
         console.error('⛔ [BASE64] saveToFile returned false');
         return null;
       }
-  
+
       const fileExists = await waitForFile(tempFilePath);
       if (!fileExists) {
         console.error('⛔ [BASE64] File never appeared:', tempFilePath);
         return null;
       }
-  
+
       const stat = await RNFS.stat(tempFilePath);
       console.log(
         `📊 [BASE64] File confirmed | size=${stat.size} bytes`
       );
-  
+
       if (stat.size === 0) {
         console.error('⛔ [BASE64] File size is 0 bytes');
         return null;
       }
-  
+
       console.log('📖 [BASE64] Reading file as base64');
       const base64FromFile = await RNFS.readFile(tempFilePath, 'base64');
-  
+
       console.log('🔗 [BASE64] Full base64 image link:', `data:image/png;base64,${base64FromFile}`);
-  
+
       console.log(
         '📥 [BASE64] File base64 preview:',
         base64FromFile.slice(0, 80)
@@ -2483,25 +2501,25 @@ const pinchResponder = useRef(
         '📏 [BASE64] File base64 length:',
         base64FromFile.length
       );
-  
+
       console.log('🧹 [BASE64] Deleting temp file');
       await RNFS.unlink(tempFilePath);
-  
+
       console.log('✅ [BASE64] Returning BASE64 (file)');
       return base64FromFile;
-  
+
     } catch (err: any) {
       console.error('❌ [BASE64] File fallback failed', err);
-  
+
       if (tempFilePath) {
         try {
           const exists = await RNFS.exists(tempFilePath);
           if (exists) {
             await RNFS.unlink(tempFilePath);
           }
-        } catch {}
+        } catch { }
       }
-  
+
       return null;
     }
   };
@@ -2515,7 +2533,7 @@ const pinchResponder = useRef(
     console.log('💾 Starting save process...');
     console.log('📋 Document Instance ID:', documentInstanceId);
     console.log('📄 Pages count:', IMAGES.length);
-    
+
     setSaveStatus('saving');
     setSaveMessage('Starting save process...');
 
@@ -2538,11 +2556,11 @@ const pinchResponder = useRef(
       for (let i = 0; i < IMAGES.length; i++) {
         const page = IMAGES[i];
         const canvas = canvasRefs.current[i];
-        
+
         setSaveMessage(`Processing page ${i + 1}/${IMAGES.length}...`);
-        
+
         console.log(`\n📄 Processing page ${i + 1}/${IMAGES.length}: ${page.pageId}`);
-        
+
         // Combine previous overlay with new drawing
         const combinedBase64Data = await combineOverlays(canvas, page.pageId);
 
@@ -2608,7 +2626,7 @@ const pinchResponder = useRef(
             // Save current page drawing to file
             const filePath = makePageFilePath(i);
             console.log(`💾 Saving local copy for page ${i}: ${filePath}`);
-            
+
             const saved = await canvas.saveToFile(filePath);
 
             if (saved) {
@@ -2669,7 +2687,7 @@ const pinchResponder = useRef(
       // Show success
       console.log('\n🎉 Save completed successfully!');
       setSaveStatus('success');
-      
+
       if (failCount > 0) {
         setSaveMessage(`Saved ${successCount} of ${IMAGES.length} overlays. ${failCount} failed.`);
       } else if (successCount > 0) {
@@ -2689,9 +2707,9 @@ const pinchResponder = useRef(
     } catch (error: any) {
       console.error('\n❌ Save failed:', error);
       setSaveStatus('error');
-      
+
       let errorMessage = 'Could not save changes. Please try again.';
-      
+
       if (error.message?.includes('Missing patient/document context')) {
         errorMessage = 'Missing patient information. Please go back and try again.';
       } else if (error.message?.includes('documentInstanceId')) {
@@ -2699,7 +2717,7 @@ const pinchResponder = useRef(
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       setSaveMessage(errorMessage);
 
       // Show error details for debugging
@@ -2733,7 +2751,7 @@ const pinchResponder = useRef(
       };
 
     setSaveStatus('idle');
-    
+
     navigation.navigate('FormImageScreen', {
       savedStrokes: savedMeta,
       voiceNotes,
@@ -3078,6 +3096,9 @@ const pinchResponder = useRef(
               const stickersForPage = imageStickers.filter((s) => s.pageIndex === pageIndex);
               const previousOverlayBase64 = previousOverlays.get(page.pageId);
 
+              const strokesJson = tryParseStrokesJson(previousOverlayBase64);
+              const isLegacyOverlay = previousOverlayBase64 && !strokesJson;
+
               return (
                 <View key={`page-${pageIndex}`} style={styles.pageWrap}>
                   <View style={styles.pageInner}>
@@ -3107,8 +3128,8 @@ const pinchResponder = useRef(
                         </View>
                       )}
 
-                      {/* Previous Overlay (if exists) */}
-                      {previousOverlayBase64 && (
+                      {/* Previous Overlay (Legacy Only) */}
+                      {isLegacyOverlay && previousOverlayBase64 && (
                         <Image
                           source={{ uri: `data:image/png;base64,${previousOverlayBase64}` }}
                           style={styles.previousOverlayImage}
@@ -3128,6 +3149,7 @@ const pinchResponder = useRef(
                         <DrawingCanvas
                           index={pageIndex}
                           savedPath={savedPath}
+                          strokesJson={strokesJson}
                           ref={(r) => refSetters.current[pageIndex](r)}
                           drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
                         />
@@ -3396,9 +3418,9 @@ const pinchResponder = useRef(
 }
 
 const styles = StyleSheet.create({
-  root: { 
-    flex: 1, 
-    backgroundColor: '#0EA5A4' 
+  root: {
+    flex: 1,
+    backgroundColor: '#0EA5A4'
   },
   previousOverlaysLoading: {
     position: 'absolute',
@@ -3629,14 +3651,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  gridSwatchActive: { 
-    borderColor: '#0EA5A4', 
-    borderWidth: 2 
+  gridSwatchActive: {
+    borderColor: '#0EA5A4',
+    borderWidth: 2
   },
-  gridSwatch: { 
-    width: '100%', 
-    height: '100%', 
-    borderRadius: 8 
+  gridSwatch: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8
   },
   thicknessPanel: {
     position: 'absolute',

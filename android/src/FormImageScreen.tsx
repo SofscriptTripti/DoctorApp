@@ -16,15 +16,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AntDesign from 'react-native-vector-icons/AntDesign';
-import { 
-  getDocumentPageImage, 
-  getDocumentPages, 
+import {
+  getDocumentPageImage,
+  getDocumentPages,
 } from './api/documentsApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
+import {
   getpagewiseoverlay,
-  createPatientDocument 
+  createPatientDocument
 } from './api/patientDocumentsApi';
+import { Buffer } from 'buffer';
+import NativeDrawingView from './components/NativeDrawingView';
 
 /* ---------------- STICKERS ---------------- */
 const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
@@ -60,6 +62,21 @@ type PageItem = {
 type PageMeta = {
   pageId: string;
   bitmapPath?: string | null;
+};
+
+const tryParseStrokesJson = (base64?: string): string | null => {
+  if (!base64) return null;
+  try {
+    // Attempt decoding
+    const decoded = Buffer.from(base64, 'base64').toString('utf8');
+    // Simple heuristic: if it starts with '[', assuming it's our JSON array
+    if (decoded.trim().startsWith('[')) {
+      return decoded;
+    }
+  } catch (e) {
+    // If it fails, likely a binary PNG that doesn't decode to text nicely
+  }
+  return null;
 };
 
 /* ================= SCREEN ================= */
@@ -102,7 +119,7 @@ const FormImageScreen = () => {
   const createNewDocumentInstance = useCallback(async (): Promise<string | null> => {
     try {
       setIsCreatingDocument(true);
-      
+
       // Get required data from AsyncStorage
       const [[, patientNo], [, admissionNo], [, documentId], [, documentCd]] =
         await AsyncStorage.multiGet([
@@ -190,11 +207,11 @@ const FormImageScreen = () => {
           STORAGE_KEYS.documentInstanceId,
         ]);
 
-      console.log('Retrieved from AsyncStorage:', { 
-        patientNo, 
-        admissionNo, 
+      console.log('Retrieved from AsyncStorage:', {
+        patientNo,
+        admissionNo,
         documentId,
-        documentInstanceId 
+        documentInstanceId
       });
 
       // Store the retrieved documentId for display
@@ -225,7 +242,7 @@ const FormImageScreen = () => {
       // Directly get documentId from AsyncStorage
       const storedDocId = await AsyncStorage.getItem(STORAGE_KEYS.documentId);
       console.log('Loaded documentId from AsyncStorage:', storedDocId);
-      
+
       if (storedDocId) {
         setStoredDocumentId(storedDocId);
       }
@@ -247,10 +264,10 @@ const FormImageScreen = () => {
       }
 
       console.log('documentInstanceId not in params, checking AsyncStorage...');
-      
+
       // Try to get existing document context
       const context = await getDocumentContextFromStorage();
-      
+
       if (context?.documentInstanceId) {
         console.log('Found existing document context in AsyncStorage:', context);
         setDocumentInstanceId(context.documentInstanceId);
@@ -258,15 +275,15 @@ const FormImageScreen = () => {
         setHasDocumentContext(true);
       } else {
         console.log('No existing document instance found, creating new one...');
-        
+
         // Create new document instance
         const newInstanceId = await createNewDocumentInstance();
-        
+
         if (newInstanceId) {
           console.log('New document instance created:', newInstanceId);
           setDocumentInstanceId(newInstanceId);
           setHasDocumentContext(true);
-          
+
           // Load document ID from storage again
           const storedDocId = await AsyncStorage.getItem(STORAGE_KEYS.documentId);
           if (storedDocId) {
@@ -289,15 +306,15 @@ const FormImageScreen = () => {
       console.log('Cannot load overlays: documentInstanceId =', documentInstanceId, 'pages.length =', pages.length);
       return;
     }
-    
+
     console.log(`[OVERLAY] Loading overlays via page-wise API for document instance: ${documentInstanceId}, ${pages.length} pages...`);
     setLoadingOverlays(true);
-    
+
     try {
       // 🔥 Fetch ALL overlays in a single API call using documentInstanceId
       const pageWiseOverlayData = await getpagewiseoverlay(documentInstanceId);
       console.log('[OVERLAY] Page-wise API response received');
-      
+
       // Create a map for quick lookup
       const overlayMap = new Map();
       if (Array.isArray(pageWiseOverlayData)) {
@@ -315,12 +332,12 @@ const FormImageScreen = () => {
       } else {
         console.log('[OVERLAY] Response is not an array or is empty');
       }
-      
+
       // Update all pages with overlay data
-      setPages(prev => 
+      setPages(prev =>
         prev.map(page => {
           const overlayInfo = overlayMap.get(page.pageId);
-          
+
           if (overlayInfo && overlayInfo.hasOverlay && overlayInfo.base64) {
             const overlayUri = `data:${overlayInfo.contentType};base64,${overlayInfo.base64}`;
             console.log(`[OVERLAY] Created overlay URI for page ${page.pageId}`);
@@ -341,7 +358,7 @@ const FormImageScreen = () => {
           }
         })
       );
-      
+
       console.log('[OVERLAY] Finished updating all pages with overlay data');
     } catch (error: any) {
       console.error('[OVERLAY] Error loading overlays:', {
@@ -349,9 +366,9 @@ const FormImageScreen = () => {
         status: error?.response?.status,
         data: error?.response?.data
       });
-      
+
       // Set all pages to have no overlay
-      setPages(prev => 
+      setPages(prev =>
         prev.map(page => ({
           ...page,
           overlayData: undefined,
@@ -368,10 +385,10 @@ const FormImageScreen = () => {
   useFocusEffect(
     useCallback(() => {
       console.log('FormImageScreen focused');
-      
+
       // Load document ID from storage for display
       loadDocumentIdFromStorage();
-      
+
       // Load or create document context
       loadDocumentContext();
 
@@ -420,7 +437,7 @@ const FormImageScreen = () => {
   const loadAllPages = useCallback(async () => {
     // Use documentId from props if available, otherwise use stored documentId
     const effectiveDocumentId = documentId || storedDocumentId;
-    
+
     if (!effectiveDocumentId || !documentInstanceId || isLoadingRef.current) {
       console.log('Skipping load: effectiveDocumentId =', effectiveDocumentId, 'documentInstanceId =', documentInstanceId, 'isLoading =', isLoadingRef.current);
       return;
@@ -432,15 +449,15 @@ const FormImageScreen = () => {
     }
 
     console.log('Loading pages for document:', effectiveDocumentId, 'document instance:', documentInstanceId);
-    
+
     isLoadingRef.current = true;
-    
+
     try {
       setLoading(true);
-      
+
       loadedDocumentInstanceIdRef.current = null;
       setHasValidImages(false);
-      
+
       // First, get the page list using documentId
       const res = await getDocumentPages(effectiveDocumentId);
       console.log('Received', res.length, 'pages from API');
@@ -477,43 +494,43 @@ const FormImageScreen = () => {
         sortedPages.map(async (page, index) => {
           try {
             console.log(`Loading image ${index + 1}/${sortedPages.length} for page ${page.pageId}`);
-            
+
             const response = await getDocumentPageImage(effectiveDocumentId, page.pageId);
-            
+
             if (response && typeof response === 'string') {
               if (response.startsWith('data:image/') || response.length > 1000) {
                 console.log(`✅ Page ${page.pageId} has valid image data`);
-                return { 
-                  ...page, 
-                  imageData: response, 
-                  loading: false, 
-                  hasImage: true 
+                return {
+                  ...page,
+                  imageData: response,
+                  loading: false,
+                  hasImage: true
                 };
               } else {
                 console.log(`⚠️ Page ${page.pageId} returned non-image response:`, response.substring(0, 100));
-                return { 
-                  ...page, 
-                  imageData: undefined, 
-                  loading: false, 
+                return {
+                  ...page,
+                  imageData: undefined,
+                  loading: false,
                   hasImage: false,
                   errorMessage: response
                 };
               }
             } else {
               console.log(`❌ Page ${page.pageId} returned invalid response type:`, typeof response);
-              return { 
-                ...page, 
-                imageData: undefined, 
-                loading: false, 
+              return {
+                ...page,
+                imageData: undefined,
+                loading: false,
                 hasImage: false,
                 errorMessage: 'Invalid response format'
               };
             }
           } catch (error) {
             console.error(`Failed to load image for page ${page.pageId}:`, error);
-            return { 
-              ...page, 
-              loading: false, 
+            return {
+              ...page,
+              loading: false,
               hasImage: false,
               errorMessage: error instanceof Error ? error.message : 'Network error'
             };
@@ -523,26 +540,26 @@ const FormImageScreen = () => {
 
       // Update with loaded images
       setPages(pagesWithImages);
-      
+
       // Check if any page has a valid image
       const anyValidImage = pagesWithImages.some(page => page.hasImage);
       setHasValidImages(anyValidImage);
-      
+
       console.log(`Image loading complete. Valid images found: ${anyValidImage}`);
-      
+
       // Now load overlays for pages with valid images using documentInstanceId
       if (anyValidImage) {
         console.log('Starting overlay loading via page-wise API using document instance ID...');
         // Start overlay loading immediately
-      
+
       }
-      
+
       // Mark this document as loaded
       loadedDocumentInstanceIdRef.current = documentInstanceId;
       setShouldReload(false);
-      
+
       console.log('All pages loaded successfully');
-      
+
     } catch (error) {
       console.error('Failed to load document pages:', error);
       loadedDocumentInstanceIdRef.current = null;
@@ -557,10 +574,10 @@ const FormImageScreen = () => {
   // Load pages when documentId, storedDocumentId, or documentInstanceId changes
   useEffect(() => {
     console.log('useEffect triggered - documentId:', documentId, 'storedDocumentId:', storedDocumentId, 'documentInstanceId:', documentInstanceId, 'shouldReload:', shouldReload);
-    
+
     // Use either documentId from props or storedDocumentId
     const effectiveDocumentId = documentId || storedDocumentId;
-    
+
     if (effectiveDocumentId && documentInstanceId && shouldReload) {
       loadAllPages();
     }
@@ -578,7 +595,7 @@ const FormImageScreen = () => {
       loadAllOverlays();
     }
   }, [documentInstanceId, pages, loadAllOverlays]);
-  
+
   // Add a manual refresh function
   const refreshPages = useCallback(() => {
     console.log('Manual refresh triggered');
@@ -593,7 +610,7 @@ const FormImageScreen = () => {
   /* ---------- PAGE CARD ---------- */
   const PageCard = React.useCallback(({ page, index }: { page: PageItem; index: number }) => {
     const savedPath = pageMeta.find(p => p.pageId === page.pageId)?.bitmapPath;
-    
+
     const overlaySrc = savedPath
       ? { uri: `${savedPath.startsWith('file://') ? savedPath : 'file://' + savedPath}?t=${reloadToken}` }
       : null;
@@ -609,16 +626,47 @@ const FormImageScreen = () => {
                 style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
                 resizeMode="contain"
               />
-              
+
               {/* API Overlay Image (from page-wise API) */}
-              {page.overlayData && (
-                <Image
-                  source={{ uri: page.overlayData }}
-                  style={[StyleSheet.absoluteFill, styles.overlayImage]}
-                  resizeMode="contain"
-                />
-              )}
-              
+              {/* API Overlay Image (from page-wise API) */}
+              {(() => {
+                const overlayData = page.overlayData;
+                if (!overlayData) return null;
+
+                // overlayData should be "data:image/png;base64,..."
+                // or just base64? The fetch logic constructed data: URI.
+                // Let's strip "data:image/...;base64," if present
+                const base64Index = overlayData.indexOf('base64,');
+                const base64 = base64Index !== -1
+                  ? overlayData.substring(base64Index + 7)
+                  : overlayData;
+
+                const strokesJson = tryParseStrokesJson(base64);
+
+                if (strokesJson) {
+                  return (
+                    <View
+                      style={[StyleSheet.absoluteFill, { zIndex: 15 }]}
+                      pointerEvents="none"
+                    >
+                      <NativeDrawingView
+                        strokesJson={strokesJson}
+                        style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
+                      />
+                    </View>
+                  );
+                } else {
+                  // Legacy static image
+                  return (
+                    <Image
+                      source={{ uri: overlayData }}
+                      style={[StyleSheet.absoluteFill, styles.overlayImage]}
+                      resizeMode="contain"
+                    />
+                  );
+                }
+              })()}
+
               {/* Local Editor Overlay */}
               {overlaySrc && (
                 <Image
@@ -627,7 +675,7 @@ const FormImageScreen = () => {
                   resizeMode="contain"
                 />
               )}
-              
+
               {/* Overlay Loading Indicator */}
               {page.overlayLoading && (
                 <View style={styles.overlayLoadingContainer}>
@@ -635,7 +683,7 @@ const FormImageScreen = () => {
                   <Text style={styles.overlayLoadingText}>Loading overlay...</Text>
                 </View>
               )}
-              
+
               {/* No Overlay Indicator */}
               {page.overlayExists === false && !page.overlayLoading && (
                 <View style={styles.noOverlayIndicator}>
@@ -713,36 +761,36 @@ const FormImageScreen = () => {
   const openFullEditor = useCallback(() => {
     if (!documentInstanceId) {
       console.error('Cannot open editor: documentInstanceId is undefined');
-      alert('Document Instance ID is missing. Please try again.');
+      Alert.alert('Error', 'Document Instance ID is missing. Please try again.');
       return;
     }
-    
+
     // Use either documentId from props or storedDocumentId
     const effectiveDocumentId = documentId || storedDocumentId;
-    
+
     if (!effectiveDocumentId) {
       console.error('Cannot open editor: documentId is undefined');
-      alert('Document ID is missing. Please try again.');
+      Alert.alert('Error', 'Document ID is missing. Please try again.');
       return;
     }
-    
+
     if (!hasValidImages) {
       console.error('Cannot open editor: No valid images found');
-      alert('Cannot open editor because no valid images are available for this document.');
+      Alert.alert('Error', 'Cannot open editor because no valid images are available for this document.');
       return;
     }
-    
+
     console.log('Opening editor with', pages.length, 'pages, documentId:', effectiveDocumentId, 'documentInstanceId:', documentInstanceId);
-    
+
     const validPages = pages.filter(page => page.hasImage && page.imageData);
-    
+
     const pagesWithOverlays = validPages.map(p => ({
       pageId: p.pageId,
       displayOrderNo: p.displayOrderNo,
       imageData: p.imageData,
       overlayData: p.overlayData,
     }));
-    
+
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
       storageKey: perFormStorageKey,
@@ -772,12 +820,12 @@ const FormImageScreen = () => {
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.title}>{formName}</Text>
-          
+
           <View style={styles.headerButtons}>
             <TouchableOpacity onPress={refreshPages} style={styles.headerButton}>
               <Ionicons name="refresh" size={22} color="#fff" />
             </TouchableOpacity>
-            
+
             {/* Debug button for overlays */}
             <TouchableOpacity onPress={loadAllOverlays} style={styles.headerButton}>
               <Ionicons name="layers-outline" size={22} color="#fff" />
@@ -799,7 +847,7 @@ const FormImageScreen = () => {
           <Text style={styles.errorMessage}>
             Unable to load document. Please go back and select a document again.
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
             onPress={() => {
               loadDocumentContext();
@@ -830,7 +878,7 @@ const FormImageScreen = () => {
             maxToRenderPerBatch={3}
             windowSize={3}
           />
-          
+
           {/* Show loading indicator for overlays */}
           {loadingOverlays && (
             <View style={styles.overlayGlobalLoading}>
@@ -908,9 +956,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  title: { 
-    color: '#fff', 
-    fontSize: 17, 
+  title: {
+    color: '#fff',
+    fontSize: 17,
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
@@ -938,9 +986,9 @@ const styles = StyleSheet.create({
     borderTopColor: '#e5e7eb',
     alignItems: 'center',
   },
-  footerTxt: { 
-    fontSize: 14, 
-    fontWeight: '600', 
+  footerTxt: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#374151',
     marginBottom: 4,
   },
@@ -1110,7 +1158,7 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 4,
   },
-  bottomSafe: { 
+  bottomSafe: {
     padding: 16,
     backgroundColor: '#fff',
   },
@@ -1125,11 +1173,11 @@ const styles = StyleSheet.create({
   btnDisabled: {
     backgroundColor: '#e5e7eb',
   },
-  btnTxt: { 
-    color: '#fff', 
-    marginLeft: 10, 
-    fontSize: 16, 
-    fontWeight: '700' 
+  btnTxt: {
+    color: '#fff',
+    marginLeft: 10,
+    fontSize: 16,
+    fontWeight: '700'
   },
   btnTxtDisabled: {
     color: '#94a3b8',
