@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
+  BackHandler, // Added BackHandler
 } from 'react-native';
 import {
   useNavigation,
@@ -35,13 +36,13 @@ function makeStorageKey(patientName: string, formName: string) {
 const saveDocumentContext = async (documentId: string, pageData?: any[]) => {
   try {
     await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, documentId);
-    
+
     if (pageData && Array.isArray(pageData)) {
       await AsyncStorage.setItem(
         'documentPages',
         JSON.stringify(pageData)
       );
-      
+
       const pageIds = pageData.map(page => page.pageId).filter(Boolean);
       if (pageIds.length > 0) {
         await AsyncStorage.setItem(
@@ -85,8 +86,8 @@ export default function FormTypeScreen() {
   const patientName: string = route.params?.patientName ?? 'Unknown Patient';
   const patientId: string | undefined = route.params?.patientId;
   const patientIP: number | undefined = route.params?.patientIP;
-const [admissionNo, setAdmissionNo] = useState<string | null>(null);
-const [loginUserId, setLoginUserId] = useState<string | null>(null);
+  const [admissionNo, setAdmissionNo] = useState<string | null>(null);
+  const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
 
 
@@ -94,45 +95,45 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
   // const loginUserId: string | undefined = route.params?.loginUserId; // Add this to params
 
   useEffect(() => {
-  const loadContextFromStorage = async () => {
-    try {
-      const [[, admNo], [, userId]] = await AsyncStorage.multiGet([
-        STORAGE_KEYS.admissionNo,
-        STORAGE_KEYS.loginUserId,
-      ]);
+    const loadContextFromStorage = async () => {
+      try {
+        const [[, admNo], [, userId]] = await AsyncStorage.multiGet([
+          STORAGE_KEYS.admissionNo,
+          STORAGE_KEYS.loginUserId,
+        ]);
 
-     if (!admNo || !userId) {
-  console.error('❌ Missing admissionNo or loginUserId in AsyncStorage', admNo,userId);
-  setLoading(false);
-  return;
-}
+        if (!admNo || !userId) {
+          console.error('❌ Missing admissionNo or loginUserId in AsyncStorage', admNo, userId);
+          setLoading(false);
+          return;
+        }
 
 
-      setAdmissionNo(admNo);
-      setLoginUserId(userId);
+        setAdmissionNo(admNo);
+        setLoginUserId(userId);
 
-      console.log('✅ Loaded context from storage:', {
-        admissionNo: admNo,
-        loginUserId: userId,
-      });
-    } catch (e) {
-      console.error('❌ Failed to load context from AsyncStorage', e);
-    }
-  };
+        console.log('✅ Loaded context from storage:', {
+          admissionNo: admNo,
+          loginUserId: userId,
+        });
+      } catch (e) {
+        console.error('❌ Failed to load context from AsyncStorage', e);
+      }
+    };
 
-  loadContextFromStorage();
-}, []);
+    loadContextFromStorage();
+  }, []);
 
 
   useEffect(() => {
     const loadFormList = async () => {
       try {
         setLoading(true);
-  if (!admissionNo || !loginUserId) {
-  console.error('Missing admissionNo or loginUserId');
-  setForms([]);
-  return;
-}
+        if (!admissionNo || !loginUserId) {
+          console.error('Missing admissionNo or loginUserId');
+          setForms([]);
+          return;
+        }
 
 
         console.log('Loading form list for admission:', admissionNo, 'userId:', loginUserId);
@@ -143,13 +144,13 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
         // Transform API response to match ApiForm type
         let transformedForms: ApiForm[] = [];
-        
+
         if (Array.isArray(formListData)) {
           transformedForms = formListData.map((doc: any) => {
             // Parse pageProgress string like "1/0" to get totalPages and editedPages
             let totalPages = doc.totalPages || 0;
             let editedPages = doc.editedPages || 0;
-            
+
             // If pageProgress exists and is in format "total/edited", parse it
             if (doc.pageProgress && typeof doc.pageProgress === 'string') {
               const parts = doc.pageProgress.split('/');
@@ -158,10 +159,10 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
                 editedPages = parseInt(parts[1]) || 0;
               }
             }
-            
+
             // Use categoryName from API if available, otherwise use categoryCode
             const categoryName = doc.categoryName || doc.categoryCode || 'Uncategorized';
-            
+
             return {
               documentId: doc.documentId,
               title: doc.title || 'Untitled Form',
@@ -215,9 +216,9 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
           try {
             const pages = await getDocumentPages(form.documentId);
-            return { 
-              ...form, 
-              totalPages: Array.isArray(pages) ? pages.length : 0 
+            return {
+              ...form,
+              totalPages: Array.isArray(pages) ? pages.length : 0
             };
           } catch {
             return { ...form, totalPages: 0 };
@@ -276,6 +277,19 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
     }, [loadAllCounts, forms])
   );
 
+  // 🔙 NEW: Handle Hardware Back Button
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        navigation.navigate('PatientScreen', { ...route.params });
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
+    }, [navigation, route.params])
+  );
+
   /* ================= FILTER ================= */
 
   const filteredForms = useMemo(() => {
@@ -283,7 +297,7 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
     return forms.filter(f => {
       const matchesSearch =
-        !q || 
+        !q ||
         f.title.toLowerCase().includes(q) ||
         (f.description && f.description.toLowerCase().includes(q)) ||
         (f.categoryName && f.categoryName.toLowerCase().includes(q));
@@ -309,16 +323,16 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
   const handlePress = async (form: ApiForm) => {
     try {
       console.log('🟡 Starting form navigation for:', form.title);
-      
+
       let totalPages = form.totalPages || 0;
       let pageData: any[] = [];
 
       try {
         console.log('📥 Loading pages for document:', form.documentId);
         const pages = await getDocumentPages(form.documentId);
-        
+
         totalPages = Array.isArray(pages) ? pages.length : 0;
-        
+
         if (Array.isArray(pages)) {
           pageData = pages;
           await saveDocumentContext(form.documentId, pageData);
@@ -385,7 +399,7 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
     const totalPages = item.totalPages || 0;
     const editedPages = item.editedPages || 0;
     const filledCount = filledCounts[item.documentId] || 0;
-    
+
     // Use filledCount if available, otherwise use editedPages from API
     const displayCount = filledCount > 0 ? filledCount : editedPages;
 
@@ -409,7 +423,7 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
               </Text>
             )}
             {item.description && (
-              <Text 
+              <Text
                 style={[styles.formDescription, { color: textColor, opacity: 0.8 }]}
                 numberOfLines={1}
               >
@@ -466,13 +480,13 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
   const renderEmptyState = () => {
     if (loading) return null;
-    
+
     return (
       <View style={styles.emptyContainer}>
         <Icon name="document-text-outline" size={60} color="#CBD5E1" />
         <Text style={styles.emptyTitle}>No Forms Found</Text>
         <Text style={styles.emptySubtitle}>
-          {forms.length === 0 
+          {forms.length === 0
             ? 'No forms available for this category.'
             : 'No forms match your search criteria.'}
         </Text>
@@ -492,7 +506,7 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
           <TouchableOpacity
             activeOpacity={1}
             style={styles.filterBox}
-            onPress={() => {}}
+            onPress={() => { }}
           >
             <Text style={styles.filterTitle}>Filter by Color</Text>
 
@@ -542,7 +556,7 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('PatientScreen', { ...route.params })}
           >
             <Icon name="arrow-back" size={22} color="#fff" />?
           </TouchableOpacity>
@@ -602,14 +616,14 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
                 style={styles.searchInputContent}
               />
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setFilterVisible(v => !v)}
                 style={styles.filterIconButton}
               >
-                <Icon 
-                  name="filter" 
-                  size={18} 
-                  color={selectedColors.length > 0 ? "#0EA5A4" : "#94A3B8"} 
+                <Icon
+                  name="filter"
+                  size={18}
+                  color={selectedColors.length > 0 ? "#0EA5A4" : "#94A3B8"}
                 />
                 {selectedColors.length > 0 && (
                   <View style={styles.filterBadge}>
@@ -649,9 +663,9 @@ const [loginUserId, setLoginUserId] = useState<string | null>(null);
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F1F5F9' 
+  container: {
+    flex: 1,
+    backgroundColor: '#F1F5F9'
   },
   filterTitle: {
     fontSize: 18,
@@ -898,8 +912,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  chevronWrap: { 
-    marginLeft: 4 
+  chevronWrap: {
+    marginLeft: 4
   },
 
   chevron: {

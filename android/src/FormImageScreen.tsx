@@ -146,7 +146,7 @@ const FormImageScreen = () => {
         Alert.alert(
           'Missing Information',
           'Cannot create document instance. Missing patient, admission, or document information.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
+          [{ text: 'OK', onPress: () => navigation.navigate('FormType') }]
         );
         return null;
       }
@@ -816,7 +816,7 @@ const FormImageScreen = () => {
     <View style={styles.container}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: '#0EA5A4' }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => navigation.navigate('FormType')}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.title}>{formName}</Text>

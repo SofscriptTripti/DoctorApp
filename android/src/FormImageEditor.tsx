@@ -2064,6 +2064,8 @@ export default function FormImageEditor() {
 
   const pinchStateRef = useRef<{
     initialDistance: number;
+    initialMidX: number;
+    initialMidY: number;
     startScale: number;
     pageIndex: number;
   } | null>(null);
@@ -2074,8 +2076,9 @@ export default function FormImageEditor() {
     if (scale <= 1.01) {
       return { clampedX: 0, clampedY: 0 };
     }
-    const maxOffsetX = (SCREEN_W * (scale - 1)) / 2;
-    const maxOffsetY = (PAGE_HEIGHT * (scale - 1)) / 2;
+    // Relaxed clamping (1.5x) to allow reaching corners easily
+    const maxOffsetX = ((SCREEN_W * (scale - 1)) / 2) * 1.5;
+    const maxOffsetY = ((PAGE_HEIGHT * (scale - 1)) / 2) * 1.5;
 
     const clampedX = clamp(tx, -maxOffsetX, maxOffsetX);
     const clampedY = clamp(ty, -maxOffsetY, maxOffsetY);
@@ -2150,7 +2153,8 @@ export default function FormImageEditor() {
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
         if (touches.length === 2) {
-          setMultiTouchActive(true);
+          // IMMEDIATE DISABLE
+          disableDrawingImmediately(true);
         }
 
         if (touches.length === 2) {
@@ -2163,6 +2167,8 @@ export default function FormImageEditor() {
 
           pinchStateRef.current = {
             initialDistance: distance,
+            initialMidX: midX,
+            initialMidY: midY,
             startScale: currentScale,
             pageIndex,
           };
@@ -2208,6 +2214,8 @@ export default function FormImageEditor() {
           if (!pinchStateRef.current || pinchStateRef.current.pageIndex !== pageIndex) {
             pinchStateRef.current = {
               initialDistance: distance,
+              initialMidX: midX,
+              initialMidY: midY,
               startScale: currentScale,
               pageIndex,
             };
@@ -2221,7 +2229,7 @@ export default function FormImageEditor() {
             }
           }
 
-          const { initialDistance, startScale } = pinchStateRef.current;
+          const { initialDistance, initialMidX, initialMidY, startScale } = pinchStateRef.current;
           const scaleFactor = distance / (initialDistance || 1);
           let requestedScale = startScale * scaleFactor;
           if (requestedScale < MIN_ZOOM) requestedScale = MIN_ZOOM;
@@ -2238,8 +2246,8 @@ export default function FormImageEditor() {
           }
 
           const panStart = panStartPerPageRef[pageIndex] ?? { x: 0, y: 0 };
-          const deltaX = midX - (t1.pageX + t2.pageX) / 2;
-          const deltaY = midY - (t1.pageY + t2.pageY) / 2;
+          const deltaX = midX - initialMidX;
+          const deltaY = midY - initialMidY;
 
           const rawTx = panStart.x + deltaX;
           const rawTy = panStart.y + deltaY;
@@ -2266,7 +2274,8 @@ export default function FormImageEditor() {
         const pageIndex = getCurrentPageIndex();
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-        setMultiTouchActive(false);
+        // ENABLE AGAIN
+        disableDrawingImmediately(false);
 
         if (currentScale <= 1.01) {
           lastScalePerPageRef[pageIndex] = 1;
@@ -2293,11 +2302,13 @@ export default function FormImageEditor() {
         const pageIndex = getCurrentPageIndex();
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
-        setMultiTouchActive(false);
+        // ENABLE AGAIN
+        disableDrawingImmediately(false);
 
         if (currentScale <= 1.01) {
           lastScalePerPageRef[pageIndex] = 1;
           pageScaleAnimsRef[pageIndex].setValue(1);
+
           pageTranslateXRef[pageIndex].setValue(0);
           pageTranslateYRef[pageIndex].setValue(0);
         } else {
