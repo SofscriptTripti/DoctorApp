@@ -821,16 +821,7 @@ const FormImageScreen = () => {
           </TouchableOpacity>
           <Text style={styles.title}>{formName}</Text>
 
-          <View style={styles.headerButtons}>
-            <TouchableOpacity onPress={refreshPages} style={styles.headerButton}>
-              <Ionicons name="refresh" size={22} color="#fff" />
-            </TouchableOpacity>
 
-            {/* Debug button for overlays */}
-            <TouchableOpacity onPress={loadAllOverlays} style={styles.headerButton}>
-              <Ionicons name="layers-outline" size={22} color="#fff" />
-            </TouchableOpacity>
-          </View>
         </View>
       </SafeAreaView>
 

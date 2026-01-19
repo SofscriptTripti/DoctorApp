@@ -31,7 +31,7 @@ type Patient = {
   room: string;
   diagnosis: string;
   doctorName: string;
-  doctorCode: string; 
+  doctorCode: string;
   admitDate: string;
 };
 
@@ -97,8 +97,10 @@ export default function PatientScreen() {
     'name',
     'ward',
     'doctor',
+    'doctor',
     'ip',
   ]);
+  const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false); // NEW
 
   // vitals mini-card visibility (toggled by clicking the Beat icon)
   const [vitalsVisible, setVitalsVisible] = useState(false);
@@ -112,16 +114,16 @@ export default function PatientScreen() {
   // small animation for vitals card
   const vitalsScale = useRef(new Animated.Value(0.96)).current;
   const vitalsOpacity = useRef(new Animated.Value(0)).current;
-const [vitalsData, setVitalsData] = useState({
-  temperature: '99.9 °F',
-  spo2: '98 %',
-  bp: '120/80 mmHg',
-  respiration: '16 /min',
-  heartRate: '72 bpm',
-  weight: '65 kg',      // Weight in kg
-  height: '170 cm',     // Height in cm
-  bmi: '22.5',          // Will be auto-calculated
-});
+  const [vitalsData, setVitalsData] = useState({
+    temperature: '99.9 °F',
+    spo2: '98 %',
+    bp: '120/80 mmHg',
+    respiration: '16 /min',
+    heartRate: '72 bpm',
+    weight: '65 kg',      // Weight in kg
+    height: '170 cm',     // Height in cm
+    bmi: '22.5',          // Will be auto-calculated
+  });
 
   const [editingVital, setEditingVital] = useState<keyof typeof vitalsData | null>(null);
 
@@ -153,43 +155,43 @@ const [vitalsData, setVitalsData] = useState({
     })
   ).current;
   const [patients, setPatients] = useState<Patient[]>([]);
-const [loadingPatients, setLoadingPatients] = useState(false);
+  const [loadingPatients, setLoadingPatients] = useState(false);
 
 
   // Whether filters are in a "custom" state (not all, not none)
   const filtersActive =
     selectedFilters.length > 0 &&
     selectedFilters.length < ALL_FILTER_KEYS.length;
-   const filteredPatients = useMemo(() => {
-  const q = searchText.trim().toLowerCase();
-  if (!q) return patients;
+  const filteredPatients = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return patients;
 
-  return patients.filter((p) => {
-    const fields: string[] = [];
+    return patients.filter((p) => {
+      const fields: string[] = [];
 
-    const activeFilters =
-      selectedFilters.length === 0
-        ? ALL_FILTER_KEYS
-        : selectedFilters;
+      const activeFilters =
+        selectedFilters.length === 0
+          ? ALL_FILTER_KEYS
+          : selectedFilters;
 
-    if (activeFilters.includes('name')) {
-      fields.push(p.name.toLowerCase());
-    }
-    if (activeFilters.includes('ward')) {
-      fields.push(p.room.toLowerCase());
-    }
-    if (activeFilters.includes('doctor')) {
-      fields.push(p.doctorName.toLowerCase());
-    }
-    // if (activeFilters.includes('ip')) {
-    //   fields.push(String(p.IP));
-    // }
+      if (activeFilters.includes('name')) {
+        fields.push(p.name.toLowerCase());
+      }
+      if (activeFilters.includes('ward')) {
+        fields.push(p.room.toLowerCase());
+      }
+      if (activeFilters.includes('doctor')) {
+        fields.push(p.doctorName.toLowerCase());
+      }
+      // if (activeFilters.includes('ip')) {
+      //   fields.push(String(p.IP));
+      // }
 
-    fields.push(p.id.toLowerCase());
+      fields.push(p.id.toLowerCase());
 
-    return fields.some((f) => f.includes(q));
-  });
-}, [searchText, selectedFilters, patients]);
+      return fields.some((f) => f.includes(q));
+    });
+  }, [searchText, selectedFilters, patients]);
 
 
 
@@ -221,14 +223,21 @@ const [loadingPatients, setLoadingPatients] = useState(false);
   };
   const isEditingAnyVital = editingVital !== null;
 
-const handleLogout = async () => {
-  await clearPatientSession();
+  /* ✅ UPDATED: Show confirmation instead of immediate logout */
+  const handleLogout = () => {
+    setConfirmLogoutVisible(true);
+  };
 
-  navigation.reset({
-    index: 0,
-    routes: [{ name: 'CareScribeLogin' }],
-  });
-};
+  /* ✅ NEW: Perform actual logout */
+  const performLogout = async () => {
+    setConfirmLogoutVisible(false);
+    await clearPatientSession();
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'CareScribeLogin' }],
+    });
+  };
 
 
   const startHeroPulse = () => {
@@ -251,35 +260,35 @@ const handleLogout = async () => {
     ).start();
   };
 
- useEffect(() => {
-  const loadPatients = async () => {
-    try {
-      setLoadingPatients(true);
+  useEffect(() => {
+    const loadPatients = async () => {
+      try {
+        setLoadingPatients(true);
 
-     const res = await getAdmittedPatients({
-  page: 1,
-  pageSize: 50,
-});
+        const res = await getAdmittedPatients({
+          page: 1,
+          pageSize: 50,
+        });
 
-console.log('ADMITTED PATIENTS API 👉', res);
+        console.log('ADMITTED PATIENTS API 👉', res);
 
-// ✅ res itself is the array
-const apiPatients = Array.isArray(res) ? res : [];
+        // ✅ res itself is the array
+        const apiPatients = Array.isArray(res) ? res : [];
 
 
-      const mappedPatients = apiPatients.map(mapApiPatientToUiPatient);
+        const mappedPatients = apiPatients.map(mapApiPatientToUiPatient);
 
-      setPatients(mappedPatients);
-    } catch (error) {
-      console.error('Failed to load patients', error);
-      setPatients([]);
-    } finally {
-      setLoadingPatients(false);
-    }
-  };
+        setPatients(mappedPatients);
+      } catch (error) {
+        console.error('Failed to load patients', error);
+        setPatients([]);
+      } finally {
+        setLoadingPatients(false);
+      }
+    };
 
-  loadPatients();
-}, []);
+    loadPatients();
+  }, []);
 
 
   // Animations specifically for vitals show/hide
@@ -331,43 +340,43 @@ const apiPatients = Array.isArray(res) ? res : [];
     }
   };
 
- const openPatientModal = async (patient: Patient) => {
-  setSelectedPatient(patient);
+  const openPatientModal = async (patient: Patient) => {
+    setSelectedPatient(patient);
 
-  await savePatientSession(
-  patient.id,            // admissionNo
-  patient.patientId,     // UHID
-  patient.doctorCode     // ✅ CORRECT doctorCode
-);
+    await savePatientSession(
+      patient.id,            // admissionNo
+      patient.patientId,     // UHID
+      patient.doctorCode     // ✅ CORRECT doctorCode
+    );
 
 
-  setModalVisible(true);
+    setModalVisible(true);
 
-  scaleAnim.setValue(0.96);
-  opacityAnim.setValue(0);
-  translateYAnim.setValue(16);
+    scaleAnim.setValue(0.96);
+    opacityAnim.setValue(0);
+    translateYAnim.setValue(16);
 
-  Animated.parallel([
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      friction: 7,
-      tension: 70,
-    }),
-    Animated.timing(opacityAnim, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.ease),
-    }),
-    Animated.timing(translateYAnim, {
-      toValue: 0,
-      duration: 220,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.ease),
-    }),
-  ]).start();
-};
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 7,
+        tension: 70,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+    ]).start();
+  };
 
 
   const closePatientModal = () => {
@@ -403,20 +412,20 @@ const apiPatients = Array.isArray(res) ? res : [];
     }
   };
 
- const goToFormType = () => {
-  if (!selectedPatient) return;
+  const goToFormType = () => {
+    if (!selectedPatient) return;
 
-  const p = selectedPatient;
+    const p = selectedPatient;
 
-  closePatientModal();
+    closePatientModal();
 
-  navigation.navigate('FormType', {
-    admissionNo: p.id,        // ✅ MDR001
-    patientId: p.patientId,   // ✅ UH001
-    patientName: p.name,
-  });
-  console.log('Navigating to FormType with admissionNo:', p.id);
-};
+    navigation.navigate('FormType', {
+      admissionNo: p.id,        // ✅ MDR001
+      patientId: p.patientId,   // ✅ UH001
+      patientName: p.name,
+    });
+    console.log('Navigating to FormType with admissionNo:', p.id);
+  };
 
   const toggleFilter = (key: FilterKey) => {
     setSelectedFilters((prev) => {
@@ -426,182 +435,182 @@ const apiPatients = Array.isArray(res) ? res : [];
       return [...prev, key];
     });
   };
-   const calculateBMI = () => {
-  const weightStr = vitalsData.weight;
-  const heightStr = vitalsData.height;
-  
-  // Extract numeric values
-  const weightMatch = weightStr.match(/^([\d.]+)/);
-  const heightMatch = heightStr.match(/^([\d.]+)/);
-  
-  if (weightMatch && heightMatch) {
-    const weightKg = parseFloat(weightMatch[1]);
-    const heightCm = parseFloat(heightMatch[1]);
-    
-    if (weightKg > 0 && heightCm > 0) {
-      const heightM = heightCm / 100; // Convert cm to meters
-      const bmi = weightKg / (heightM * heightM);
-      const roundedBMI = bmi.toFixed(1);
-      
-      setVitalsData(prev => ({
-        ...prev,
-        bmi: roundedBMI
-      }));
+  const calculateBMI = () => {
+    const weightStr = vitalsData.weight;
+    const heightStr = vitalsData.height;
+
+    // Extract numeric values
+    const weightMatch = weightStr.match(/^([\d.]+)/);
+    const heightMatch = heightStr.match(/^([\d.]+)/);
+
+    if (weightMatch && heightMatch) {
+      const weightKg = parseFloat(weightMatch[1]);
+      const heightCm = parseFloat(heightMatch[1]);
+
+      if (weightKg > 0 && heightCm > 0) {
+        const heightM = heightCm / 100; // Convert cm to meters
+        const bmi = weightKg / (heightM * heightM);
+        const roundedBMI = bmi.toFixed(1);
+
+        setVitalsData(prev => ({
+          ...prev,
+          bmi: roundedBMI
+        }));
+      }
     }
-  }
-};
+  };
 
   const handleClearFilters = () => {
     setSelectedFilters([]);
   };
-const clearVital = (key: keyof typeof vitalsData) => {
-  const currentValue = vitalsData[key];
-  const unitMatch = currentValue.match(/\s*([^\d./]+)$/); // Extract unit from the end
-  
-  if (unitMatch) {
-    // Keep only the unit, clear the number part
-    setVitalsData(prev => ({ ...prev, [key]: unitMatch[1].trim() }));
-  } else {
-    // No unit, clear everything
-    setVitalsData(prev => ({ ...prev, [key]: '' }));
-  }
-  
-  setEditingVital(key);
-};
+  const clearVital = (key: keyof typeof vitalsData) => {
+    const currentValue = vitalsData[key];
+    const unitMatch = currentValue.match(/\s*([^\d./]+)$/); // Extract unit from the end
+
+    if (unitMatch) {
+      // Keep only the unit, clear the number part
+      setVitalsData(prev => ({ ...prev, [key]: unitMatch[1].trim() }));
+    } else {
+      // No unit, clear everything
+      setVitalsData(prev => ({ ...prev, [key]: '' }));
+    }
+
+    setEditingVital(key);
+  };
 
   const updateVital = (key: keyof typeof vitalsData, value: string) => {
-  setVitalsData(prev => ({ ...prev, [key]: value }));
-  
-  // If updating weight or height, recalculate BMI
-  if (key === 'weight' || key === 'height') {
-    // Use setTimeout to ensure state update happens first
-    setTimeout(() => {
-      calculateBMI();
-    }, 0);
-  }
-};
+    setVitalsData(prev => ({ ...prev, [key]: value }));
+
+    // If updating weight or height, recalculate BMI
+    if (key === 'weight' || key === 'height') {
+      // Use setTimeout to ensure state update happens first
+      setTimeout(() => {
+        calculateBMI();
+      }, 0);
+    }
+  };
   const saveVital = () => {
     setEditingVital(null);
   };
-const VitalTile = ({
-  label,
-  value,
-  vitalKey,
-}: {
-  label: string;
-  value: string;
-  vitalKey: keyof typeof vitalsData;
-}) => {
-  // Enhanced function to separate number and unit
-  const separateNumberAndUnit = (val: string) => {
-    if (!val || val === '--') return { number: '', unit: '' };
-    
-    // Extract unit (anything after numbers, decimal points, and slashes)
-    const match = val.match(/^([\d./]+)?\s*(.*)$/);
-    
-    if (match) {
-      return { 
-        number: match[1] ? match[1].trim() : '', 
-        unit: match[2] ? match[2].trim() : '' 
-      };
-    }
-    
-    return { number: '', unit: val.trim() };
-  };
-  
-  const { number: displayNumber, unit } = separateNumberAndUnit(value);
-  const [editingNumber, setEditingNumber] = useState(displayNumber);
-  const [editingUnit] = useState(unit); // Unit is read-only for editing
+  const VitalTile = ({
+    label,
+    value,
+    vitalKey,
+  }: {
+    label: string;
+    value: string;
+    vitalKey: keyof typeof vitalsData;
+  }) => {
+    // Enhanced function to separate number and unit
+    const separateNumberAndUnit = (val: string) => {
+      if (!val || val === '--') return { number: '', unit: '' };
 
-  useEffect(() => {
-    if (editingVital !== vitalKey) {
-      const { number } = separateNumberAndUnit(value);
-      setEditingNumber(number);
-    }
-  }, [value, editingVital, vitalKey]);
+      // Extract unit (anything after numbers, decimal points, and slashes)
+      const match = val.match(/^([\d./]+)?\s*(.*)$/);
 
-  const handleStartEdit = () => {
-    if (vitalKey === 'bmi') return;
-    setEditingVital(vitalKey);
-  };
+      if (match) {
+        return {
+          number: match[1] ? match[1].trim() : '',
+          unit: match[2] ? match[2].trim() : ''
+        };
+      }
 
-  const handleSave = () => {
-    // Combine number with existing unit
-    const savedValue = (editingNumber || '') + (unit ? ` ${unit}` : '');
-    updateVital(vitalKey, savedValue);
-    setEditingVital(null);
-  };
+      return { number: '', unit: val.trim() };
+    };
 
-  const handleClear = () => {
-    // Clear the input field
-    setEditingNumber('');
-  };
+    const { number: displayNumber, unit } = separateNumberAndUnit(value);
+    const [editingNumber, setEditingNumber] = useState(displayNumber);
+    const [editingUnit] = useState(unit); // Unit is read-only for editing
 
-  const handleClearAll = () => {
-    // When not editing, clear number but keep unit
-    updateVital(vitalKey, unit ? unit : '');
-  };
+    useEffect(() => {
+      if (editingVital !== vitalKey) {
+        const { number } = separateNumberAndUnit(value);
+        setEditingNumber(number);
+      }
+    }, [value, editingVital, vitalKey]);
 
-  const currentIsEditing = editingVital === vitalKey;
-  const isEditable = vitalKey !== 'bmi';
+    const handleStartEdit = () => {
+      if (vitalKey === 'bmi') return;
+      setEditingVital(vitalKey);
+    };
 
-return (
-  <View style={styles.vitalTile}>
-    {/* Header row: Label + Edit icon */}
-    <View style={styles.vitalHeaderRow}>
-      <Text style={styles.vitalLabel}>{label}</Text>
+    const handleSave = () => {
+      // Combine number with existing unit
+      const savedValue = (editingNumber || '') + (unit ? ` ${unit}` : '');
+      updateVital(vitalKey, savedValue);
+      setEditingVital(null);
+    };
 
-      {isEditable && (
-        <TouchableOpacity
-          onPress={() =>
-            currentIsEditing ? handleSave() : handleStartEdit()
-          }
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Feather
-            name={currentIsEditing ? 'check' : 'edit-2'}
-            size={14}
-            color="#0EA5A4"
-          />
-        </TouchableOpacity>
-      )}
-    </View>
+    const handleClear = () => {
+      // Clear the input field
+      setEditingNumber('');
+    };
 
-    {/* Value row */}
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      {currentIsEditing ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <TextInput
-            placeholder="Enter value"
-            style={[styles.vitalInput, { flex: 1 }]}
-            value={editingNumber}
-            onChangeText={setEditingNumber}
-            keyboardType={
-              vitalKey === 'bp'
-                ? 'numbers-and-punctuation'
-                : vitalKey === 'weight' ||
-                  vitalKey === 'height' ||
-                  vitalKey === 'temperature' ||
-                  vitalKey === 'spo2'
-                ? 'decimal-pad'
-                : 'numeric'
-            }
-            autoFocus
-            onSubmitEditing={handleSave}
-          />
-          {unit && <Text style={styles.vitalUnit}>{unit}</Text>}
+    const handleClearAll = () => {
+      // When not editing, clear number but keep unit
+      updateVital(vitalKey, unit ? unit : '');
+    };
+
+    const currentIsEditing = editingVital === vitalKey;
+    const isEditable = vitalKey !== 'bmi';
+
+    return (
+      <View style={styles.vitalTile}>
+        {/* Header row: Label + Edit icon */}
+        <View style={styles.vitalHeaderRow}>
+          <Text style={styles.vitalLabel}>{label}</Text>
+
+          {isEditable && (
+            <TouchableOpacity
+              onPress={() =>
+                currentIsEditing ? handleSave() : handleStartEdit()
+              }
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Feather
+                name={currentIsEditing ? 'check' : 'edit-2'}
+                size={14}
+                color="#0EA5A4"
+              />
+            </TouchableOpacity>
+          )}
         </View>
-      ) : (
-        <Text style={styles.vitalValue}>
-          {displayNumber || '--'}
-          {unit && <Text style={styles.vitalUnit}> {unit}</Text>}
-        </Text>
-      )}
-    </View>
-  </View>
-);
 
-};
+        {/* Value row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {currentIsEditing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <TextInput
+                placeholder="Enter value"
+                style={[styles.vitalInput, { flex: 1 }]}
+                value={editingNumber}
+                onChangeText={setEditingNumber}
+                keyboardType={
+                  vitalKey === 'bp'
+                    ? 'numbers-and-punctuation'
+                    : vitalKey === 'weight' ||
+                      vitalKey === 'height' ||
+                      vitalKey === 'temperature' ||
+                      vitalKey === 'spo2'
+                      ? 'decimal-pad'
+                      : 'numeric'
+                }
+                autoFocus
+                onSubmitEditing={handleSave}
+              />
+              {unit && <Text style={styles.vitalUnit}>{unit}</Text>}
+            </View>
+          ) : (
+            <Text style={styles.vitalValue}>
+              {displayNumber || '--'}
+              {unit && <Text style={styles.vitalUnit}> {unit}</Text>}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+
+  };
 
   const renderItem = ({ item }: { item: Patient }) => {
     const isActive = selectedPatient?.id === item.id;
@@ -683,12 +692,12 @@ return (
   };
   const goToRxNotes = () => {
     if (!selectedPatient) return;
-  
+
     const patient = selectedPatient;
-  
+
     // ✅ Close modal FIRST
     closePatientModal();
-  
+
     // ⏱️ Small delay so close animation finishes
     setTimeout(() => {
       navigation.navigate('RxNotes', {
@@ -697,45 +706,45 @@ return (
       });
     }, 200);
   };
-  
 
-const getVitalsForPatient = (p: Patient | null) => {
-  return {
-    temperature: '99.9 °F',
-    spo2: '98 %',
-    bp: '120/80 mmHg',
-    respiration: '16 /min',
-    heartRate: '72 bpm',
-    weight: '65 kg',
-    height: '170 cm',
-    bmi: '22.5',
+
+  const getVitalsForPatient = (p: Patient | null) => {
+    return {
+      temperature: '99.9 °F',
+      spo2: '98 %',
+      bp: '120/80 mmHg',
+      respiration: '16 /min',
+      heartRate: '72 bpm',
+      weight: '65 kg',
+      height: '170 cm',
+      bmi: '22.5',
+    };
   };
-};
   const vitals = getVitalsForPatient(selectedPatient);
   const [modalLayout, setModalLayout] = useState<{
-  y: number;
-  height: number;
-} | null>(null);
+    y: number;
+    height: number;
+  } | null>(null);
 
-const [vitalsLayout, setVitalsLayout] = useState<{
-  height: number;
-} | null>(null);
+  const [vitalsLayout, setVitalsLayout] = useState<{
+    height: number;
+  } | null>(null);
 
 
-const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
-  return {
-    id: String(apiPatient?.admissionNo ?? ''),
-    patientId: String(apiPatient?.patientId ?? ''),
-    name: apiPatient?.patientName ?? 'Unknown',
-    age: Number(apiPatient?.age ?? 0),
-    gender: apiPatient?.gender ?? 'Other',
-    room: `${apiPatient?.wardName ?? ''} - ${apiPatient?.bedNo ?? ''}`,
-    diagnosis: apiPatient?.admissionStatus ?? 'Admitted',
-    doctorName: apiPatient?.currentDoctorName ?? '—',
-    doctorCode: apiPatient?.currentDoctorCode ?? '', // ✅ ADD THIS
-    admitDate: apiPatient?.admissionDtTm ?? new Date().toISOString(),
+  const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
+    return {
+      id: String(apiPatient?.admissionNo ?? ''),
+      patientId: String(apiPatient?.patientId ?? ''),
+      name: apiPatient?.patientName ?? 'Unknown',
+      age: Number(apiPatient?.age ?? 0),
+      gender: apiPatient?.gender ?? 'Other',
+      room: `${apiPatient?.wardName ?? ''} - ${apiPatient?.bedNo ?? ''}`,
+      diagnosis: apiPatient?.admissionStatus ?? 'Admitted',
+      doctorName: apiPatient?.currentDoctorName ?? '—',
+      doctorCode: apiPatient?.currentDoctorCode ?? '', // ✅ ADD THIS
+      admitDate: apiPatient?.admissionDtTm ?? new Date().toISOString(),
+    };
   };
-};
 
 
 
@@ -853,20 +862,20 @@ const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
           </View>
         </View>
 
-     
+
         {loadingPatients ? (
-  <View style={{ padding: 24, alignItems: 'center' }}>
-    <Text style={{ color: '#0F172A' }}>Loading patients...</Text>
-  </View>
-) : (
-  <FlatList
-    data={filteredPatients}
-    keyExtractor={(item) => item.id}
-    renderItem={renderItem}
-    showsVerticalScrollIndicator={false}
-    contentContainerStyle={styles.listContent}
-  />
-)}
+          <View style={{ padding: 24, alignItems: 'center' }}>
+            <Text style={{ color: '#0F172A' }}>Loading patients...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredPatients}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+          />
+        )}
 
       </View>
 
@@ -919,37 +928,37 @@ const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
                 <FA5 name="stethoscope" size={18} color="#0EA5A4" />
                 <Text style={styles.vitalsHeaderText}>Recent Vitals</Text>
               </View>
-             <View style={styles.vitalsGrid}>
-  {/* Row 1 */}
-  <View style={styles.vitalRowContainer}>
-    <VitalTile label="Temperature" vitalKey="temperature" value={vitalsData.temperature} />
-    <VitalTile label="SPO₂" vitalKey="spo2" value={vitalsData.spo2} />
-    <VitalTile label="Blood Pressure" vitalKey="bp" value={vitalsData.bp} />
-  </View>
-  
-  {/* Row 2 */}
-  <View style={styles.vitalRowContainer}>
-    <VitalTile label="Respiration" vitalKey="respiration" value={vitalsData.respiration} />
-    <VitalTile label="Heart Rate" vitalKey="heartRate" value={vitalsData.heartRate} />
-    <VitalTile label="Weight" vitalKey="weight" value={vitalsData.weight} />
-  </View>
-  
-  {/* Row 3 */}
-  <View style={styles.vitalRowContainer}>
-    <VitalTile label="Height" vitalKey="height" value={vitalsData.height} />
-    <VitalTile label="BMI" vitalKey="bmi" value={vitalsData.bmi} />
-    {/* Empty space for alignment */}
-    <View style={styles.emptyVitalTile} />
-  </View>
-</View>
+              <View style={styles.vitalsGrid}>
+                {/* Row 1 */}
+                <View style={styles.vitalRowContainer}>
+                  <VitalTile label="Temperature" vitalKey="temperature" value={vitalsData.temperature} />
+                  <VitalTile label="SPO₂" vitalKey="spo2" value={vitalsData.spo2} />
+                  <VitalTile label="Blood Pressure" vitalKey="bp" value={vitalsData.bp} />
+                </View>
+
+                {/* Row 2 */}
+                <View style={styles.vitalRowContainer}>
+                  <VitalTile label="Respiration" vitalKey="respiration" value={vitalsData.respiration} />
+                  <VitalTile label="Heart Rate" vitalKey="heartRate" value={vitalsData.heartRate} />
+                  <VitalTile label="Weight" vitalKey="weight" value={vitalsData.weight} />
+                </View>
+
+                {/* Row 3 */}
+                <View style={styles.vitalRowContainer}>
+                  <VitalTile label="Height" vitalKey="height" value={vitalsData.height} />
+                  <VitalTile label="BMI" vitalKey="bmi" value={vitalsData.bmi} />
+                  {/* Empty space for alignment */}
+                  <View style={styles.emptyVitalTile} />
+                </View>
+              </View>
 
             </Animated.View>
           )}
 
           <Animated.View
-             pointerEvents="box-none"
+            pointerEvents="box-none"
             style={[
-              
+
               styles.modalCard,
               {
                 opacity: opacityAnim,
@@ -957,7 +966,7 @@ const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
                   { scale: scaleAnim },
                   { translateY: translateYAnim },
                   // { translateY: modalExtraShiftWhenVitals },
-                     { translateY: translateYAnim },
+                  { translateY: translateYAnim },
                 ],
               },
             ]}
@@ -1097,25 +1106,25 @@ const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
                       {selectedPatient.diagnosis}
                     </Text>
                   </View>
-                <View style={styles.infoTile}>
-  <Text style={styles.infoLabel}>Doctor</Text>
-  <Text style={styles.infoValue}>
-    {selectedPatient.doctorName}
-  </Text>
-</View>
+                  <View style={styles.infoTile}>
+                    <Text style={styles.infoLabel}>Doctor</Text>
+                    <Text style={styles.infoValue}>
+                      {selectedPatient.doctorName}
+                    </Text>
+                  </View>
 
-<View style={[styles.infoTile, styles.rxNotesButtonContainer]}>
-  <TouchableOpacity
-    style={styles.rxNotesButton}
-    activeOpacity={0.8}
-    onPress={goToRxNotes}
+                  <View style={[styles.infoTile, styles.rxNotesButtonContainer]}>
+                    <TouchableOpacity
+                      style={styles.rxNotesButton}
+                      activeOpacity={0.8}
+                      onPress={goToRxNotes}
 
 
-  >
-    <Icon name="document-text-outline" size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
-    <Text style={styles.rxNotesText}>RxNotes</Text>
-  </TouchableOpacity>
-</View>
+                    >
+                      <Icon name="document-text-outline" size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
+                      <Text style={styles.rxNotesText}>RxNotes</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </ScrollView>
             )}
@@ -1186,7 +1195,38 @@ const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+
+
+      {/* ✅ NEW: Logout Confirmation Modal */}
+      < Modal
+        visible={confirmLogoutVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmLogoutVisible(false)
+        }
+      >
+        <View style={styles.confirmModalBackdrop}>
+          <View style={styles.confirmModalCard}>
+            <Text style={styles.confirmModalMessage}>Are you sure you want to logout?</Text>
+            <View style={styles.confirmModalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalCancel]}
+                onPress={() => setConfirmLogoutVisible(false)}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>No</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalConfirm]}
+                onPress={performLogout}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Yes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal >
+
+    </SafeAreaView >
   );
 }
 
@@ -1217,31 +1257,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-rxNotesButtonContainer: {
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: '#FFFFFF',  // Changed from '#0EA5A4' to white
-  borderColor: '#0EA5A4',     // Changed from '#fff' to teal
-  borderWidth: 2,
-  width: "15%",
-  height: "20%",
-  borderRadius: 15,
-  marginLeft: 4,
-},
+  rxNotesButtonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',  // Changed from '#0EA5A4' to white
+    borderColor: '#0EA5A4',     // Changed from '#fff' to teal
+    borderWidth: 2,
+    width: "15%",
+    height: "20%",
+    borderRadius: 15,
+    marginLeft: 4,
+  },
 
-rxNotesButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  paddingHorizontal: 12,
-  width: '100%',
-},
+  rxNotesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    width: '100%',
+  },
 
-rxNotesText: {
-  fontSize: 14,
-  fontWeight: '600',
-  color: '#0EA5A4',  // Changed from '#fff' to teal
-},
+  rxNotesText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0EA5A4',  // Changed from '#fff' to teal
+  },
   vitalClearBtn: {
     width: 18,
     height: 18,
@@ -1442,12 +1482,12 @@ rxNotesText: {
     paddingHorizontal: 8,
   },
   vitalHeaderRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  width: '100%',
-  marginBottom: 4,
-},
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 4,
+  },
 
 
   modalCard: {
@@ -1701,13 +1741,13 @@ rxNotesText: {
     textTransform: 'uppercase',
   },
 
- vitalValue: {
+  vitalValue: {
     fontSize: 15,
     fontWeight: '700',
     color: '#0F172A',
     marginTop: 4,
   },
-  
+
   vitalUnit: {
     fontSize: 12,
     fontWeight: '400',
@@ -1788,13 +1828,13 @@ rxNotesText: {
   vitalsGrid: {
     width: '100%',
   },
-  
+
   vitalRowContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  
+
   vitalTile: {
     width: '31%', // 3 per row with small gaps
     backgroundColor: '#F8FAFC',
@@ -1805,27 +1845,85 @@ rxNotesText: {
     borderColor: '#E2E8F0',
     alignItems: 'flex-start',
   },
-  
+
   emptyVitalTile: {
     width: '31%',
     // Invisible placeholder for alignment
   },
   // Add ONLY these 3 new styles:
-modalsContainer: {
-  width: '94%',
-  alignItems: 'center',
-  maxHeight: '85%',
-},
+  modalsContainer: {
+    width: '94%',
+    alignItems: 'center',
+    maxHeight: '85%',
+  },
 
-modalsContainerWithVitals: {
-  // Keep this empty for now
-},
+  modalsContainerWithVitals: {
+    // Keep this empty for now
+  },
 
-vitalsCloseButton: {
-  position: 'absolute',
-  top: 8,
-  right: 8,
-  padding: 6,
-  zIndex: 20,
-},
+  vitalsCloseButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    padding: 6,
+    zIndex: 20,
+  },
+
+  // ✅ NEW: Confirmation Modal Styles (Matched with FormImageEditor)
+  confirmModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)', // dim background
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  confirmModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  confirmModalMessage: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  confirmModalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  confirmModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 6,
+  },
+  confirmModalCancel: {
+    backgroundColor: '#F3F4F6', // light gray
+  },
+  confirmModalConfirm: {
+    backgroundColor: '#0EA5A4', // teal
+  },
+  confirmModalButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  confirmModalCancelText: {
+    color: '#374151',
+  },
+  confirmModalConfirmText: {
+    color: '#ffffff',
+  },
 });
