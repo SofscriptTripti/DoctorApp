@@ -231,10 +231,12 @@ function DraggableVoiceText({
   const startPosRef = useRef({ x: note.x, y: note.y });
   const lastTapRef = useRef(0);
 
-  const sizeStartRef = useRef<{ width: number; height: number }>(
+  const sizeStartRef = useRef<{ width: number; height: number; x: number; y: number }>(
     {
       width: currentWidthRef.current,
       height: currentHeightRef.current,
+      x: note.x,
+      y: note.y,
     }
   );
 
@@ -459,6 +461,8 @@ function DraggableVoiceText({
         sizeStartRef.current = {
           width: currentWidthRef.current,
           height: currentHeightRef.current,
+          x: currentPosRef.current.x,
+          y: currentPosRef.current.y,
         };
       },
 
@@ -467,6 +471,8 @@ function DraggableVoiceText({
 
         let newWidth = sizeStartRef.current.width;
         let newHeight = sizeStartRef.current.height;
+        let newX = currentPosRef.current.x;
+        let newY = currentPosRef.current.y;
 
         const scale = pageScaleRef.current || 1;
 
@@ -479,6 +485,13 @@ function DraggableVoiceText({
             MIN_WIDTH,
             maxWidth
           );
+
+          // If resizing from left, we need to adjust X to keep right side stationary
+          if (opts.signX === -1) {
+            const widthDifference = newWidth - sizeStartRef.current.width;
+            newX = sizeStartRef.current.x - widthDifference; // Move X left by the amount width increased
+            // clamp X?
+          }
         }
 
         if (opts.signY !== 0) {
@@ -488,10 +501,25 @@ function DraggableVoiceText({
             MIN_HEIGHT,
             maxHeight
           );
+
+          // If resizing from top, we need to adjust Y to keep bottom side stationary
+          if (opts.signY === -1) {
+            const heightDifference = newHeight - sizeStartRef.current.height;
+            newY = sizeStartRef.current.y - heightDifference;
+          }
         }
 
         widthAnim.setValue(newWidth);
         heightAnim.setValue(newHeight);
+
+        // Also update position if changed
+        if (newX !== currentPosRef.current.x || newY !== currentPosRef.current.y) {
+          pan.setValue({ x: newX, y: newY });
+          // We don't update currentPosRef here to avoid drift or loops, 
+          // but createResizePan uses sizeStartRef and startPosRef presumably?
+          // Wait, sizeStartRef captures width/height. We need x/y start ref?
+        }
+
         currentWidthRef.current = newWidth;
         currentHeightRef.current = newHeight;
       },
@@ -499,25 +527,78 @@ function DraggableVoiceText({
       onPanResponderRelease: () => {
         if (!writingEnabled) return;
 
+        // Finalize values
+        const finalWidth = currentWidthRef.current;
+        const finalHeight = currentHeightRef.current;
+
+        // Use the animated value for X/Y which tracks the visual position
+        // currentPosRef was NOT updated in move for optimization in my proposed change above,
+        // but pan.setValue was called. We should read from pan or track it.
+        // Actually, let's track newX/newY in a ref or just recalculate.
+        // Better to be consistent.
+
+        // Let's recalculate final X/Y based on the final Width/Height change if necessary.
+        // Or simply enable onPositionChange call.
+
+        // Retrieve final X/Y from pan listener or calculate? 
+        // pan is Animated.ValueXY.
+        // Accessing value synchronously is tricky without a listener.
+        // Re-calculate:
+        let finalX = currentPosRef.current.x;
+        let finalY = currentPosRef.current.y;
+
+        if (opts.signX === -1) {
+          const widthDifference = finalWidth - sizeStartRef.current.width;
+          finalX = sizeStartRef.current.x - widthDifference;
+        }
+        if (opts.signY === -1) {
+          const heightDifference = finalHeight - sizeStartRef.current.height;
+          finalY = sizeStartRef.current.y - heightDifference;
+        }
+
         onBoxSizeChange(
           note.id,
-          currentWidthRef.current,
-          currentHeightRef.current
+          finalWidth,
+          finalHeight
         );
+        onPositionChange(note.id, finalX, finalY);
 
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
+
+        // Update currentRefs for next interaction
+        currentPosRef.current = { x: finalX, y: finalY };
       },
 
       onPanResponderTerminate: () => {
         if (!writingEnabled) return;
+
+        // Revert or commit? Usually commit what we have.
+        const finalWidth = currentWidthRef.current;
+        const finalHeight = currentHeightRef.current;
+
+        let finalX = currentPosRef.current.x;
+        let finalY = currentPosRef.current.y;
+
+        if (opts.signX === -1) {
+          const widthDifference = finalWidth - sizeStartRef.current.width;
+          finalX = sizeStartRef.current.x - widthDifference;
+        }
+        if (opts.signY === -1) {
+          const heightDifference = finalHeight - sizeStartRef.current.height;
+          finalY = sizeStartRef.current.y - heightDifference;
+        }
+
         onBoxSizeChange(
           note.id,
-          currentWidthRef.current,
-          currentHeightRef.current
+          finalWidth,
+          finalHeight
         );
+        onPositionChange(note.id, finalX, finalY);
+
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
+        currentPosRef.current = { x: finalX, y: finalY };
       },
     });
   };
@@ -912,11 +993,15 @@ function DraggableImageSticker({
 }) {
   const DEFAULT_WIDTH = 140;
   const DEFAULT_HEIGHT = 90;
-  const MIN_SCALE = 0.5;
-  const MAX_SCALE = 3;
+  const RATIO = DEFAULT_WIDTH / DEFAULT_HEIGHT;
+  const MIN_WIDTH = 40;
 
   const IMAGE_WIDTH = SCREEN_W;
   const IMAGE_HEIGHT = PAGE_HEIGHT;
+
+  // Calculate initial dimensions based on props
+  const initWidth = sticker.width ?? (DEFAULT_WIDTH * (sticker.scale ?? 1));
+  const initHeight = sticker.height ?? (DEFAULT_HEIGHT * (sticker.scale ?? 1));
 
   const currentPosRef = useRef<{ x: number; y: number }>(
     {
@@ -929,18 +1014,20 @@ function DraggableImageSticker({
     new Animated.ValueXY({ x: sticker.x, y: sticker.y })
   ).current;
 
-  const scaleAnim = useRef(new Animated.Value(sticker.scale ?? 1)).current;
+  // We animate width/height directly instead of scale
+  const widthAnim = useRef(new Animated.Value(initWidth)).current;
+  const heightAnim = useRef(new Animated.Value(initHeight)).current;
 
   const currentSizeRef = useRef<{ width: number; height: number }>(
     {
-      width: sticker.width ?? DEFAULT_WIDTH,
-      height: sticker.height ?? DEFAULT_HEIGHT,
+      width: initWidth,
+      height: initHeight,
     }
   );
 
   const startPosRef = useRef({ x: sticker.x, y: sticker.y });
+  const startSizeRef = useRef({ width: initWidth, height: initHeight, x: sticker.x, y: sticker.y });
   const lastTapRef = useRef(0);
-  const scaleStartRef = useRef(sticker.scale ?? 1);
 
   const isResizingRef = useRef(false);
 
@@ -950,56 +1037,38 @@ function DraggableImageSticker({
   }, [pageScale]);
 
   useEffect(() => {
-    if (currentPosRef.current.x !== sticker.x || currentPosRef.current.y !== sticker.y) {
+    // Sync external prop changes
+    if (Math.abs(currentPosRef.current.x - sticker.x) > 0.1 || Math.abs(currentPosRef.current.y - sticker.y) > 0.1) {
       pan.setValue({ x: sticker.x, y: sticker.y });
       currentPosRef.current = { x: sticker.x, y: sticker.y };
     }
 
-    if (scaleStartRef.current !== sticker.scale) {
-      scaleAnim.setValue(sticker.scale ?? 1);
-      scaleStartRef.current = sticker.scale ?? 1;
-    }
+    const targetW = sticker.width ?? (DEFAULT_WIDTH * (sticker.scale ?? 1));
+    const targetH = sticker.height ?? (DEFAULT_HEIGHT * (sticker.scale ?? 1));
 
-    if (currentSizeRef.current.width !== (sticker.width ?? DEFAULT_WIDTH) ||
-      currentSizeRef.current.height !== (sticker.height ?? DEFAULT_HEIGHT)) {
-      currentSizeRef.current = {
-        width: sticker.width ?? DEFAULT_WIDTH,
-        height: sticker.height ?? DEFAULT_HEIGHT,
-      };
+    if (Math.abs(currentSizeRef.current.width - targetW) > 0.1) {
+      widthAnim.setValue(targetW);
+      heightAnim.setValue(targetH);
+      currentSizeRef.current = { width: targetW, height: targetH };
     }
-  }, [sticker.x, sticker.y, sticker.scale, sticker.width, sticker.height, pan, scaleAnim]);
+  }, [sticker.x, sticker.y, sticker.scale, sticker.width, sticker.height, pan, widthAnim, heightAnim]);
 
   const dragPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: (evt) => {
-        if (!writingEnabled) return false;
-        if (isResizingRef.current) return false;
-        return true;
-      },
-      onMoveShouldSetPanResponder: (evt) => {
-        if (!writingEnabled) return false;
-        if (isResizingRef.current) return false;
-        return true;
-      },
+      onStartShouldSetPanResponder: () => writingEnabled && !isResizingRef.current,
+      onMoveShouldSetPanResponder: () => writingEnabled && !isResizingRef.current,
 
       onPanResponderGrant: () => {
         if (!writingEnabled) return;
         try {
           const v = (pan as any).__getValue?.();
-          if (v && typeof v.x === 'number' && typeof v.y === 'number') {
-            startPosRef.current = { x: v.x, y: v.y };
-          } else {
-            startPosRef.current = { ...currentPosRef.current };
-          }
+          if (v) startPosRef.current = { x: v.x, y: v.y };
         } catch (e) {
           startPosRef.current = { ...currentPosRef.current };
         }
       },
 
-      onPanResponderMove: (
-        _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
-      ) => {
+      onPanResponderMove: (_evt, gestureState) => {
         if (!writingEnabled) return;
         const scale = pageScaleRef.current || 1;
         let nx = startPosRef.current.x + gestureState.dx / scale;
@@ -1018,116 +1087,122 @@ function DraggableImageSticker({
       onPanResponderRelease: (_evt, gestureState) => {
         if (!writingEnabled) return;
 
-        const dx = gestureState.dx;
-        const dy = gestureState.dy;
-        const moveDist = Math.sqrt(dx * dx + dy * dy);
-
-        const now = Date.now();
-        const delta = now - lastTapRef.current;
-        lastTapRef.current = now;
-
-        const isTap = moveDist < 5 &&
-          Math.abs(gestureState.vx) < 0.3 &&
-          Math.abs(gestureState.vy) < 0.3;
+        const moveDist = Math.sqrt(gestureState.dx * gestureState.dx + gestureState.dy * gestureState.dy);
+        const isTap = moveDist < 5 && Math.abs(gestureState.vx) < 0.3 && Math.abs(gestureState.vy) < 0.3;
 
         const { x: finalX, y: finalY } = currentPosRef.current;
-
-        if (isTap && delta < 280) {
-          onPositionChange(sticker.id, finalX, finalY);
-          if (writingEnabled) {
-            onToggleEdit(sticker.id);
-          }
-          return;
-        }
-
         onPositionChange(sticker.id, finalX, finalY);
+
+        const now = Date.now();
+        if (isTap && (now - lastTapRef.current) < 280) {
+          onToggleEdit(sticker.id);
+        }
+        lastTapRef.current = now;
       },
-
-      onPanResponderTerminate: (_evt, gestureState) => {
-        if (!writingEnabled) return;
-        const scale = pageScaleRef.current || 1;
-        let nx = startPosRef.current.x + gestureState.dx / scale;
-        let ny = startPosRef.current.y + gestureState.dy / scale;
-
-        const maxX = IMAGE_WIDTH - currentSizeRef.current.width - 5;
-        const maxY = IMAGE_HEIGHT - currentSizeRef.current.height - 5;
-
-        nx = clamp(nx, 5, maxX);
-        ny = clamp(ny, 5, maxY);
-
-        pan.setValue({ x: nx, y: ny });
-        currentPosRef.current = { x: nx, y: ny };
-        onPositionChange(sticker.id, nx, ny);
+      onPanResponderTerminate: () => {
+        const { x, y } = currentPosRef.current;
+        onPositionChange(sticker.id, x, y);
       },
     })
   ).current;
 
+  // Resizing logic with Aspect Ratio Lock + Position Compensation
   const createResizePan = (opts: {
     signX: -1 | 0 | 1;
     signY: -1 | 0 | 1;
   }) => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: (evt) => {
-        if (!writingEnabled) return false;
-        isResizingRef.current = true;
-        return true;
-      },
-      onMoveShouldSetPanResponder: (evt) => {
-        if (!writingEnabled) return false;
-        isResizingRef.current = true;
-        return true;
-      },
+      onStartShouldSetPanResponder: () => writingEnabled,
+      onMoveShouldSetPanResponder: () => writingEnabled,
 
       onPanResponderGrant: () => {
         if (!writingEnabled) return;
-        scaleStartRef.current = sticker.scale ?? 1;
+        isResizingRef.current = true;
+        startSizeRef.current = {
+          width: currentSizeRef.current.width,
+          height: currentSizeRef.current.height,
+          x: currentPosRef.current.x,
+          y: currentPosRef.current.y
+        };
       },
 
-      onPanResponderMove: (_evt: GestureResponderEvent, gestureState) => {
+      onPanResponderMove: (_evt, gestureState) => {
         if (!writingEnabled) return;
-        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
-        let newScale = scaleStartRef.current * factor;
+        const scale = pageScaleRef.current || 1;
 
-        const maxWidthScale = (IMAGE_WIDTH - currentPosRef.current.x - 10) / DEFAULT_WIDTH;
-        const maxHeightScale = (IMAGE_HEIGHT - currentPosRef.current.y - 10) / DEFAULT_HEIGHT;
-        const maxScaleByBoundary = Math.min(maxWidthScale, maxHeightScale, MAX_SCALE);
+        // Calculate raw change based on primary sign
+        // We prioritize the axis that matches the sign. 
+        // For corners (both signs non-zero), we can take projection or max.
+        // Simple accurate approach: Use X change to drive Width, then derive Height from ratio.
 
-        if (newScale < MIN_SCALE) newScale = MIN_SCALE;
-        if (newScale > maxScaleByBoundary) newScale = maxScaleByBoundary;
+        let dx = (gestureState.dx / scale) * opts.signX;
+        let dy = (gestureState.dy / scale) * opts.signY;
 
-        scaleAnim.setValue(newScale);
+        // Use the larger delta to drive resizing for better responsiveness? 
+        // Or just X? X is usually fine for aspect ratio resizing.
+        // Let's take the max of dx/dy to allow "pulling" in either direction
+        let delta = dx > dy ? dx : dy;
+        // BUT if signX is 0 (Top/Bottom handle), we must use dy. 
+        if (opts.signX !== 0 && opts.signY !== 0) {
+          // Diagonal - use average or max? Max feels best.
+          delta = Math.max(dx, dy);
+        } else if (opts.signX !== 0) {
+          delta = dx;
+        } else {
+          delta = dy;
+        }
+
+        let newWidth = startSizeRef.current.width + delta;
+        // Enforce aspect ratio
+        // If we are resizing Height-only? Stickers are aspect locked usually. 
+        // Assuming locked ratio for stickers:
+        let newHeight = newWidth / RATIO;
+
+        if (newWidth < MIN_WIDTH) {
+          newWidth = MIN_WIDTH;
+          newHeight = newWidth / RATIO;
+        }
+
+        // Position Compensation
+        let newX = startSizeRef.current.x;
+        let newY = startSizeRef.current.y;
+
+        if (opts.signX === -1) {
+          newX = startSizeRef.current.x - (newWidth - startSizeRef.current.width);
+        }
+        // If resizing Top-Right, Y needs to shift by height difference IF aspect ratio forces height change?
+        // YES. If width changes, height changes. If we are dragging Top handle (signY=-1), Y must shift.
+        if (opts.signY === -1) {
+          newY = startSizeRef.current.y - (newHeight - startSizeRef.current.height);
+        }
+
+        widthAnim.setValue(newWidth);
+        heightAnim.setValue(newHeight);
+        pan.setValue({ x: newX, y: newY });
+
+        currentSizeRef.current = { width: newWidth, height: newHeight };
+        currentPosRef.current = { x: newX, y: newY };
       },
 
-      onPanResponderRelease: (_evt, gestureState) => {
+      onPanResponderRelease: () => {
         if (!writingEnabled) return;
-        const factor = 1 + (gestureState.dx + gestureState.dy) / 220;
-        let newScale = scaleStartRef.current * factor;
+        const { width, height } = currentSizeRef.current;
+        const { x, y } = currentPosRef.current;
 
-        const maxWidthScale = (IMAGE_WIDTH - currentPosRef.current.x - 10) / DEFAULT_WIDTH;
-        const maxHeightScale = (IMAGE_HEIGHT - currentPosRef.current.y - 10) / DEFAULT_HEIGHT;
-        const maxScaleByBoundary = Math.min(maxWidthScale, maxHeightScale, MAX_SCALE);
-
-        if (newScale < MIN_SCALE) newScale = MIN_SCALE;
-        if (newScale > maxScaleByBoundary) newScale = maxScaleByBoundary;
-
-        const newWidth = DEFAULT_WIDTH * newScale;
-        const newHeight = DEFAULT_HEIGHT * newScale;
-
-        onSizeChange(sticker.id, newWidth, newHeight);
+        onSizeChange(sticker.id, width, height);
+        onPositionChange(sticker.id, x, y);
         isResizingRef.current = false;
       },
-
       onPanResponderTerminate: () => {
-        if (!writingEnabled) return;
-        const newWidth = DEFAULT_WIDTH * (sticker.scale ?? 1);
-        const newHeight = DEFAULT_HEIGHT * (sticker.scale ?? 1);
-        onSizeChange(sticker.id, newWidth, newHeight);
         isResizingRef.current = false;
-      },
+      }
     });
   };
 
-  const resizePan = useRef(createResizePan({ signX: 1, signY: 1 })).current;
+  const tlResizePan = useRef(createResizePan({ signX: -1, signY: -1 })).current;
+  const trResizePan = useRef(createResizePan({ signX: 1, signY: -1 })).current;
+  const blResizePan = useRef(createResizePan({ signX: -1, signY: 1 })).current;
+  const brResizePan = useRef(createResizePan({ signX: 1, signY: 1 })).current;
 
   const stickerImageSource = sticker.stickerType === 'doctor'
     ? DOCTOR_STICKER_SOURCE
@@ -1141,7 +1216,7 @@ function DraggableImageSticker({
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
-            { scale: scaleAnim },
+            // NO SCALE TRANSFORM - handled by width/height
           ],
         },
       ]}
@@ -1157,55 +1232,41 @@ function DraggableImageSticker({
         </TouchableOpacity>
       )}
 
-      <View
+      <Animated.View
         {...dragPan.panHandlers}
         style={[
           styles.stickerHitBox,
           isEditing && writingEnabled && { borderWidth: 1, borderColor: '#0EA5A4' },
+          { width: widthAnim, height: heightAnim }
         ]}
       >
         <Image
           source={stickerImageSource}
           style={[
             styles.stickerImage,
-            {
-              width: currentSizeRef.current.width,
-              height: currentSizeRef.current.height,
-            },
-          ]}
+            { width: '100%', height: '100%' }
+          ]} // Fill the animated wrapper
           resizeMode="contain"
         />
-      </View>
+      </Animated.View>
 
       {isEditing && writingEnabled && (
         <>
           <View
-            style={[
-              styles.stickerResizeHandle,
-              { top: -8, left: -8, borderColor: '#0EA5A4' },
-            ]}
-            {...resizePan.panHandlers}
+            style={[styles.stickerResizeHandle, { top: -8, left: -8, borderColor: '#0EA5A4' }]}
+            {...tlResizePan.panHandlers}
           />
           <View
-            style={[
-              styles.stickerResizeHandle,
-              { top: -8, right: -8, borderColor: '#0EA5A4' },
-            ]}
-            {...resizePan.panHandlers}
+            style={[styles.stickerResizeHandle, { top: -8, right: -8, borderColor: '#0EA5A4' }]}
+            {...trResizePan.panHandlers}
           />
           <View
-            style={[
-              styles.stickerResizeHandle,
-              { bottom: -8, left: -8, borderColor: '#0EA5A4' },
-            ]}
-            {...resizePan.panHandlers}
+            style={[styles.stickerResizeHandle, { bottom: -8, left: -8, borderColor: '#0EA5A4' }]}
+            {...blResizePan.panHandlers}
           />
           <View
-            style={[
-              styles.stickerResizeHandle,
-              { bottom: -8, right: -8, borderColor: '#0EA5A4' },
-            ]}
-            {...resizePan.panHandlers}
+            style={[styles.stickerResizeHandle, { bottom: -8, right: -8, borderColor: '#0EA5A4' }]}
+            {...brResizePan.panHandlers}
           />
         </>
       )}
