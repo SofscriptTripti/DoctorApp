@@ -30,6 +30,7 @@ import {
   LayoutRectangle,
   Alert,
   FlatList,
+  Pressable,
 } from 'react-native';
 import Feather from "react-native-vector-icons/Feather";
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -241,7 +242,12 @@ function DraggableVoiceText({
   );
 
 
-  const currentFontSize = note.fontSize ?? DEFAULT_FONT_SIZE;
+  const [currentFontSize, setCurrentFontSize] = useState(note.fontSize ?? DEFAULT_FONT_SIZE);
+  const startFontSizeRef = useRef(currentFontSize);
+
+  useEffect(() => {
+    setCurrentFontSize(note.fontSize ?? DEFAULT_FONT_SIZE);
+  }, [note.fontSize]);
 
   const measuredContentSizeRef = useRef<{ w: number; h: number } | null>(null);
   const [measuredFlag, setMeasuredFlag] = useState(0);
@@ -476,6 +482,7 @@ function DraggableVoiceText({
         if (!writingEnabled) return;
         isUserResizingRef.current = true;
         isResizingRef.current = true;
+        startFontSizeRef.current = currentFontSize;
         sizeStartRef.current = {
           width: currentWidthRef.current,
           height: currentHeightRef.current,
@@ -533,9 +540,15 @@ function DraggableVoiceText({
         // Also update position if changed
         if (newX !== currentPosRef.current.x || newY !== currentPosRef.current.y) {
           pan.setValue({ x: newX, y: newY });
-          // We don't update currentPosRef here to avoid drift or loops, 
-          // but createResizePan uses sizeStartRef and startPosRef presumably?
-          // Wait, sizeStartRef captures width/height. We need x/y start ref?
+        }
+
+        // 🔹 Auto-scale Font if dragging CORNER (both X and Y change)
+        if (opts.signX !== 0 && opts.signY !== 0) {
+          const heightRatio = newHeight / sizeStartRef.current.height;
+          const newFS = Math.max(MIN_FONT_SIZE, Math.round(startFontSizeRef.current * heightRatio));
+          if (newFS !== currentFontSize) {
+            setCurrentFontSize(newFS);
+          }
         }
 
         currentWidthRef.current = newWidth;
@@ -580,6 +593,10 @@ function DraggableVoiceText({
           finalHeight
         );
         onPositionChange(note.id, finalX, finalY);
+
+        if (opts.signX !== 0 && opts.signY !== 0) {
+          onChangeFontSize(note.id, currentFontSize);
+        }
 
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
@@ -3156,6 +3173,17 @@ export default function FormImageEditor() {
                           resizeMode="contain"
                         />
                       )}
+
+                      {/* 🔹 Dismiss Edit Layer (Transparent) */}
+                      <Pressable
+                        style={StyleSheet.absoluteFill}
+                        onPress={() => {
+                          if (editingNoteId || editingStickerId) {
+                            setEditingNoteId(null);
+                            setEditingStickerId(null);
+                          }
+                        }}
+                      />
 
                       {/* Canvas container */}
                       <View
