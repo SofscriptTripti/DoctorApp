@@ -1401,8 +1401,20 @@ export default function FormImageEditor() {
   );
 
   const scrollRef = useRef<ScrollView | null>(null);
-  const scrollY = useRef(0);
+  // Horizontal scroll tracking
+  const scrollX = useRef(0);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
   const topPadding = Math.max(8, insets.top + 6);
+
+  // Helper to scroll to specific page
+  const scrollToPage = (index: number) => {
+    if (!scrollRef.current) return;
+    const x = index * SCREEN_W;
+    (scrollRef.current as any).scrollTo({ x, y: 0, animated: true });
+    setCurrentPageIndex(index);
+    scrollX.current = x;
+  };
 
   const [scrollEnabled] = useState(false);
 
@@ -1617,17 +1629,10 @@ export default function FormImageEditor() {
   }, [STORAGE_KEY, STORAGE_UI_KEY, route.params, initialStrokesFromParams, IMAGES.length]);
 
   function getCurrentPageIndex() {
-    const CONTENT_TOP_PADDING = Math.max(
-      24,
-      (insets.top ?? 0) + PAGE_SPACING + 8
-    );
-    const effective = Math.max(0, scrollY.current - CONTENT_TOP_PADDING);
+    const effective = Math.max(0, scrollX.current);
     return Math.max(
       0,
-      Math.min(
-        IMAGES.length - 1,
-        Math.round(effective / (PAGE_HEIGHT + PAGE_SPACING))
-      )
+      Math.min(IMAGES.length - 1, Math.round(effective / SCREEN_W))
     );
   }
 
@@ -1998,112 +2003,8 @@ export default function FormImageEditor() {
   const MIN_HANDLE_TOP = HEADER_TOTAL_HEIGHT + (insets.top ?? 0) + 20;
   const MAX_HANDLE_TOP = SCREEN_H - RIGHT_HANDLE_HEIGHT - (insets.bottom ?? 0) - 8;
 
-  const rightTopAnim = useRef(
-    new Animated.Value(MIN_HANDLE_TOP)
-  ).current;
-  const rightStartTopRef = useRef(0);
+  // Vertical sidebar logic REMOVED
 
-  const totalContentHeight =
-    (PAGE_HEIGHT + PAGE_SPACING) * IMAGES.length +
-    CONTENT_TOP_PADDING +
-    CONTENT_BOTTOM_PADDING;
-  const maxScrollY = Math.max(0, totalContentHeight - SCREEN_H);
-
-  const clampRightTop = (val: number) => {
-    const minTop = MIN_HANDLE_TOP;
-    const maxTop = MAX_HANDLE_TOP;
-    return Math.max(minTop, Math.min(maxTop, val));
-  };
-
-  const rightTopToScroll = (top: number) => {
-    const minTop = MIN_HANDLE_TOP;
-    const maxTop = MAX_HANDLE_TOP;
-    const tRange = Math.max(1, maxTop - minTop);
-    const sRange = Math.max(1, maxScrollY);
-    const normalized = Math.max(minTop, Math.min(maxTop, top));
-    const progress = (normalized - minTop) / tRange;
-    return progress * sRange;
-  };
-
-  useEffect(() => {
-    const id = rightTopAnim.addListener(() => { });
-    return () => {
-      try {
-        rightTopAnim.removeListener(id);
-      } catch (e) { }
-    };
-  }, [rightTopAnim]);
-
-  const rightPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (evt: GestureResponderEvent) => {
-        const x = evt.nativeEvent.pageX ?? 0;
-        return x >= SCREEN_W - RIGHT_HANDLE_WIDTH - 8;
-      },
-      onMoveShouldSetPanResponder: (evt: GestureResponderEvent) => {
-        const x = evt.nativeEvent.pageX ?? 0;
-        return x >= SCREEN_W - RIGHT_HANDLE_WIDTH - 8;
-      },
-      onPanResponderGrant: () => {
-        try {
-          rightStartTopRef.current = (rightTopAnim as any).__getValue
-            ? (rightTopAnim as any).__getValue()
-            : MIN_HANDLE_TOP;
-        } catch (e) {
-          rightStartTopRef.current = MIN_HANDLE_TOP;
-        }
-      },
-      onPanResponderMove: (
-        _evt: GestureResponderEvent,
-        gs: PanResponderGestureState
-      ) => {
-        const newTop = clampRightTop(rightStartTopRef.current + gs.dy);
-        rightTopAnim.setValue(newTop);
-        const newScroll = rightTopToScroll(newTop);
-        if (
-          scrollRef.current &&
-          typeof (scrollRef.current as any).scrollTo === 'function'
-        ) {
-          try {
-            (scrollRef.current as any).scrollTo({
-              y: newScroll,
-              animated: false,
-            });
-            scrollY.current = newScroll;
-          } catch (e) { }
-        }
-      },
-      onPanResponderRelease: (_evt, gs) => {
-        const finalTop = clampRightTop(rightStartTopRef.current + gs.dy);
-        Animated.spring(rightTopAnim, {
-          toValue: finalTop,
-          useNativeDriver: false,
-          friction: 8,
-          tension: 50,
-        }).start();
-      },
-      onPanResponderTerminate: () => {
-        Animated.spring(rightTopAnim, {
-          toValue: clampRightTop(rightStartTopRef.current),
-          useNativeDriver: false,
-          friction: 8,
-          tension: 50,
-        }).start();
-      },
-    })
-  ).current;
-
-  const syncRightHandleToScroll = (sY: number) => {
-    const newTop = (sY / maxScrollY) * (MAX_HANDLE_TOP - MIN_HANDLE_TOP) + MIN_HANDLE_TOP;
-    try {
-      const curr = (rightTopAnim as any).__getValue
-        ? (rightTopAnim as any).__getValue()
-        : 0;
-      if (Math.abs(newTop - curr) > 1.5) rightTopAnim.setValue(newTop);
-    } catch (e) {
-      rightTopAnim.setValue(newTop);
-    }
-  };
 
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 3;
@@ -3141,21 +3042,27 @@ export default function FormImageEditor() {
         <ScrollView
           ref={(r) => (scrollRef.current = r)}
           style={{ flex: 1 }}
+          horizontal
+          pagingEnabled
           contentContainerStyle={{
             alignItems: 'center',
-            paddingTop: 8,
+            // No vertical padding needed
           }}
-          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            scrollY.current = e.nativeEvent.contentOffset.y;
-            syncRightHandleToScroll(scrollY.current);
+          onMomentumScrollEnd={(e) => {
+            const x = e.nativeEvent.contentOffset.x;
+            scrollX.current = x;
+            const newIndex = Math.round(x / SCREEN_W);
+            if (newIndex !== currentPageIndex) {
+              setCurrentPageIndex(newIndex);
+            }
           }}
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled={true}
           decelerationRate="fast"
-          overScrollMode="always"
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={!writingEnabled ? true : scrollEnabled}
+          overScrollMode="never"
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={true}
         >
           {IMAGES.length === 0 ? (
             <View style={styles.noImagesContainer}>
@@ -3277,12 +3184,26 @@ export default function FormImageEditor() {
         </ScrollView>
       </View>
 
-      {/* Right scroll handle - NOW STARTS BELOW TOOLS SECTION */}
-      <Animated.View style={[styles.rightHandle, { top: rightTopAnim, right: 6 }]} {...rightPanResponder.panHandlers} pointerEvents="auto">
-        <View style={styles.rightHandleInner}>
-          <View style={styles.rightGrip} />
-        </View>
-      </Animated.View>
+      {/* Navigation Arrows */}
+      {(currentPageIndex > 0) && (
+        <TouchableOpacity
+          style={[styles.navArrow, styles.navArrowLeft]}
+          onPress={() => scrollToPage(currentPageIndex - 1)}
+          disabled={saveStatus === 'saving'}
+        >
+          <Ionicons name="chevron-back" size={32} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {(currentPageIndex < IMAGES.length - 1) && (
+        <TouchableOpacity
+          style={[styles.navArrow, styles.navArrowRight]}
+          onPress={() => scrollToPage(currentPageIndex + 1)}
+          disabled={saveStatus === 'saving'}
+        >
+          <Ionicons name="chevron-forward" size={32} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {/* 🔍 Zoom +/- buttons */}
       <View style={[styles.zoomFabContainer, { bottom: (insets.bottom ?? 0) + 24 + 72 }]}>
@@ -3772,32 +3693,23 @@ const styles = StyleSheet.create({
   thicknessSlider: {
     flex: 1,
   },
-  rightHandle: {
+  navArrow: {
     position: 'absolute',
-    width: 26,
-    height: 100,
-    backgroundColor: 'transparent',
-    zIndex: 60,
-    paddingTop: 40,
-  },
-  rightHandleInner: {
-    flex: 1,
-    backgroundColor: '#266433ff',
-    borderRadius: 12,
+    top: '50%',
+    marginTop: -24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    zIndex: 100,
   },
-  rightGrip: {
-    width: 20,
-    height: 6,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+  navArrowLeft: {
+    left: 10,
+  },
+  navArrowRight: {
+    right: 10,
   },
   voiceFab: {
     position: 'absolute',
