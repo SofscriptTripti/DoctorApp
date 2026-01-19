@@ -296,7 +296,11 @@ function DraggableVoiceText({
   }, [isEditing]);
 
   useEffect(() => {
-    if ((note.boxWidth == null || note.boxHeight == null) && measuredContentSizeRef.current) {
+    // If content measurement changes AND user is NOT currently manually resizing,
+    // we assume we should auto-fit the box to the content.
+    // This supports "default border adopt same enter text height and width"
+    // and allows expansion while typing.
+    if (measuredContentSizeRef.current && !isUserResizingRef.current) {
       const c = measuredContentSizeRef.current;
 
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
@@ -305,13 +309,16 @@ function DraggableVoiceText({
       const autoW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
       const autoH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
 
-      currentWidthRef.current = autoW;
-      currentHeightRef.current = autoH;
-      widthAnim.setValue(autoW);
-      heightAnim.setValue(autoH);
-      onBoxSizeChange(note.id, autoW, autoH);
+      // Only update if dimensions differ significantly to avoid loops
+      if (Math.abs(currentWidthRef.current - autoW) > 2 || Math.abs(currentHeightRef.current - autoH) > 2) {
+        currentWidthRef.current = autoW;
+        currentHeightRef.current = autoH;
+        widthAnim.setValue(autoW);
+        heightAnim.setValue(autoH);
+        onBoxSizeChange(note.id, autoW, autoH);
+      }
     }
-  }, [measuredFlag, note.id, note.boxWidth, note.boxHeight, onBoxSizeChange]);
+  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef]);
 
   const handleContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = {
@@ -446,10 +453,20 @@ function DraggableVoiceText({
     return PanResponder.create({
       onStartShouldSetPanResponder: (evt) => {
         if (!writingEnabled) return false;
-        isResizingRef.current = true;
+        // Check if we hit the handle directly
         return true;
       },
       onMoveShouldSetPanResponder: (evt) => {
+        if (!writingEnabled) return false;
+        return true;
+      },
+      onStartShouldSetPanResponderCapture: (evt) => {
+        if (!writingEnabled) return false;
+        isResizingRef.current = true;
+        // Return true to CAPTURE the touch and prevent parent (drawing) from getting it
+        return true;
+      },
+      onMoveShouldSetPanResponderCapture: (evt) => {
         if (!writingEnabled) return false;
         isResizingRef.current = true;
         return true;
@@ -458,6 +475,7 @@ function DraggableVoiceText({
       onPanResponderGrant: () => {
         if (!writingEnabled) return;
         isUserResizingRef.current = true;
+        isResizingRef.current = true;
         sizeStartRef.current = {
           width: currentWidthRef.current,
           height: currentHeightRef.current,
@@ -865,6 +883,7 @@ function DraggableVoiceText({
               { top: -8, left: -8, borderColor: note.color },
             ]}
             {...tlResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
           <Animated.View
             style={[
@@ -872,6 +891,7 @@ function DraggableVoiceText({
               { top: -8, right: -8, borderColor: note.color },
             ]}
             {...trResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
           <Animated.View
             style={[
@@ -879,6 +899,7 @@ function DraggableVoiceText({
               { bottom: -8, left: -8, borderColor: note.color },
             ]}
             {...blResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
           <Animated.View
             style={[
@@ -886,6 +907,7 @@ function DraggableVoiceText({
               { bottom: -8, right: -8, borderColor: note.color },
             ]}
             {...brResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
 
           <Animated.View
@@ -899,6 +921,7 @@ function DraggableVoiceText({
               },
             ]}
             {...mlResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
           <Animated.View
             style={[
@@ -911,6 +934,7 @@ function DraggableVoiceText({
               },
             ]}
             {...mrResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
           <Animated.View
             style={[
@@ -923,6 +947,7 @@ function DraggableVoiceText({
               },
             ]}
             {...mtResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
           <Animated.View
             style={[
@@ -935,6 +960,7 @@ function DraggableVoiceText({
               },
             ]}
             {...mbResizePan.panHandlers}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           />
         </>
       )}
@@ -955,7 +981,7 @@ function DraggableVoiceText({
               fontSize: currentFontSize,
               textAlign: 'left',
               flexWrap: 'wrap',
-              width: Math.min(SCREEN_W * 0.7, 300),
+
             },
           ]}
           onLayout={(e) => {
@@ -2085,7 +2111,6 @@ export default function FormImageEditor() {
     PanResponder.create({
       onStartShouldSetPanResponder: (evt) => {
         if (editingNoteId || editingStickerId) return false;
-
         const touches = evt.nativeEvent.touches || [];
         const count = touches.length;
         const pageIndex = getCurrentPageIndex();
@@ -2098,7 +2123,6 @@ export default function FormImageEditor() {
 
       onMoveShouldSetPanResponder: (evt) => {
         if (editingNoteId || editingStickerId) return false;
-
         const touches = evt.nativeEvent.touches || [];
         const count = touches.length;
         const pageIndex = getCurrentPageIndex();
@@ -2109,13 +2133,21 @@ export default function FormImageEditor() {
         return false;
       },
 
+      onMoveShouldSetPanResponderCapture: (evt) => {
+        const touches = evt.nativeEvent.touches || [];
+        if (touches.length === 2) {
+          disableDrawingImmediately(true);
+          return true;
+        }
+        return false;
+      },
+
       onPanResponderGrant: (evt) => {
         const touches = evt.nativeEvent.touches || [];
         const pageIndex = getCurrentPageIndex();
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
         if (touches.length === 2) {
-          // IMMEDIATE DISABLE
           disableDrawingImmediately(true);
         }
 
@@ -2134,6 +2166,8 @@ export default function FormImageEditor() {
             startScale: currentScale,
             pageIndex,
           };
+
+
 
           try {
             panStartPerPageRef[pageIndex] = {

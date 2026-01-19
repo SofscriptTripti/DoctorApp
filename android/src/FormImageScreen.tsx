@@ -731,12 +731,7 @@ const FormImageScreen = () => {
           <Text style={styles.footerTxt}>
             Page {index + 1} of {pages.length}
           </Text>
-          {page.overlayData && (
-            <Text style={styles.overlayIndicator}>✓ Overlay Applied</Text>
-          )}
-          {page.overlayExists === false && !page.overlayLoading && (
-            <Text style={styles.noOverlayFooter}>No overlay</Text>
-          )}
+
         </View>
       </View>
     );
