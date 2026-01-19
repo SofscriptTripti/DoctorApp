@@ -574,20 +574,37 @@ export default function FormTypeScreen() {
             <Text style={styles.headerTitle}>Form Types</Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.hmisButton}
-            onPress={() =>
-              navigation.navigate('HMISFormType', {
-                patientName,
-                patientId,
-                patientIP,
-                admissionNo,
-                loginUserId,
-              })
-            }
-          >
-            <Text style={styles.hmisButtonText}>HMIS Report</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={styles.hmisButton}
+              onPress={() =>
+                navigation.navigate('HMISFormType', {
+                  patientName,
+                  patientId,
+                  patientIP,
+                  admissionNo,
+                  loginUserId,
+                })
+              }
+            >
+              <Text style={styles.hmisButtonText}>HMIS Report</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                marginLeft: 12
+              }}
+              onPress={() => navigation.navigate('PatientScreen')}
+            >
+              <Icon name="home" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* CONTENT */}

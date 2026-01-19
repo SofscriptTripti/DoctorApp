@@ -282,7 +282,15 @@ export default function NoOFReport({ navigation }: any) {
         >
           <Icon name="chevron-back" size={22} color="#0F172A" />
         </TouchableOpacity>
-        <View style={{ width: 32 }} />
+
+        <View style={{ flex: 1 }} />
+
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.navigate('PatientScreen')}
+        >
+          <Icon name="home" size={20} color="#0EA5A4" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView

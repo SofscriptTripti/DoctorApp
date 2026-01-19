@@ -57,7 +57,7 @@ type SymptomItem = {
   id: string;
   complaint: string;
   since: string;
-  unit: 'Days' | 'Weeks' |'Months' | 'Years';
+  unit: 'Days' | 'Weeks' | 'Months' | 'Years';
   severity: 'Mild' | 'Moderate' | 'Severe';
   notes: string;
   date: string;
@@ -102,9 +102,9 @@ type RxNotesData = {
 // Investigation Types
 type InvestigationItem = {
   id: string;
-  category: 'Biochemistry' | 'Clinical Pathology' | 'Coagulation' | 'Cytology' | 'Etsa' | 
-            'Endocrinology' | 'Genetics' | 'Haematology' | 'Histopathology' | 'Immunology' | 
-            'Microbiology' | 'Chemotherapy' | 'Radiology' | 'Procedure';
+  category: 'Biochemistry' | 'Clinical Pathology' | 'Coagulation' | 'Cytology' | 'Etsa' |
+  'Endocrinology' | 'Genetics' | 'Haematology' | 'Histopathology' | 'Immunology' |
+  'Microbiology' | 'Chemotherapy' | 'Radiology' | 'Procedure';
   serviceName: string;
   date: string;
   time: string;
@@ -211,7 +211,7 @@ const MONTHS = [
 export default function RxNotes() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  
+
   const { patient, vitals: incomingVitals } = route.params as {
     patient: Patient;
     vitals: Vitals;
@@ -311,10 +311,10 @@ export default function RxNotes() {
   const [activeInfusion, setActiveInfusion] = useState<MedicationInfusionItem | null>(null);
   const [diluentOpen, setDiluentOpen] = useState(false);
   const [calendarView, setCalendarView] = useState<'start' | 'end'>('start');
-  const [markedDates, setMarkedDates] = useState<{[date: string]: any}>({});
+  const [markedDates, setMarkedDates] = useState<{ [date: string]: any }>({});
   const [selectedStartDate, setSelectedStartDate] = useState<string>('');
   const [selectedEndDate, setSelectedEndDate] = useState<string>('');
-  
+
   // Calendar state
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -354,7 +354,7 @@ export default function RxNotes() {
       notes: 'Dry cough, worse at night',
       date: '30-06-2025',
     },
-      {
+    {
       id: '4',
       complaint: 'Fever',
       since: '5',
@@ -396,7 +396,7 @@ export default function RxNotes() {
         type: '',
         date: '01-07-2025',
       },
-       {
+      {
         id: '4',
         code: 'E11.9',
         doctor: 'Dr. Williams',
@@ -404,7 +404,7 @@ export default function RxNotes() {
         type: '',
         date: '01-07-2025',
       },
-       {
+      {
         id: '5',
         code: 'E11.9',
         doctor: 'Dr. Williams',
@@ -438,7 +438,7 @@ export default function RxNotes() {
         type: 'Final',
         date: '22/05/2024',
       },
-       {
+      {
         id: '10',
         code: 'J20.9',
         doctor: 'Dr. Davis',
@@ -446,7 +446,7 @@ export default function RxNotes() {
         type: 'Final',
         date: '14/06/2024',
       },
-       {
+      {
         id: '11',
         code: 'J20.9',
         doctor: 'Dr. Davis',
@@ -468,7 +468,7 @@ export default function RxNotes() {
   const [showAllSymptoms, setShowAllSymptoms] = useState(false);
   const [openTypeDropdownId, setOpenTypeDropdownId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
+
   // ---- Medication Order Table ----
   const [showAllMedOrders, setShowAllMedOrders] = useState(false);
   const [medicationOrderTable, setMedicationOrderTable] = useState([
@@ -510,8 +510,8 @@ export default function RxNotes() {
   // Filtered investigations based on selected category and search
   const filteredInvestigations = selectedInvestigations.filter(item => {
     const matchesSearch = item.serviceName.toLowerCase().includes(investigationSearch.toLowerCase()) ||
-                         item.category.toLowerCase().includes(investigationSearch.toLowerCase());
-    
+      item.category.toLowerCase().includes(investigationSearch.toLowerCase());
+
     if (selectedCategory === 'all') return matchesSearch;
     if (selectedCategory === 'laboratory') {
       return matchesSearch && !['Radiology', 'Procedure'].includes(item.category);
@@ -578,8 +578,8 @@ export default function RxNotes() {
     // Drop Per Minute = (VTBI * drop factor) / time(min)
     const timeInMinutes = time * 60;
     const vtbi = dose + diluentVol;
-    const dropsPerMinute = (timeInMinutes > 0 && dropFactor > 0) 
-      ? ((vtbi * dropFactor) / timeInMinutes).toFixed(2) 
+    const dropsPerMinute = (timeInMinutes > 0 && dropFactor > 0)
+      ? ((vtbi * dropFactor) / timeInMinutes).toFixed(2)
       : '0';
 
     return {
@@ -605,20 +605,20 @@ export default function RxNotes() {
   }, [activeInfusion?.dose, activeInfusion?.diluentVolume, activeInfusion?.time, activeInfusion?.dropFactor, calculateInfusionValues]);
 
   // Refs
-    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const appStateRef = useRef(AppState.currentState);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const appStateRef = useRef(AppState.currentState);
 
   // Calculate duration between dates
   const calculateDuration = (startDateStr: string, endDateStr: string): string => {
     if (!startDateStr || !endDateStr) return '';
-    
+
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
-    
+
     // Calculate difference in days
     const timeDiff = Math.abs(endDate.getTime() - startDate.getTime());
     const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-    
+
     // Format duration
     if (daysDiff === 1) {
       return '1 day';
@@ -642,7 +642,7 @@ export default function RxNotes() {
       }
     }
   };
-  
+
   // Handle date selection for calendar
   const handleDateSelect = (day: any) => {
     if (calendarView === 'start') {
@@ -659,12 +659,12 @@ export default function RxNotes() {
       setCalendarView('end');
     } else {
       setSelectedEndDate(day.dateString);
-      
+
       // Create range marking
-      const newMarkedDates: {[date: string]: any} = {};
+      const newMarkedDates: { [date: string]: any } = {};
       const start = new Date(selectedStartDate);
       const end = new Date(day.dateString);
-      
+
       // Mark start date
       newMarkedDates[selectedStartDate] = {
         selected: true,
@@ -673,7 +673,7 @@ export default function RxNotes() {
         color: '#0EA5A4',
         textColor: 'white'
       };
-      
+
       // Mark end date
       newMarkedDates[day.dateString] = {
         selected: true,
@@ -682,11 +682,11 @@ export default function RxNotes() {
         color: '#0EA5A4',
         textColor: 'white'
       };
-      
+
       // Mark dates in between
       const current = new Date(start);
       current.setDate(current.getDate() + 1);
-      
+
       while (current < end) {
         const dateStr = current.toISOString().split('T')[0];
         newMarkedDates[dateStr] = {
@@ -697,7 +697,7 @@ export default function RxNotes() {
         };
         current.setDate(current.getDate() + 1);
       }
-      
+
       setMarkedDates(newMarkedDates);
     }
   };
@@ -706,14 +706,14 @@ export default function RxNotes() {
   const saveCustomDuration = () => {
     if (selectedStartDate && selectedEndDate) {
       const calculatedDuration = calculateDuration(selectedStartDate, selectedEndDate);
-      
+
       if (activeMedicine) {
         setActiveMedicine({
           ...activeMedicine,
           duration: calculatedDuration
         });
       }
-      
+
       setShowDateModal(false);
       resetCalendar();
     }
@@ -788,10 +788,10 @@ export default function RxNotes() {
         ...formData,
         lastSaved: new Date().toISOString(),
       };
-      
+
       console.log('Saving draft:', draftData);
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       setHasUnsavedChanges(false);
       return true;
     } catch (error) {
@@ -817,12 +817,12 @@ export default function RxNotes() {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
-      
+
       saveTimeoutRef.current = setTimeout(() => {
         saveDraft();
       }, 2000);
     }
-    
+
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -846,8 +846,8 @@ export default function RxNotes() {
   // Handle app state changes
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      if (appStateRef.current.match(/inactive|background/) && 
-          nextAppState === 'active') {
+      if (appStateRef.current.match(/inactive|background/) &&
+        nextAppState === 'active') {
         loadDraft();
       } else if (nextAppState.match(/inactive|background/)) {
         if (hasUnsavedChanges) {
@@ -954,7 +954,7 @@ export default function RxNotes() {
     };
 
     updateField('symptoms', [newItem, ...formData.symptoms]);
-    
+
     // Reset form
     setNewSymptom({
       complaint: '',
@@ -963,7 +963,7 @@ export default function RxNotes() {
       severity: 'Mild',
       notes: '',
     });
-    
+
     // Reset to show only first 3 when adding new symptom
     setShowAllSymptoms(false);
   };
@@ -975,7 +975,7 @@ export default function RxNotes() {
 
   // Update symptom
   const updateSymptom = (id: string, field: keyof SymptomItem, value: string) => {
-    updateField('symptoms', 
+    updateField('symptoms',
       formData.symptoms.map(s =>
         s.id === id ? { ...s, [field]: value } : s
       )
@@ -1001,7 +1001,7 @@ export default function RxNotes() {
 
   // Update diagnosis type
   const updateDiagnosisType = (id: string, newType: 'Provisional' | 'Final') => {
-    updateField('currentDiagnosis', 
+    updateField('currentDiagnosis',
       formData.currentDiagnosis.map(d =>
         d.id === id ? { ...d, type: newType } : d
       )
@@ -1021,73 +1021,73 @@ export default function RxNotes() {
   // Validate medication order form
   const validateMedicationOrder = () => {
     if (!activeMedicine) return false;
-    
+
     const { name, dose, unit, frequency, duration } = activeMedicine;
-    
+
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Medicine name is required');
       return false;
     }
-    
+
     if (!dose.trim()) {
       Alert.alert('Validation Error', 'Dose is required');
       return false;
     }
-    
+
     if (!unit.trim()) {
       Alert.alert('Validation Error', 'Unit is required');
       return false;
     }
-    
+
     if (!frequency.trim()) {
       Alert.alert('Validation Error', 'Frequency is required');
       return false;
     }
-    
+
     if (!duration.trim()) {
       Alert.alert('Validation Error', 'Duration is required');
       return false;
     }
-    
+
     return true;
   };
 
   // Validate medication infusion form
   const validateMedicationInfusion = () => {
     if (!activeInfusion) return false;
-    
+
     const { name, dose, diluent, diluentVolume, time, dropFactor } = activeInfusion;
-    
+
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Infusion name is required');
       return false;
     }
-    
+
     if (!dose.trim()) {
       Alert.alert('Validation Error', 'Dose is required');
       return false;
     }
-    
+
     if (!diluent.trim()) {
       Alert.alert('Validation Error', 'Diluent is required');
       return false;
     }
-    
+
     if (!diluentVolume.trim()) {
       Alert.alert('Validation Error', 'Diluent volume is required');
       return false;
     }
-    
+
     if (!time.trim()) {
       Alert.alert('Validation Error', 'Time is required');
       return false;
     }
-    
+
     if (!dropFactor.trim()) {
       Alert.alert('Validation Error', 'Drop factor is required');
       return false;
     }
-    
+
     return true;
   };
 
@@ -1096,7 +1096,7 @@ export default function RxNotes() {
     if (!validateMedicationOrder()) {
       return;
     }
-    
+
     if (activeMedicine) {
       // Format the medication for table display
       const newMedication = {
@@ -1107,7 +1107,7 @@ export default function RxNotes() {
         duration: activeMedicine.duration,
         note: activeMedicine.note || '-',
       };
-      
+
       setMedicationOrderTable(prev => [newMedication, ...prev]);
       setActiveMedicine(null);
       setSelectedRecentMed(null);
@@ -1120,7 +1120,7 @@ export default function RxNotes() {
     if (!validateMedicationInfusion()) {
       return;
     }
-    
+
     if (activeInfusion) {
       // Format the infusion for table display
       const newInfusion = {
@@ -1132,7 +1132,7 @@ export default function RxNotes() {
         vol: `${activeInfusion.totalVolume} mL`,
         drops: `${activeInfusion.dropsPerMinute} gtt/min`,
       };
-      
+
       setMedicationInfusionTable(prev => [newInfusion, ...prev]);
       setActiveInfusion(null);
       setSelectedRecentInfusion(null);
@@ -1434,12 +1434,25 @@ export default function RxNotes() {
           <Icon name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Rx Notes</Text>
-        <View style={styles.headerRight}>
+        <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', width: 'auto', gap: 12 }]}>
           {hasUnsavedChanges && (
             <View style={styles.draftBadge}>
               <Text style={styles.draftText}>Draft</Text>
             </View>
           )}
+          <TouchableOpacity
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255,255,255,0.18)',
+            }}
+            onPress={() => navigation.navigate('PatientScreen')}
+          >
+            <Icon name="home" size={22} color="#fff" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -1565,7 +1578,7 @@ export default function RxNotes() {
               <View style={styles.sectionContent}>
                 {/* Add Symptoms Section */}
                 <Text style={styles.subTitle}>Add Symptoms</Text>
-                
+
                 {/* Add Symptoms Row */}
                 <View style={styles.symptomAddRow}>
                   <TextInput
@@ -1584,7 +1597,7 @@ export default function RxNotes() {
                       keyboardType="number-pad"
                       style={styles.sinceInput}
                     />
-                    
+
                     {/* Unit Dropdown */}
                     <View style={styles.unitDropdownContainer}>
                       <TouchableOpacity
@@ -1667,7 +1680,7 @@ export default function RxNotes() {
 
                 {/* Symptoms Data Table */}
                 <Text style={[styles.subTitle, { marginTop: 16 }]}>Symptoms</Text>
-                
+
                 {/* Table Header */}
                 <View style={styles.symptomHeader}>
                   <Text style={[styles.symptomHeaderText, styles.sympColComplaint]}>Complaint</Text>
@@ -2054,10 +2067,10 @@ export default function RxNotes() {
                 )}
 
               </View>
-              
+
             )}
-            
-            
+
+
           </View>
 
           {/* Medication Infusion Section */}
@@ -2203,27 +2216,27 @@ export default function RxNotes() {
                         keyboardType="numeric"
                       />
                       <View style={styles.medInput} />
-                    </View> 
+                    </View>
 
                     {/* Calculation Results */}
                     <View style={styles.calculationSection}>
                       <Text style={[styles.subTitle, { marginTop: 10 }]}>Calculations</Text>
-                      
+
                       <View style={styles.calculationRow}>
                         <Text style={styles.calculationLabel}>Drug Volume:</Text>
                         <Text style={styles.calculationValue}>{activeInfusion.drugVolume || '0'} mL</Text>
                       </View>
-                      
+
                       <View style={styles.calculationRow}>
                         <Text style={styles.calculationLabel}>Total Volume:</Text>
                         <Text style={styles.calculationValue}>{activeInfusion.totalVolume || '0'} mL</Text>
                       </View>
-                      
+
                       <View style={styles.calculationRow}>
                         <Text style={styles.calculationLabel}>Rate:</Text>
                         <Text style={styles.calculationValue}>{activeInfusion.rate || '0'} mL/hr</Text>
                       </View>
-                      
+
                       <View style={styles.calculationRow}>
                         <Text style={styles.calculationLabel}>Drops/min:</Text>
                         <Text style={styles.calculationValue}>{activeInfusion.dropsPerMinute || '0'} gtt/min</Text>
@@ -2303,9 +2316,9 @@ export default function RxNotes() {
                 )}
 
               </View>
-              
+
             )}
-            
+
           </View>
 
           {/* ================= INVESTIGATIONS SECTION ================= */}
@@ -2697,7 +2710,7 @@ export default function RxNotes() {
                     textMonthFontSize: 16,
                     textDayHeaderFontSize: 14,
                   }}
-                  // style={styles.calendar}
+                // style={styles.calendar}
                 />
 
                 {/* ===== Duration Summary ===== */}
@@ -2791,18 +2804,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
-  avatarText: { 
-    fontSize: 20, 
-    fontWeight: '700', 
-    color: '#0EA5A4' 
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0EA5A4'
   },
   patientInfo: {
     flex: 1,
     justifyContent: 'center',
   },
-  patientName: { 
-    fontSize: 18, 
-    fontWeight: '700', 
+  patientName: {
+    fontSize: 18,
+    fontWeight: '700',
     color: '#334155',
     marginBottom: 8,
   },
@@ -3012,9 +3025,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingVertical: 2,
   },
-  unit: { 
-    marginLeft: 6, 
-    fontSize: 12, 
+  unit: {
+    marginLeft: 6,
+    fontSize: 12,
     color: '#64748B',
     minWidth: 30,
   },
@@ -3366,40 +3379,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addSympColComplaint: { 
+  addSympColComplaint: {
     width: '24%',
   },
-  addSympColSince: { 
+  addSympColSince: {
     width: '18%',
   },
-  addSympColSeverity: { 
+  addSympColSeverity: {
     width: '15%',
   },
-  addSympColNotes: { 
+  addSympColNotes: {
     width: '35%',
   },
-  addSympColAction: { 
+  addSympColAction: {
     width: '7%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sympColComplaint: { 
+  sympColComplaint: {
     width: '24%',
   },
-  sympColSince: { 
+  sympColSince: {
     width: '18%',
   },
-  sympColSeverity: { 
+  sympColSeverity: {
     width: '15%',
   },
-  sympColNotes: { 
+  sympColNotes: {
     width: '24%',
   },
-  sympColDate: { 
+  sympColDate: {
     width: '12%',
-    paddingRight:4,
+    paddingRight: 4,
   },
-  sympColDelete: { 
+  sympColDelete: {
     width: '7%',
   },
   medSearchRow: {

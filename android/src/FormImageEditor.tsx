@@ -754,17 +754,6 @@ function DraggableVoiceText({
         },
       ]}
     >
-      {!isEditing && writingEnabled && (
-        <TouchableOpacity
-          style={styles.voiceDeleteButton}
-          onPress={() => onDelete(note.id)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          disabled={!writingEnabled}
-        >
-          <Ionicons name="close-circle" size={18} color={note.color} />
-        </TouchableOpacity>
-      )}
-
       {isEditing && writingEnabled && (
         <View style={styles.fontSizeControls}>
           <TouchableOpacity
@@ -788,11 +777,11 @@ function DraggableVoiceText({
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.autoResizeButton, { borderColor: note.color }]}
-            onPress={handleManualResize}
+            onPress={() => onDelete(note.id)}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             disabled={!writingEnabled}
           >
-            <Ionicons name="expand" size={14} color={note.color} />
+            <Ionicons name="close" size={14} color={note.color} />
           </TouchableOpacity>
         </View>
       )}
@@ -2803,13 +2792,31 @@ export default function FormImageEditor() {
           </TouchableOpacity>
 
           {/* SAVE button on right */}
-          <TouchableOpacity
-            onPress={onSaveAll}
-            style={styles.saveButton}
-            disabled={saveStatus === 'saving'}
-          >
-            <Text style={styles.saveButtonText}>SAVE</Text>
-          </TouchableOpacity>
+          {/* Right Side: SAVE + Home */}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={onSaveAll}
+              style={[styles.saveButton, { marginRight: 10 }]}
+              disabled={saveStatus === 'saving'}
+            >
+              <Text style={styles.saveButtonText}>SAVE</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('PatientScreen')}
+              style={{
+                width: 38,
+                height: 38,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                borderRadius: 19
+              }}
+              disabled={saveStatus === 'saving'}
+            >
+              <Ionicons name="home" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Bottom row: Tools */}

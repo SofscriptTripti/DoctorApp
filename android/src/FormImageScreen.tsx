@@ -677,7 +677,7 @@ const FormImageScreen = () => {
               {/* No Overlay Indicator */}
               {page.overlayExists === false && !page.overlayLoading && (
                 <View style={styles.noOverlayIndicator}>
-                  <Text style={styles.noOverlayText}>No overlay available</Text>
+                  {/* <Text style={styles.noOverlayText}>No overlay available</Text> */}
                 </View>
               )}
             </View>
@@ -688,14 +688,14 @@ const FormImageScreen = () => {
             </View>
           ) : page.errorMessage ? (
             <View style={styles.messageContainer}>
-              <Ionicons name="warning-outline" size={48} color="#dc2626" />
-              <Text style={styles.errorTitle}>No Image Available</Text>
-              <Text style={styles.errorMessageText}>{page.errorMessage}</Text>
+              {/* <Ionicons name="warning-outline" size={48} color="#dc2626" /> */}
+              <Text style={styles.errorTitle}>No Form Available.</Text>
+              {/* <Text style={styles.errorMessageText}>{page.errorMessage}</Text> */}
             </View>
           ) : (
             <View style={styles.errorContainer}>
               <Ionicons name="image-off-outline" size={48} color="#9ca3af" />
-              <Text style={styles.errorTitle}>No Image</Text>
+              <Text style={styles.errorTitle}>No Form</Text>
               <Text style={styles.errorMessageText}>Image data not available</Text>
             </View>
           )}
@@ -800,13 +800,25 @@ const FormImageScreen = () => {
   return (
     <View style={styles.container}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: '#0EA5A4' }}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('FormType')}>
-            <Ionicons name="arrow-back" size={22} color="#fff" />
+        <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <TouchableOpacity
+              style={styles.navButton}
+              onPress={() => navigation.navigate('FormType')}
+            >
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <Text style={[styles.title, { flex: 1, marginRight: 8 }]} numberOfLines={1}>
+              {formName}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={() => navigation.navigate('PatientScreen')}
+          >
+            <Ionicons name="home" size={22} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.title}>{formName}</Text>
-
-
         </View>
       </SafeAreaView>
 
@@ -1157,5 +1169,14 @@ const styles = StyleSheet.create({
   },
   btnTxtDisabled: {
     color: '#94a3b8',
+  },
+  navButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginRight: 0,
   },
 });

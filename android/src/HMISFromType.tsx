@@ -54,8 +54,8 @@ export default function HMISFormType() {
     params.patientIP !== undefined && params.patientIP !== null
       ? String(params.patientIP)
       : params.ip !== undefined
-      ? String(params.ip)
-      : '';
+        ? String(params.ip)
+        : '';
 
   const patientId: string | undefined =
     params.patientId ?? params.id ?? params.patient_id;
@@ -150,7 +150,12 @@ export default function HMISFormType() {
           <Text style={styles.headerTitle}>Reports</Text>
         </View>
 
-        <View style={{ width: 38 }} />
+        <TouchableOpacity
+          style={[styles.backButton, { marginRight: 0, marginLeft: 0 }]}
+          onPress={() => navigation.navigate('PatientScreen')}
+        >
+          <Icon name="home" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* CONTENT */}

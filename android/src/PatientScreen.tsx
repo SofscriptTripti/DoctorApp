@@ -87,7 +87,7 @@ export default function PatientScreen() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   // const [personTab, setPersonTab] = useState<PersonTab>('IN');
-  const [personTab, setPersonTab] = useState<PersonTab>('OUT');
+  const [personTab, setPersonTab] = useState<PersonTab>('IN');
   // NEW: filter modal + selected filters
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterKey[]>([
@@ -781,22 +781,6 @@ export default function PatientScreen() {
 
         <View style={styles.personTabWrapper}>
           <TouchableOpacity
-            onPress={() => setPersonTab('OUT')}
-            style={[
-              styles.personTab,
-              personTab === 'OUT' && styles.personTabActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.personTabText,
-                personTab === 'OUT' && styles.personTabTextActive,
-              ]}
-            >
-              Out Patient
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => setPersonTab('IN')}
             style={[
               styles.personTab,
@@ -810,6 +794,23 @@ export default function PatientScreen() {
               ]}
             >
               In Patient
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setPersonTab('OUT')}
+            style={[
+              styles.personTab,
+              personTab === 'OUT' && styles.personTabActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.personTabText,
+                personTab === 'OUT' && styles.personTabTextActive,
+              ]}
+            >
+              Out Patient
             </Text>
           </TouchableOpacity>
 
