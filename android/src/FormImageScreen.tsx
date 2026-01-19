@@ -115,6 +115,16 @@ const FormImageScreen = () => {
   const loadedDocumentInstanceIdRef = useRef<string | null>(null);
   const isLoadingRef = useRef(false);
 
+  /* ---------- HELPER: GET INSTANCE STORAGE KEY ---------- */
+  const getInstanceStorageKey = useCallback(() => {
+    // Unique key per Admission + Document
+    // Handle cases where admissionNo might be missing (fallback to patientId)
+    const adm = params.admissionNo || params.patientId || 'UNKNOWN_ADM';
+    const doc = params.documentId || storedDocumentId || 'UNKNOWN_DOC';
+    return `DOC_INST_${adm}_${doc}`;
+  }, [params.admissionNo, params.patientId, params.documentId, storedDocumentId]);
+
+
   /* ---------- CREATE DOCUMENT INSTANCE ---------- */
   const createNewDocumentInstance = useCallback(async (): Promise<string | null> => {
     try {
@@ -138,16 +148,8 @@ const FormImageScreen = () => {
 
       // Validate required data
       if (!patientNo || !admissionNo || !documentCd) {
-        console.error('Missing required data for creating document instance:', {
-          patientNo,
-          admissionNo,
-          documentCd
-        });
-        Alert.alert(
-          'Missing Information',
-          'Cannot create document instance. Missing patient, admission, or document information.',
-          [{ text: 'OK', onPress: () => navigation.navigate('FormType') }]
-        );
+        console.error('Missing required data for creating document instance');
+        Alert.alert('Error', 'Missing patient info.');
         return null;
       }
 
@@ -161,35 +163,23 @@ const FormImageScreen = () => {
       console.log('Document instance created:', response);
 
       if (response?.documentInstanceId) {
-        // Save documentInstanceId to AsyncStorage
-        await AsyncStorage.setItem(
-          STORAGE_KEYS.documentInstanceId,
-          response.documentInstanceId
-        );
+        // Save using UNIQUE KEY
+        const uniqueKey = getInstanceStorageKey();
+        await AsyncStorage.setItem(uniqueKey, response.documentInstanceId);
 
-        console.log('Saved documentInstanceId to AsyncStorage:', response.documentInstanceId);
+        console.log('Saved documentInstanceId to:', uniqueKey, '=', response.documentInstanceId);
         return response.documentInstanceId;
       } else {
-        console.error('No documentInstanceId in API response:', response);
-        Alert.alert(
-          'Error',
-          'Failed to create document instance. No instance ID returned.',
-          [{ text: 'OK' }]
-        );
+        console.error('No documentInstanceId in API response');
         return null;
       }
     } catch (error: any) {
       console.error('Failed to create document instance:', error);
-      Alert.alert(
-        'Error',
-        `Failed to create document instance: ${error.message || 'Unknown error'}`,
-        [{ text: 'OK' }]
-      );
       return null;
     } finally {
       setIsCreatingDocument(false);
     }
-  }, [navigation]);
+  }, [navigation, getInstanceStorageKey]);
 
   /* ---------- GET DOCUMENT CONTEXT FROM STORAGE ---------- */
   const getDocumentContextFromStorage = useCallback(async (): Promise<{
@@ -199,18 +189,18 @@ const FormImageScreen = () => {
     documentInstanceId: string;
   } | null> => {
     try {
+      const uniqueKey = getInstanceStorageKey();
+
       const [[, patientNo], [, admissionNo], [, documentId], [, documentInstanceId]] =
         await AsyncStorage.multiGet([
           STORAGE_KEYS.patientId,
           STORAGE_KEYS.admissionNo,
           STORAGE_KEYS.documentId,
-          STORAGE_KEYS.documentInstanceId,
+          uniqueKey, // Use unique key here
         ]);
 
       console.log('Retrieved from AsyncStorage:', {
-        patientNo,
-        admissionNo,
-        documentId,
+        uniqueKey,
         documentInstanceId
       });
 
@@ -234,7 +224,7 @@ const FormImageScreen = () => {
       console.error('❌ Failed to read document context from AsyncStorage', e);
       return null;
     }
-  }, []);
+  }, [getInstanceStorageKey]);
 
   /* ---------- LOAD DOCUMENT ID FROM STORAGE ---------- */
   const loadDocumentIdFromStorage = useCallback(async () => {
