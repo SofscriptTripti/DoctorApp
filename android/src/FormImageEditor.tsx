@@ -319,7 +319,9 @@ function DraggableVoiceText({
 
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
-      const buffer = 16;
+      // Only add buffer if we are in auto-fit mode (no manual width set).
+      // If manual width is set, we want to respect it exactly without drift found in a loop.
+      const buffer = note.boxWidth ? 0 : 16;
       const contentW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
       const contentH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
 
@@ -343,7 +345,7 @@ function DraggableVoiceText({
         onBoxSizeChange(note.id, autoW, autoH);
       }
     }
-  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef, note.boxWidth, note.boxHeight]);
+  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef]);
 
   const handleContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = {
@@ -1056,7 +1058,8 @@ function DraggableVoiceText({
               position: 'absolute',
               opacity: 0,
               left: -10000,
-              maxWidth: Math.min(SCREEN_W - 40, 1000), // Allow it to grow wider
+              width: note.boxWidth ? (note.boxWidth - PADDING_H * 2) : undefined,
+              maxWidth: note.boxWidth ? undefined : Math.min(SCREEN_W - 40, 1000),
               includeFontPadding: false,
               fontSize: currentFontSize,
               textAlign: 'left',
