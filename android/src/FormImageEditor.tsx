@@ -951,57 +951,85 @@ function DraggableVoiceText({
       </Animated.View>
 
       <>
-        {/* Right Edge Resizer (Width) */}
-        <Animated.View
-          style={{
-            position: 'absolute',
-            right: -10,
-            top: 0,
-            bottom: 20, // Leave room for corner
-            width: 30,
-            zIndex: 100,
-            alignItems: 'center',
-            justifyContent: 'center',
-            // @ts-ignore - React Native 0.71+ Pointer Events
-            pointerEvents: 'auto',
-          }}
-          {...mrResizePan.panHandlers}
-          // @ts-ignore
-          onPointerEnter={() => setHoveringRight(true)}
-          // @ts-ignore
-          onPointerLeave={() => setHoveringRight(false)}
-        >
-          {/* Visual Indicator: Horizontal Arrow - Show only on hover */}
-          {hoveringRight && (
-            <MaterialCommunityIcons name="arrow-left-right" size={24} color="#000" />
-          )}
-        </Animated.View>
+        {isEditing && writingEnabled && (
+          <>
+            {/* Top Center Dot */}
+            <Animated.View
+              style={{
+                position: 'absolute',
+                top: -6,
+                left: '50%',
+                marginLeft: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: note.color,
+                zIndex: 110,
+              }}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+              {...mtResizePan.panHandlers}
+            />
 
-        {/* Bottom Edge Resizer (Height) */}
-        <Animated.View
-          style={{
-            position: 'absolute',
-            bottom: -10,
-            left: 0,
-            right: 20, // Leave room for corner
-            height: 30,
-            zIndex: 100,
-            alignItems: 'center',
-            justifyContent: 'center',
-            // @ts-ignore
-            pointerEvents: 'auto',
-          }}
-          {...mbResizePan.panHandlers}
-          // @ts-ignore
-          onPointerEnter={() => setHoveringBottom(true)}
-          // @ts-ignore
-          onPointerLeave={() => setHoveringBottom(false)}
-        >
-          {/* Visual Indicator: Vertical Arrow - Show only on hover */}
-          {hoveringBottom && (
-            <MaterialCommunityIcons name="arrow-up-down" size={24} color="#000" />
-          )}
-        </Animated.View>
+            {/* Bottom Center Dot */}
+            <Animated.View
+              style={{
+                position: 'absolute',
+                bottom: -6,
+                left: '50%',
+                marginLeft: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: note.color,
+                zIndex: 110,
+              }}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+              {...mbResizePan.panHandlers}
+            />
+
+            {/* Left Center Dot */}
+            <Animated.View
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: -6,
+                marginTop: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: note.color,
+                zIndex: 110,
+              }}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+              {...mlResizePan.panHandlers}
+            />
+
+            {/* Right Center Dot */}
+            <Animated.View
+              style={{
+                position: 'absolute',
+                top: '50%',
+                right: -6,
+                marginTop: -6,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: note.color,
+                zIndex: 110,
+              }}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+              {...mrResizePan.panHandlers}
+            />
+          </>
+        )}
 
         {/* Bottom-Right Corner Resizer (Both) */}
         <Animated.View
