@@ -320,8 +320,19 @@ function DraggableVoiceText({
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
       const buffer = 16;
-      const autoW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
-      const autoH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
+      const contentW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
+      const contentH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
+
+      // Current manual size (fallback to MIN if undefined to allow shrink-to-fit)
+      const manualW = note.boxWidth ?? MIN_WIDTH;
+      const manualH = note.boxHeight ?? MIN_HEIGHT;
+
+      // We want the box to be AT LEAST the size of the content, but we ALSO want to respect
+      // any larger manual resizing the user has done.
+      // So we take the MAX of manual size and content size.
+      // And finally clamp to screen limits.
+      const autoW = clamp(Math.max(manualW, contentW), MIN_WIDTH, maxWidth);
+      const autoH = clamp(Math.max(manualH, contentH), MIN_HEIGHT, maxHeight);
 
       // Only update if dimensions differ significantly to avoid loops
       if (Math.abs(currentWidthRef.current - autoW) > 2 || Math.abs(currentHeightRef.current - autoH) > 2) {
@@ -332,7 +343,7 @@ function DraggableVoiceText({
         onBoxSizeChange(note.id, autoW, autoH);
       }
     }
-  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef]);
+  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef, note.boxWidth, note.boxHeight]);
 
   const handleContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = {
@@ -812,10 +823,10 @@ function DraggableVoiceText({
             <TouchableOpacity
               style={[styles.fontSizeButton, { borderColor: note.color }]}
               onPress={decreaseFontSize}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               disabled={!writingEnabled}
             >
-              <Ionicons name="remove" size={14} color={note.color} />
+              <Ionicons name="remove" size={18} color={note.color} />
             </TouchableOpacity>
             <Text style={[styles.fontSizeText, { color: note.color }]}>
               {currentFontSize}px
@@ -823,10 +834,10 @@ function DraggableVoiceText({
             <TouchableOpacity
               style={[styles.fontSizeButton, { borderColor: note.color }]}
               onPress={increaseFontSize}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               disabled={!writingEnabled}
             >
-              <Ionicons name="add" size={14} color={note.color} />
+              <Ionicons name="add" size={18} color={note.color} />
             </TouchableOpacity>
           </View>
 
@@ -957,12 +968,12 @@ function DraggableVoiceText({
             <Animated.View
               style={{
                 position: 'absolute',
-                top: -6,
+                top: -9,
                 left: '50%',
-                marginLeft: -6,
-                width: 12,
-                height: 12,
-                borderRadius: 6,
+                marginLeft: -9,
+                width: 18,
+                height: 18,
+                borderRadius: 9,
                 backgroundColor: '#fff',
                 borderWidth: 1,
                 borderColor: note.color,
@@ -976,12 +987,12 @@ function DraggableVoiceText({
             <Animated.View
               style={{
                 position: 'absolute',
-                bottom: -6,
+                bottom: -9,
                 left: '50%',
-                marginLeft: -6,
-                width: 12,
-                height: 12,
-                borderRadius: 6,
+                marginLeft: -9,
+                width: 18,
+                height: 18,
+                borderRadius: 9,
                 backgroundColor: '#fff',
                 borderWidth: 1,
                 borderColor: note.color,
@@ -996,11 +1007,11 @@ function DraggableVoiceText({
               style={{
                 position: 'absolute',
                 top: '50%',
-                left: -6,
-                marginTop: -6,
-                width: 12,
-                height: 12,
-                borderRadius: 6,
+                left: -9,
+                marginTop: -9,
+                width: 18,
+                height: 18,
+                borderRadius: 9,
                 backgroundColor: '#fff',
                 borderWidth: 1,
                 borderColor: note.color,
@@ -1015,11 +1026,11 @@ function DraggableVoiceText({
               style={{
                 position: 'absolute',
                 top: '50%',
-                right: -6,
-                marginTop: -6,
-                width: 12,
-                height: 12,
-                borderRadius: 6,
+                right: -9,
+                marginTop: -9,
+                width: 18,
+                height: 18,
+                borderRadius: 9,
                 backgroundColor: '#fff',
                 borderWidth: 1,
                 borderColor: note.color,
@@ -1031,33 +1042,7 @@ function DraggableVoiceText({
           </>
         )}
 
-        {/* Bottom-Right Corner Resizer (Both) */}
-        <Animated.View
-          style={{
-            position: 'absolute',
-            bottom: -10,
-            right: -10,
-            width: 40,
-            height: 40,
-            zIndex: 101,
-          }}
-          {...brResizePan.panHandlers}
-        >
-          {/* Visual corner indicator (LCD style or dots) */}
-          <View style={{
-            position: 'absolute',
-            bottom: 14,
-            right: 14,
-            width: 0,
-            height: 0,
-            borderStyle: 'solid',
-            borderRightWidth: 10,
-            borderBottomWidth: 10,
-            borderRightColor: '#bbb',
-            borderBottomColor: 'transparent',
-            transform: [{ rotate: '180deg' }]
-          }} />
-        </Animated.View>
+
       </>
 
       <View
@@ -1520,9 +1505,14 @@ export default function FormImageEditor() {
     })
   );
 
-  const scrollRef = useRef<ScrollView | null>(null);
   // Horizontal scroll tracking
   const scrollX = useRef(0);
+
+  // Unified Undo/Redo Stack
+  // Tracks the order of operations for each page: "stroke" | "voice"
+  const actionStackRef = useRef<{ [pageIndex: number]: { type: 'voice' | 'stroke'; id?: string }[] }>({});
+
+  const scrollRef = useRef<ScrollView | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   const topPadding = Math.max(8, insets.top + 6);
@@ -1774,6 +1764,10 @@ export default function FormImageEditor() {
       fontSize: 14,
     };
 
+    // Push to unified undo stack
+    if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
+    actionStackRef.current[pageIndex].push({ type: 'voice', id: newNote.id });
+
     setVoiceNotes((prev) => [...prev, newNote]);
   };
 
@@ -2001,30 +1995,63 @@ export default function FormImageEditor() {
     });
   }, [tool, color, penWidth, eraserWidth]);
 
+
+
+  // Unified Undo Helper for Strokes (called on touch end if drawing)
+  const registerStrokeAction = (pageIndex: number) => {
+    if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
+    actionStackRef.current[pageIndex].push({ type: 'stroke' });
+    // Clear Redo stack for consistency? Native usually clears redo on new action.
+    // If we want to be strict, we can try to clear voiceRedoStackRef, but native stroke redo is internal.
+  };
+
   const performUndo = () => {
     if (!writingEnabled) return;
     const idx = getCurrentPageIndex();
-    const c = canvasRefs.current[idx];
-    if (c && typeof c.undo === 'function') c.undo();
 
-    let undoneNote: VoiceNote | null = null;
+    // Check unified stack
+    const stack = actionStackRef.current[idx] ?? [];
+    const lastAction = stack.pop(); // Pop LAST action
 
-    setVoiceNotes((prev) => {
-      const notesForPage = prev.filter((n) => n.pageIndex === idx);
-      if (notesForPage.length === 0) return prev;
+    if (!lastAction) {
+      // Fallback: If stack is empty (e.g. from existing strokes before this update, or missed events)
+      // Try undoing native stroke just in case?
+      const c = canvasRefs.current[idx];
+      if (c && typeof c.undo === 'function') c.undo();
+      return;
+    }
 
-      undoneNote = notesForPage[notesForPage.length - 1];
-      return prev.filter((n) => n.id !== undoneNote!.id);
-    });
+    if (lastAction.type === 'stroke') {
+      const c = canvasRefs.current[idx];
+      if (c && typeof c.undo === 'function') c.undo();
+    } else if (lastAction.type === 'voice') {
+      let undoneNote: VoiceNote | null = null;
+      setVoiceNotes((prev) => {
+        // Find note by ID if possible, or just last one?
+        // Using ID is safer if supported by stack.
+        if (lastAction.id) {
+          undoneNote = prev.find(n => n.id === lastAction.id) || null;
+          return prev.filter(n => n.id !== lastAction.id);
+        } else {
+          // Fallback to "last on page" logic
+          const notesForPage = prev.filter((n) => n.pageIndex === idx);
+          if (notesForPage.length === 0) return prev;
+          undoneNote = notesForPage[notesForPage.length - 1];
+          return prev.filter((n) => n.id !== undoneNote!.id);
+        }
+      });
 
-    if (undoneNote) {
-      const stack = voiceRedoStackRef.current[idx] ?? [];
-      voiceRedoStackRef.current[idx] = [...stack, undoneNote];
-      if (editingNoteId === undoneNote.id) {
-        setEditingNoteId(null);
+      if (undoneNote) {
+        const stackRedo = voiceRedoStackRef.current[idx] ?? [];
+        voiceRedoStackRef.current[idx] = [...stackRedo, undoneNote];
+        if (editingNoteId === undoneNote.id) {
+          setEditingNoteId(null);
+        }
       }
     }
   };
+
+
 
   const performRedo = () => {
     if (!writingEnabled) return;
@@ -3267,6 +3294,11 @@ export default function FormImageEditor() {
                       {/* Canvas container */}
                       <View
                         style={styles.canvasContainer}
+                        onTouchEnd={() => {
+                          if (writingEnabled && !(editingNoteId || editingStickerId) && !multiTouchActive) {
+                            registerStrokeAction(pageIndex);
+                          }
+                        }}
                         pointerEvents={
                           editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
                             ? 'none'
@@ -3954,24 +3986,25 @@ const styles = StyleSheet.create({
   },
   fontSizeControls: {
     position: 'absolute',
-    top: -30,
+    top: -42,
     left: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffffee',
-    borderRadius: 15,
+    borderRadius: 18,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    zIndex: 5,
+    paddingVertical: 6,
+    zIndex: 2000,
+    elevation: 5,
   },
   fontSizeButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 6,
     backgroundColor: '#fff',
   },
   fontSizeText: {

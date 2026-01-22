@@ -725,6 +725,39 @@ const FormImageScreen = () => {
                 />
               );
             })}
+
+          {/* Render voice notes (text) */}
+          {page.hasImage && voiceNotes
+            .filter(n => n.pageId === page.pageId)
+            .map(n => (
+              <View
+                key={n.id}
+                style={{
+                  position: 'absolute',
+                  left: n.x,
+                  top: n.y,
+                  width: n.boxWidth ?? 180,
+                  height: n.boxHeight ?? 60, // Match Editor's default height/saved height
+                  zIndex: 25,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  justifyContent: 'center', // Match Editor's textTouchArea vertical center
+                }}
+                pointerEvents="none"
+              >
+                <Text
+                  style={{
+                    color: n.color,
+                    fontSize: n.fontSize ?? 14,
+                    fontWeight: '500', // Match Editor's voiceTextDrag weight
+                    includeFontPadding: false,
+                    textAlign: 'left',
+                  }}
+                >
+                  {n.text}
+                </Text>
+              </View>
+            ))}
         </View>
 
         <View style={styles.footer}>
@@ -735,7 +768,7 @@ const FormImageScreen = () => {
         </View>
       </View>
     );
-  }, [pageMeta, reloadToken, imageStickers, pages.length]);
+  }, [pageMeta, reloadToken, imageStickers, voiceNotes, pages.length]);
 
   /* ---------- RENDER ITEM ---------- */
   const renderItem = useCallback(({ item, index }: { item: PageItem; index: number }) => {
