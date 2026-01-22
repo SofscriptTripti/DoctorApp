@@ -179,6 +179,8 @@ function DraggableVoiceText({
   onChangeFontSize,
   pageScale = 1,
   writingEnabled = true,
+  onResizeStart,
+  onResizeEnd,
 }: {
   note: VoiceNote;
   isEditing: boolean;
@@ -190,6 +192,8 @@ function DraggableVoiceText({
   onChangeFontSize: (id: string, fontSize: number) => void;
   pageScale?: number;
   writingEnabled?: boolean;
+  onResizeStart?: () => void;
+  onResizeEnd?: () => void;
 }) {
   const DEFAULT_WIDTH = 180;
   const DEFAULT_HEIGHT = 60;
@@ -228,6 +232,10 @@ function DraggableVoiceText({
   const isUserResizingRef = useRef(false);
   const [isTextInputFocused, setIsTextInputFocused] = useState(false);
   const [manualResizeFlag, setManualResizeFlag] = useState(0);
+
+  // Hover states for resize handles
+  const [hoveringRight, setHoveringRight] = useState(false);
+  const [hoveringBottom, setHoveringBottom] = useState(false);
 
   const startPosRef = useRef({ x: note.x, y: note.y });
   const lastTapRef = useRef(0);
@@ -482,6 +490,7 @@ function DraggableVoiceText({
         if (!writingEnabled) return;
         isUserResizingRef.current = true;
         isResizingRef.current = true;
+        if (onResizeStart) onResizeStart();
         startFontSizeRef.current = currentFontSize;
         sizeStartRef.current = {
           width: currentWidthRef.current,
@@ -514,9 +523,12 @@ function DraggableVoiceText({
           // If resizing from left, we need to adjust X to keep right side stationary
           if (opts.signX === -1) {
             const widthDifference = newWidth - sizeStartRef.current.width;
-            newX = sizeStartRef.current.x - widthDifference; // Move X left by the amount width increased
-            // clamp X?
+            newX = sizeStartRef.current.x - widthDifference;
           }
+
+          widthAnim.setValue(newWidth);
+          // currentWidthRef will be updated by listener, but we can set it for consistency if needed.
+          // However, listener is source of truth.
         }
 
         if (opts.signY !== 0) {
@@ -532,10 +544,9 @@ function DraggableVoiceText({
             const heightDifference = newHeight - sizeStartRef.current.height;
             newY = sizeStartRef.current.y - heightDifference;
           }
-        }
 
-        widthAnim.setValue(newWidth);
-        heightAnim.setValue(newHeight);
+          heightAnim.setValue(newHeight);
+        }
 
         // Also update position if changed
         if (newX !== currentPosRef.current.x || newY !== currentPosRef.current.y) {
@@ -551,8 +562,9 @@ function DraggableVoiceText({
           }
         }
 
-        currentWidthRef.current = newWidth;
-        currentHeightRef.current = newHeight;
+        // Remove manual overwrites of currentRefs here. Let listeners or specific setters handle it.
+        // currentWidthRef.current = newWidth; 
+        // currentHeightRef.current = newHeight;
       },
 
       onPanResponderRelease: () => {
@@ -600,6 +612,7 @@ function DraggableVoiceText({
 
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
+        if (onResizeEnd) onResizeEnd();
 
         // Update currentRefs for next interaction
         currentPosRef.current = { x: finalX, y: finalY };
@@ -633,6 +646,7 @@ function DraggableVoiceText({
 
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
+        if (onResizeEnd) onResizeEnd();
         currentPosRef.current = { x: finalX, y: finalY };
       },
     });
@@ -709,14 +723,14 @@ function DraggableVoiceText({
     if (!writingEnabled) return;
     const newSize = clamp(currentFontSize + 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
-    autoResizeForFontSize(newSize);
+    // Let useEffect handle resizing based on new measurement
   };
 
   const decreaseFontSize = () => {
     if (!writingEnabled) return;
     const newSize = clamp(currentFontSize - 2, MIN_FONT_SIZE, MAX_FONT_SIZE);
     onChangeFontSize(note.id, newSize);
-    autoResizeForFontSize(newSize);
+    // Let useEffect handle resizing based on new measurement
   };
 
   const handleTextInputFocus = () => {
@@ -729,6 +743,25 @@ function DraggableVoiceText({
 
   const handleTextChange = (text: string) => {
     onChangeText(note.id, text);
+  };
+
+
+
+  const handleContentSizeChange = (e: any) => {
+    const { width, height } = e.nativeEvent.contentSize;
+    const measuredH = Math.ceil(height + PADDING_V * 2);
+
+    // If content + padding exceeds current height, expand
+    if (measuredH > currentHeightRef.current) {
+      const { maxHeight } = calculateDynamicMaximums(note.x, note.y);
+      const newHeight = clamp(measuredH, MIN_HEIGHT, maxHeight);
+
+      if (newHeight > currentHeightRef.current) {
+        heightAnim.setValue(newHeight);
+        currentHeightRef.current = newHeight;
+        onBoxSizeChange(note.id, currentWidthRef.current, newHeight);
+      }
+    }
   };
 
   const handleManualResize = () => {
@@ -768,39 +801,59 @@ function DraggableVoiceText({
         styles.voiceTextDragWrapper,
         {
           transform: [{ translateX: pan.x }, { translateY: pan.y }],
+          overflow: 'visible',
+          zIndex: 1000,
         },
       ]}
     >
       {isEditing && writingEnabled && (
-        <View style={styles.fontSizeControls}>
+        <>
+          <View style={styles.fontSizeControls}>
+            <TouchableOpacity
+              style={[styles.fontSizeButton, { borderColor: note.color }]}
+              onPress={decreaseFontSize}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              disabled={!writingEnabled}
+            >
+              <Ionicons name="remove" size={14} color={note.color} />
+            </TouchableOpacity>
+            <Text style={[styles.fontSizeText, { color: note.color }]}>
+              {currentFontSize}px
+            </Text>
+            <TouchableOpacity
+              style={[styles.fontSizeButton, { borderColor: note.color }]}
+              onPress={increaseFontSize}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              disabled={!writingEnabled}
+            >
+              <Ionicons name="add" size={14} color={note.color} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Floating Close Button at Top-Right Corner */}
           <TouchableOpacity
-            style={[styles.fontSizeButton, { borderColor: note.color }]}
-            onPress={decreaseFontSize}
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            disabled={!writingEnabled}
-          >
-            <Ionicons name="remove" size={14} color={note.color} />
-          </TouchableOpacity>
-          <Text style={[styles.fontSizeText, { color: note.color }]}>
-            {currentFontSize}px
-          </Text>
-          <TouchableOpacity
-            style={[styles.fontSizeButton, { borderColor: note.color }]}
-            onPress={increaseFontSize}
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            disabled={!writingEnabled}
-          >
-            <Ionicons name="add" size={14} color={note.color} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.autoResizeButton, { borderColor: note.color }]}
+            style={{
+              position: 'absolute',
+              top: -12,
+              right: -12,
+              backgroundColor: '#fff',
+              borderRadius: 12,
+              width: 24,
+              height: 24,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: note.color,
+              zIndex: 102,
+              elevation: 5
+            }}
             onPress={() => onDelete(note.id)}
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             disabled={!writingEnabled}
           >
-            <Ionicons name="close" size={14} color={note.color} />
+            <Ionicons name="close" size={16} color={note.color} />
           </TouchableOpacity>
-        </View>
+        </>
       )}
 
       <Animated.View
@@ -815,10 +868,25 @@ function DraggableVoiceText({
           },
           isEditing && writingEnabled && {
             borderColor: note.color,
-            borderWidth: 1,
+            borderWidth: 3,
           },
         ]}
       >
+        {/* Helper: Invisible Thick Border for easier grabbing/safety */}
+        {isEditing && writingEnabled && (
+          <View
+            style={{
+              position: 'absolute',
+              top: -12,
+              left: -12,
+              right: -12,
+              bottom: -12,
+              borderWidth: 12,
+              borderColor: 'transparent',
+              zIndex: 0,
+            }}
+          />
+        )}
         {isEditing ? (
           <TextInput
             ref={textInputRef}
@@ -841,6 +909,7 @@ function DraggableVoiceText({
             multiline={true}
             value={note.text}
             onChangeText={handleTextChange}
+            onContentSizeChange={handleContentSizeChange}
             onFocus={handleTextInputFocus}
             onBlur={handleTextInputBlur}
             textBreakStrategy="highQuality"
@@ -881,95 +950,87 @@ function DraggableVoiceText({
         )}
       </Animated.View>
 
-      {isEditing && writingEnabled && (
-        <>
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              { top: -8, left: -8, borderColor: note.color },
-            ]}
-            {...tlResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              { top: -8, right: -8, borderColor: note.color },
-            ]}
-            {...trResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              { bottom: -8, left: -8, borderColor: note.color },
-            ]}
-            {...blResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              { bottom: -8, right: -8, borderColor: note.color },
-            ]}
-            {...brResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
+      <>
+        {/* Right Edge Resizer (Width) */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            right: -10,
+            top: 0,
+            bottom: 20, // Leave room for corner
+            width: 30,
+            zIndex: 100,
+            alignItems: 'center',
+            justifyContent: 'center',
+            // @ts-ignore - React Native 0.71+ Pointer Events
+            pointerEvents: 'auto',
+          }}
+          {...mrResizePan.panHandlers}
+          // @ts-ignore
+          onPointerEnter={() => setHoveringRight(true)}
+          // @ts-ignore
+          onPointerLeave={() => setHoveringRight(false)}
+        >
+          {/* Visual Indicator: Horizontal Arrow - Show only on hover */}
+          {hoveringRight && (
+            <MaterialCommunityIcons name="arrow-left-right" size={24} color="#000" />
+          )}
+        </Animated.View>
 
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              {
-                top: '50%',
-                marginTop: -7,
-                left: -8,
-                borderColor: note.color,
-              },
-            ]}
-            {...mlResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              {
-                top: '50%',
-                marginTop: -7,
-                right: -8,
-                borderColor: note.color,
-              },
-            ]}
-            {...mrResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              {
-                left: '50%',
-                marginLeft: -7,
-                top: -8,
-                borderColor: note.color,
-              },
-            ]}
-            {...mtResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-          <Animated.View
-            style={[
-              styles.voiceResizeHandle,
-              {
-                left: '50%',
-                marginLeft: -7,
-                bottom: -8,
-                borderColor: note.color,
-              },
-            ]}
-            {...mbResizePan.panHandlers}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          />
-        </>
-      )}
+        {/* Bottom Edge Resizer (Height) */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            bottom: -10,
+            left: 0,
+            right: 20, // Leave room for corner
+            height: 30,
+            zIndex: 100,
+            alignItems: 'center',
+            justifyContent: 'center',
+            // @ts-ignore
+            pointerEvents: 'auto',
+          }}
+          {...mbResizePan.panHandlers}
+          // @ts-ignore
+          onPointerEnter={() => setHoveringBottom(true)}
+          // @ts-ignore
+          onPointerLeave={() => setHoveringBottom(false)}
+        >
+          {/* Visual Indicator: Vertical Arrow - Show only on hover */}
+          {hoveringBottom && (
+            <MaterialCommunityIcons name="arrow-up-down" size={24} color="#000" />
+          )}
+        </Animated.View>
+
+        {/* Bottom-Right Corner Resizer (Both) */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            bottom: -10,
+            right: -10,
+            width: 40,
+            height: 40,
+            zIndex: 101,
+          }}
+          {...brResizePan.panHandlers}
+        >
+          {/* Visual corner indicator (LCD style or dots) */}
+          <View style={{
+            position: 'absolute',
+            bottom: 14,
+            right: 14,
+            width: 0,
+            height: 0,
+            borderStyle: 'solid',
+            borderRightWidth: 10,
+            borderBottomWidth: 10,
+            borderRightColor: '#bbb',
+            borderBottomColor: 'transparent',
+            transform: [{ rotate: '180deg' }]
+          }} />
+        </Animated.View>
+      </>
 
       <View
         style={styles.measureContainer}
@@ -982,12 +1043,11 @@ function DraggableVoiceText({
               position: 'absolute',
               opacity: 0,
               left: -10000,
-              maxWidth: Math.min(SCREEN_W * 0.7, 300),
+              maxWidth: Math.min(SCREEN_W - 40, 1000), // Allow it to grow wider
               includeFontPadding: false,
               fontSize: currentFontSize,
               textAlign: 'left',
               flexWrap: 'wrap',
-
             },
           ]}
           onLayout={(e) => {
@@ -3174,16 +3234,7 @@ export default function FormImageEditor() {
                         />
                       )}
 
-                      {/* 🔹 Dismiss Edit Layer (Transparent) */}
-                      <Pressable
-                        style={StyleSheet.absoluteFill}
-                        onPress={() => {
-                          if (editingNoteId || editingStickerId) {
-                            setEditingNoteId(null);
-                            setEditingStickerId(null);
-                          }
-                        }}
-                      />
+
 
                       {/* Canvas container */}
                       <View
@@ -3203,6 +3254,20 @@ export default function FormImageEditor() {
                         />
                       </View>
 
+                      {/* 🔹 Dismiss Edit Layer (Transparent) - MOVED HERE to be ABOVE canvas */}
+                      {/* This blocks touches to canvas when editing */}
+                      {(editingNoteId || editingStickerId) && (
+                        <Pressable
+                          style={StyleSheet.absoluteFill}
+                          onPress={() => {
+                            if (editingNoteId || editingStickerId) {
+                              setEditingNoteId(null);
+                              setEditingStickerId(null);
+                            }
+                          }}
+                        />
+                      )}
+
                       {/* Voice notes */}
                       {notesForPage.map((note) => (
                         <DraggableVoiceText
@@ -3221,6 +3286,8 @@ export default function FormImageEditor() {
                           onChangeFontSize={handleVoiceNoteFontSizeChange}
                           pageScale={lastScalePerPageRef[pageIndex]}
                           writingEnabled={writingEnabled}
+                          onResizeStart={() => disableDrawingImmediately(true)}
+                          onResizeEnd={() => disableDrawingImmediately(false)}
                         />
                       ))}
 

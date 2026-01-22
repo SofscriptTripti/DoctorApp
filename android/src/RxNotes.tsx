@@ -1595,6 +1595,7 @@ export default function RxNotes() {
                       value={newSymptom.since}
                       onChangeText={text => setNewSymptom(prev => ({ ...prev, since: text }))}
                       keyboardType="number-pad"
+                      scrollEnabled={false}
                       style={styles.sinceInput}
                     />
 
@@ -3221,11 +3222,13 @@ const styles = StyleSheet.create({
   sinceInput: {
     flex: 1,
     paddingHorizontal: 8,
+    paddingVertical: 0,
     fontSize: 12,
     borderRightWidth: 1,
     borderRightColor: '#E2E8F0',
     height: '100%',
     textAlign: 'center',
+    textAlignVertical: 'center',
   },
   unitDropdownContainer: {
     position: 'relative',

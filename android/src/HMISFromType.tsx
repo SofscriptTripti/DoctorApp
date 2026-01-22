@@ -164,7 +164,7 @@ export default function HMISFormType() {
           {/* 🔹 Patient Display — FIXED */}
           <View style={styles.patientInfoCard}>
             <Text style={styles.patientValue} numberOfLines={1}>
-              {patientName} {patientIP ? ` / ${patientIP}` : ''}
+              {patientName} {patientIP ? ` / ${patientIP}` : 'null'}
             </Text>
           </View>
 
