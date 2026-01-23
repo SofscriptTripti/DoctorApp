@@ -309,14 +309,36 @@ function DraggableVoiceText({
     }
   }, [isEditing]);
 
+  // Auto-shrink when editing ends
+  useEffect(() => {
+    if (!isEditing && measuredContentSizeRef.current) {
+      const c = measuredContentSizeRef.current;
+      const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
+
+      const buffer = 0;
+      const HEIGHT_BUFFER = 12;
+
+      const contentW = clamp(Math.ceil(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
+      const contentH = clamp(Math.ceil(c.h + PADDING_V * 2 + buffer + HEIGHT_BUFFER), MIN_HEIGHT, maxHeight);
+
+      // Force update to content size, ignoring manual overrides
+      if (Math.abs(currentWidthRef.current - contentW) > 2 || Math.abs(currentHeightRef.current - contentH) > 2) {
+        currentWidthRef.current = contentW;
+        currentHeightRef.current = contentH;
+        widthAnim.setValue(contentW);
+        heightAnim.setValue(contentH);
+        onBoxSizeChange(note.id, contentW, contentH);
+      }
+    }
+  }, [isEditing, note.id, onBoxSizeChange]);
+
   useEffect(() => {
     // If content measurement changes AND user is NOT currently manually resizing,
     // we assume we should auto-fit the box to the content.
     // This supports "default border adopt same enter text height and width"
     // and allows expansion while typing.
-    if (measuredContentSizeRef.current && !isUserResizingRef.current) {
+    if (measuredContentSizeRef.current && !isUserResizingRef.current && isEditing) {
       const c = measuredContentSizeRef.current;
-
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
       // Only add buffer if we are in auto-fit mode (no manual width set).
@@ -346,7 +368,7 @@ function DraggableVoiceText({
         onBoxSizeChange(note.id, autoW, autoH);
       }
     }
-  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef]);
+  }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef, isEditing]);
 
   const handleContentLayout = (layout: LayoutRectangle) => {
     measuredContentSizeRef.current = {
@@ -705,7 +727,7 @@ function DraggableVoiceText({
     const oldFontSize = note.fontSize || DEFAULT_FONT_SIZE;
     const sizeRatio = newFontSize / oldFontSize;
 
-    const buffer = 16;
+    const buffer = 0;
     // in updateBoxSize
     const neededWidth = Math.ceil((measured.w * sizeRatio) + PADDING_H * 2 + buffer);
     const neededHeight = Math.ceil((measured.h * sizeRatio) + PADDING_V * 2 + buffer + 12); // + HEIGHT_BUFFER
@@ -775,7 +797,7 @@ function DraggableVoiceText({
 
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
-    const buffer = 16;
+    const buffer = 0;
     const neededWidth = Math.ceil(measured.w + PADDING_H * 2 + buffer);
     const neededHeight = Math.ceil(measured.h + PADDING_V * 2 + buffer + 12); // Extra buffer
 
