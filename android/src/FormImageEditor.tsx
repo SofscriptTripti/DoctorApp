@@ -966,81 +966,91 @@ function DraggableVoiceText({
       <>
         {isEditing && writingEnabled && (
           <>
-            {/* Top Center Dot */}
+            {/* Bottom-Left Corner Resize Handle (Lollipop Style) */}
             <Animated.View
               style={{
                 position: 'absolute',
-                top: -9,
-                left: '50%',
-                marginLeft: -9,
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: note.color,
+                bottom: 0,
+                left: 0,
+                width: 0,
+                height: 0,
+                justifyContent: 'center',
+                alignItems: 'center',
                 zIndex: 110,
               }}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              {...mtResizePan.panHandlers}
-            />
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              {...blResizePan.panHandlers}
+            >
+              {/* Connector Line */}
+              {/* Length ~24, rotated 45deg. To start at 0,0 and go SW:
+                  dx = 24 * sin(45) ~ 17. dy = 17.
+                  Midpoint ~ (-8.5, -8.5).
+                  We use a vertical line of height 24 and rotate it 45deg.
+                  Unrotated: centered at 0, spanning y=-12 to y=12.
+                  Rotated 45deg: Top tip moves right/down?
+                  Easier: Transform origin.
+                  Let's try placing it at correct center offset.
+                  Center should be at left: -6, bottom: -12?
+                  Let's tweak manually:
+                  Rotated 45deg line ( / ). We want top-right to be at 0,0.
+                  If height=24.
+                  Center of line needs to be at x = -24/2 * sin(45) = -8.5.
+                  y = -24/2 * cos(45) = -8.5.
+              */}
+              <View
+                style={{
+                  position: 'absolute',
+                  width: 2,
+                  height: 24,
+                  backgroundColor: note.color,
+                  transform: [
+                    { translateX: -9 },
+                    { translateY: 9 }, // Move down 
+                    { rotate: '45deg' }
+                  ],
+                  // Instead of transform translate, let's use left/bottom
+                  left: -1, // Center X anchor? No, left edge. 
+                  bottom: -12, // Center Y anchor?
+                  // This is getting guessy.
+                  // Safe bet: Place it using simple offsets that I can calculate.
+                  // Line center at (-8.5, -8.5).
+                  // Element width=2. left = -8.5 - 1 = -9.5.
+                  // Element height=24. bottom = -8.5 - 12 = -20.5.
+                }}
+              />
+              {/* Revised Line approach: explicit geometry */}
+              <View
+                style={{
+                  position: 'absolute',
+                  width: 2,
+                  height: 24,
+                  backgroundColor: note.color,
+                  left: -9,
+                  bottom: -21, // -8.5 center - 12 half-height = -20.5
+                  transform: [{ rotate: '45deg' }],
+                }}
+              />
 
-            {/* Bottom Center Dot */}
-            <Animated.View
-              style={{
-                position: 'absolute',
-                bottom: -9,
-                left: '50%',
-                marginLeft: -9,
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: note.color,
-                zIndex: 110,
-              }}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              {...mbResizePan.panHandlers}
-            />
-
-            {/* Left Center Dot */}
-            <Animated.View
-              style={{
-                position: 'absolute',
-                top: '50%',
-                left: -9,
-                marginTop: -9,
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: note.color,
-                zIndex: 110,
-              }}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              {...mlResizePan.panHandlers}
-            />
-
-            {/* Right Center Dot */}
-            <Animated.View
-              style={{
-                position: 'absolute',
-                top: '50%',
-                right: -9,
-                marginTop: -9,
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: '#fff',
-                borderWidth: 1,
-                borderColor: note.color,
-                zIndex: 110,
-              }}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              {...mrResizePan.panHandlers}
-            />
+              {/* The Dot */}
+              {/* Tip of line is at (-17, -17). Dot radius 7.
+                  Dot Center at (-17, -17).
+                  Left = -17 - 7 = -24.
+                  Bottom = -17 - 7 = -24.
+              */}
+              <View
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 7,
+                  backgroundColor: '#fff',
+                  borderWidth: 1.5,
+                  borderColor: note.color,
+                  position: 'absolute',
+                  left: -24,
+                  bottom: -24,
+                }}
+              />
+            </Animated.View>
           </>
         )}
 
