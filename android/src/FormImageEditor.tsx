@@ -1530,6 +1530,9 @@ export default function FormImageEditor() {
   // Tracks the order of operations for each page: "stroke" | "voice"
   const actionStackRef = useRef<{ [pageIndex: number]: { type: 'voice' | 'stroke'; id?: string }[] }>({});
 
+  // Track unsaved changes
+  const hasUnsavedChangesRef = useRef(false);
+
   const scrollRef = useRef<ScrollView | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
@@ -1787,6 +1790,7 @@ export default function FormImageEditor() {
     actionStackRef.current[pageIndex].push({ type: 'voice', id: newNote.id });
 
     setVoiceNotes((prev) => [...prev, newNote]);
+    hasUnsavedChangesRef.current = true;
   };
 
   const addImageSticker = (stickerType: 'patient' | 'doctor') => {
@@ -1815,6 +1819,7 @@ export default function FormImageEditor() {
     };
 
     setImageStickers((prev) => [...prev, newSticker]);
+    hasUnsavedChangesRef.current = true;
   };
 
   const showEditingOffHint = () => {
@@ -1877,6 +1882,7 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, x, y } : n))
     );
+    hasUnsavedChangesRef.current = true;
   };
 
   const handleVoiceNoteBoxChange = (id: string, width: number, height: number) => {
@@ -1891,6 +1897,7 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, text } : n))
     );
+    hasUnsavedChangesRef.current = true;
   };
 
   const handleVoiceNoteFontSizeChange = (id: string, fontSize: number) => {
@@ -1912,12 +1919,14 @@ export default function FormImageEditor() {
     });
 
     setEditingNoteId((prev) => (prev === id ? null : prev));
+    hasUnsavedChangesRef.current = true;
   };
 
   const handleStickerPositionChange = (id: string, x: number, y: number) => {
     setImageStickers((prev) =>
       prev.map((s) => (s.id === id ? { ...s, x, y } : s))
     );
+    hasUnsavedChangesRef.current = true;
   };
 
   const handleStickerSizeChange = (id: string, width: number, height: number) => {
@@ -1925,6 +1934,7 @@ export default function FormImageEditor() {
     setImageStickers((prev) =>
       prev.map((s) => (s.id === id ? { ...s, scale, width, height } : s))
     );
+    hasUnsavedChangesRef.current = true;
   };
 
   const handleStickerDelete = (id: string) => {
@@ -2020,6 +2030,7 @@ export default function FormImageEditor() {
   const registerStrokeAction = (pageIndex: number) => {
     if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
     actionStackRef.current[pageIndex].push({ type: 'stroke' });
+    hasUnsavedChangesRef.current = true; // Mark as dirty
     // Clear Redo stack for consistency? Native usually clears redo on new action.
     // If we want to be strict, we can try to clear voiceRedoStackRef, but native stroke redo is internal.
   };
@@ -2068,6 +2079,7 @@ export default function FormImageEditor() {
         }
       }
     }
+    hasUnsavedChangesRef.current = true;
   };
 
 
@@ -2085,6 +2097,7 @@ export default function FormImageEditor() {
     voiceRedoStackRef.current[idx] = stack.slice(0, -1);
 
     setVoiceNotes((prev) => [...prev, restored]);
+    hasUnsavedChangesRef.current = true;
   };
 
   const clearNotesForPage = (pageIndex: number) => {
@@ -2095,7 +2108,12 @@ export default function FormImageEditor() {
     );
   };
 
+
+
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
+  const [unsavedChangesVisible, setUnsavedChangesVisible] = useState(false);
+  const pendingNavigationAction = useRef<any>(null); // To store the navigation action
+
 
   const performClearConfirmed = () => {
     setConfirmClearVisible(false);
@@ -2107,6 +2125,7 @@ export default function FormImageEditor() {
     clearNotesForPage(idx);
     setEditingNoteId(null);
     setEditingStickerId(null);
+    hasUnsavedChangesRef.current = true;
   };
 
   const performClear = () => {
@@ -2246,6 +2265,62 @@ export default function FormImageEditor() {
 
     setMultiTouchActive(disable);
   };
+
+  // Intercept Navigation Back
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (true) {
+        return; // Disabled old hook caused TDZ
+        // If we don't have unsaved changes, then we don't need to do anything
+        return;
+      }
+
+      // Prevent default behavior of leaving the screen
+      e.preventDefault();
+
+      // Prompt the user before leaving the screen
+      Alert.alert(
+        'Unsaved changes',
+        'You have unsaved changes. Are you sure you want to discard them and leave the screen?',
+        [
+          { text: "Don't leave", style: 'cancel', onPress: () => { } },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            // If the user confirmed, then we dispatch the action we blocked earlier
+            // This will continue the action that had triggered the removal of the screen
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+          {
+            text: 'Save',
+            onPress: async () => {
+              // Save then leave
+              await onSaveAll();
+              // After save, we can leave.
+              // Logic check: onSaveAll might be async but doesn't return anything?
+              // Assuming onSaveAll handles saving.
+              // Ideally navigate after save.
+              // If onSaveAll updates state and alerts success, we might need to manually trigger nav.
+              // Let's assume onSaveAll saves and we can then dispatch.
+              // Actually, better to just save. The user stays on screen or we navigate?
+              // The user request said: "if they chose Save then add same SAVE button functioanlites"
+              // Usually Save button just saves and stays. 
+              // BUT the prompt is triggered by LEAVING.
+              // "if they chose Discart ... let them leave page"
+              // "if they chose Save ... add same SAVE button functioanlites" -> usually implies saving.
+              // Does it imply saving AND leaving? Or just Saving?
+              // Typically "Save & Exit". 
+              // Let's assume Save & Exit for a "Do you want to save?" dialog on exit.
+              // So we call onSaveAll, await it, then dispatch.
+              navigation.dispatch(e.data.action);
+            },
+          },
+        ]
+      );
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const pinchResponder = useRef(
     PanResponder.create({
@@ -2890,6 +2965,7 @@ export default function FormImageEditor() {
   };
 
   const handleSaveOk = () => {
+    hasUnsavedChangesRef.current = false;
     const payload =
       lastPayloadRef.current || {
         savedStrokes: savedMeta,
@@ -2926,6 +3002,22 @@ export default function FormImageEditor() {
   const getStickerImageSource = (stickerType: 'patient' | 'doctor') => {
     return stickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE;
   };
+
+  // Intercept Navigation Back
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (!hasUnsavedChangesRef.current) {
+        return;
+      }
+
+      e.preventDefault();
+
+      setUnsavedChangesVisible(true);
+      pendingNavigationAction.current = e.data.action;
+    });
+
+    return unsubscribe;
+  }, [navigation, onSaveAll]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -3506,6 +3598,7 @@ export default function FormImageEditor() {
         </View>
       )}
 
+
       {/* Clear confirmation modal */}
       <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
         <View style={styles.confirmModalBackdrop}>
@@ -3523,6 +3616,46 @@ export default function FormImageEditor() {
                 onPress={performClearConfirmed}
               >
                 <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Yes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Unsaved Changes modal - Matches Clear Modal Style */}
+      <Modal visible={unsavedChangesVisible} transparent animationType="fade" onRequestClose={() => setUnsavedChangesVisible(false)}>
+        <View style={styles.confirmModalBackdrop}>
+          <View style={styles.confirmModalCard}>
+            <Text style={styles.confirmModalMessage}>You want to save changes?</Text>
+            <View style={styles.confirmModalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalCancel]}
+                onPress={() => {
+                  setUnsavedChangesVisible(false);
+                  if (pendingNavigationAction.current) {
+                    navigation.dispatch(pendingNavigationAction.current);
+                    pendingNavigationAction.current = null;
+                  }
+                }}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>Discard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalConfirm]}
+                onPress={() => {
+                  setUnsavedChangesVisible(false);
+                  onSaveAll();
+                  // Note: onSaveAll handles navigation with params, so we might not need pendingNavigationAction here?
+                  // Actually, onSaveAll just goes BACK to FormImageScreen.
+                  // If the user was navigating somewhere else (e.g. Home), pendingAction handles that.
+                  // BUT onSaveAll is hardcoded to go back to FormImageScreen.
+                  // The request is "like Save button", which goes to FormImageScreen.
+                  // So we rely on onSaveAll's navigation logic.
+                  // If onSaveAll completes, we can check if pendingAction is different?
+                  // For now, let onSaveAll handle it as requested ("USE SAME COPY... FOR SAVE").
+                }}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
