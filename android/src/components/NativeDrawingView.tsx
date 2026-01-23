@@ -72,7 +72,6 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
           if (!nativeRef.current) return;
           nativeRef.current.setNativeProps({
             strokeColor: hex,
-            eraseMode: false,
           });
         },
 

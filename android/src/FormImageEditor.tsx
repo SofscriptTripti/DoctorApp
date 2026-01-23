@@ -1941,8 +1941,9 @@ export default function FormImageEditor() {
     try {
       const ok = await ensureMicPermission();
       if (!ok) {
-        setVoiceError('Microphone permission denied.');
-        setVoiceVisible(true);
+        // User denied permission. Do NOT open the overlay (which looks like "Mic Open").
+        // Just show an alert explaining why.
+        Alert.alert('Permission Denied', 'Microphone permission is required to use voice notes.');
         return;
       }
 

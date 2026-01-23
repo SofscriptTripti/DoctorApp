@@ -278,8 +278,8 @@ public class DrawingView extends View {
 
     public void setColor(int color) {
         currentColor = color;
-        isEraser = false;
-        isHighlighter = false;
+        // Do NOT automatically disable eraser/highlighter here.
+        // Let explicit setEraser / setHighlighter calls handle state changes.
         paint.setColor(color);
         paint.setAlpha(255);
         paint.setXfermode(null);
