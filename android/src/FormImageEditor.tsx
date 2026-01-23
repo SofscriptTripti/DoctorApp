@@ -1505,7 +1505,16 @@ export default function FormImageEditor() {
   const [imageStickers, setImageStickers] = useState<ImageSticker[]>(initialImageStickersFromParams);
   const [editingStickerId, setEditingStickerId] = useState<string | null>(null);
 
-  const voiceRedoStackRef = useRef<Record<number, VoiceNote[]>>({});
+  // Unified Redo Stack: Stores data needed to restore an item
+  // stroke: just type (native handles data)
+  // voice: full VoiceNote object
+  // sticker: full ImageSticker object
+  const unifiedRedoStackRef = useRef<{
+    [pageIndex: number]: {
+      type: 'stroke' | 'voice' | 'sticker';
+      data?: VoiceNote | ImageSticker | null
+    }[]
+  }>({});
 
   const [stickerModalVisible, setStickerModalVisible] = useState(false);
   const [selectedStickerType, setSelectedStickerType] = useState<'patient' | 'doctor' | null>(null);
@@ -1527,8 +1536,8 @@ export default function FormImageEditor() {
   const scrollX = useRef(0);
 
   // Unified Undo/Redo Stack
-  // Tracks the order of operations for each page: "stroke" | "voice"
-  const actionStackRef = useRef<{ [pageIndex: number]: { type: 'voice' | 'stroke'; id?: string }[] }>({});
+  // Tracks the order of operations for each page: "stroke" | "voice" | "sticker"
+  const actionStackRef = useRef<{ [pageIndex: number]: { type: 'voice' | 'stroke' | 'sticker'; id?: string }[] }>({});
 
   // Track unsaved changes
   const hasUnsavedChangesRef = useRef(false);
@@ -1789,6 +1798,9 @@ export default function FormImageEditor() {
     if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
     actionStackRef.current[pageIndex].push({ type: 'voice', id: newNote.id });
 
+    // Clear Redo stack on new action
+    unifiedRedoStackRef.current[pageIndex] = [];
+
     setVoiceNotes((prev) => [...prev, newNote]);
     hasUnsavedChangesRef.current = true;
   };
@@ -1819,6 +1831,13 @@ export default function FormImageEditor() {
     };
 
     setImageStickers((prev) => [...prev, newSticker]);
+
+    // Push to unified undo stack
+    if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
+    actionStackRef.current[pageIndex].push({ type: 'sticker', id: newSticker.id });
+
+    // Clear Redo stack on new action
+    unifiedRedoStackRef.current[pageIndex] = [];
     hasUnsavedChangesRef.current = true;
   };
 
@@ -1907,17 +1926,7 @@ export default function FormImageEditor() {
   };
 
   const handleVoiceNoteDelete = (id: string) => {
-    setVoiceNotes((prev) => {
-      const note = prev.find((n) => n.id === id);
-      if (!note) return prev;
-
-      const pageIndex = note.pageIndex;
-      const stack = voiceRedoStackRef.current[pageIndex] ?? [];
-      voiceRedoStackRef.current[pageIndex] = [...stack, note];
-
-      return prev.filter((n) => n.id !== id);
-    });
-
+    setVoiceNotes((prev) => prev.filter((n) => n.id !== id));
     setEditingNoteId((prev) => (prev === id ? null : prev));
     hasUnsavedChangesRef.current = true;
   };
@@ -2031,8 +2040,9 @@ export default function FormImageEditor() {
     if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
     actionStackRef.current[pageIndex].push({ type: 'stroke' });
     hasUnsavedChangesRef.current = true; // Mark as dirty
-    // Clear Redo stack for consistency? Native usually clears redo on new action.
-    // If we want to be strict, we can try to clear voiceRedoStackRef, but native stroke redo is internal.
+
+    // Clear Redo stack on new action
+    unifiedRedoStackRef.current[pageIndex] = [];
   };
 
   const performUndo = () => {
@@ -2044,38 +2054,53 @@ export default function FormImageEditor() {
     const lastAction = stack.pop(); // Pop LAST action
 
     if (!lastAction) {
-      // Fallback: If stack is empty (e.g. from existing strokes before this update, or missed events)
-      // Try undoing native stroke just in case?
+      // Fallback only if stack empty (legacy)
       const c = canvasRefs.current[idx];
       if (c && typeof c.undo === 'function') c.undo();
       return;
     }
 
+    // Initialize Redo stack if needed
+    if (!unifiedRedoStackRef.current[idx]) unifiedRedoStackRef.current[idx] = [];
+
     if (lastAction.type === 'stroke') {
       const c = canvasRefs.current[idx];
       if (c && typeof c.undo === 'function') c.undo();
-    } else if (lastAction.type === 'voice') {
+
+      // Push to redo stack
+      unifiedRedoStackRef.current[idx].push({ type: 'stroke' });
+    }
+    else if (lastAction.type === 'voice') {
       let undoneNote: VoiceNote | null = null;
       setVoiceNotes((prev) => {
-        // Find note by ID if possible, or just last one?
-        // Using ID is safer if supported by stack.
         if (lastAction.id) {
           undoneNote = prev.find(n => n.id === lastAction.id) || null;
           return prev.filter(n => n.id !== lastAction.id);
-        } else {
-          // Fallback to "last on page" logic
-          const notesForPage = prev.filter((n) => n.pageIndex === idx);
-          if (notesForPage.length === 0) return prev;
-          undoneNote = notesForPage[notesForPage.length - 1];
-          return prev.filter((n) => n.id !== undoneNote!.id);
         }
+        return prev;
       });
 
       if (undoneNote) {
-        const stackRedo = voiceRedoStackRef.current[idx] ?? [];
-        voiceRedoStackRef.current[idx] = [...stackRedo, undoneNote];
+        unifiedRedoStackRef.current[idx].push({ type: 'voice', data: undoneNote });
         if (editingNoteId === undoneNote.id) {
           setEditingNoteId(null);
+        }
+      }
+    }
+    else if (lastAction.type === 'sticker') {
+      let undoneSticker: ImageSticker | null = null;
+      setImageStickers((prev) => {
+        if (lastAction.id) {
+          undoneSticker = prev.find(s => s.id === lastAction.id) || null;
+          return prev.filter(s => s.id !== lastAction.id);
+        }
+        return prev;
+      });
+
+      if (undoneSticker) {
+        unifiedRedoStackRef.current[idx].push({ type: 'sticker', data: undoneSticker });
+        if (editingStickerId === undoneSticker.id) {
+          setEditingStickerId(null);
         }
       }
     }
@@ -2087,22 +2112,46 @@ export default function FormImageEditor() {
   const performRedo = () => {
     if (!writingEnabled) return;
     const idx = getCurrentPageIndex();
-    const c = canvasRefs.current[idx];
-    if (c && typeof c.redo === 'function') c.redo();
 
-    const stack = voiceRedoStackRef.current[idx] ?? [];
+    const stack = unifiedRedoStackRef.current[idx] ?? [];
     if (stack.length === 0) return;
 
-    const restored = stack[stack.length - 1];
-    voiceRedoStackRef.current[idx] = stack.slice(0, -1);
+    const actionToRedo = stack.pop();
 
-    setVoiceNotes((prev) => [...prev, restored]);
+    if (actionToRedo.type === 'stroke') {
+      const c = canvasRefs.current[idx];
+      if (c && typeof c.redo === 'function') c.redo();
+
+      // Push back to action stack
+      if (!actionStackRef.current[idx]) actionStackRef.current[idx] = [];
+      actionStackRef.current[idx].push({ type: 'stroke' });
+    }
+    else if (actionToRedo.type === 'voice' && actionToRedo.data) {
+      const noteToRestore = actionToRedo.data as VoiceNote;
+      setVoiceNotes((prev) => [...prev, noteToRestore]);
+
+      if (!actionStackRef.current[idx]) actionStackRef.current[idx] = [];
+      actionStackRef.current[idx].push({ type: 'voice', id: noteToRestore.id });
+    }
+    else if (actionToRedo.type === 'sticker' && actionToRedo.data) {
+      const stickerToRestore = actionToRedo.data as ImageSticker;
+      setImageStickers((prev) => [...prev, stickerToRestore]);
+
+      if (!actionStackRef.current[idx]) actionStackRef.current[idx] = [];
+      actionStackRef.current[idx].push({ type: 'sticker', id: stickerToRestore.id });
+    }
+
     hasUnsavedChangesRef.current = true;
   };
 
   const clearNotesForPage = (pageIndex: number) => {
     setVoiceNotes((prev) => prev.filter((n) => n.pageIndex !== pageIndex));
-    voiceRedoStackRef.current[pageIndex] = [];
+    // Clear unified stacks for this page? 
+    // Usually clear wipes everything, so maybe we should clear history too?
+    // But if we want to support undoing "Clear", we'd need to push a massive "Clear Action".
+    // For now, let's just clear the Redo stack to avoid inconsistency.
+    unifiedRedoStackRef.current[pageIndex] = [];
+
     setImageStickers((prev) =>
       prev.filter((s) => s.pageIndex !== pageIndex)
     );
