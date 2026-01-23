@@ -811,51 +811,56 @@ function DraggableVoiceText({
     >
       {isEditing && writingEnabled && (
         <>
-          <View style={styles.fontSizeControls}>
-            <TouchableOpacity
-              style={[styles.fontSizeButton, { borderColor: note.color }]}
-              onPress={decreaseFontSize}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              disabled={!writingEnabled}
-            >
-              <Ionicons name="remove" size={18} color={note.color} />
-            </TouchableOpacity>
-            <Text style={[styles.fontSizeText, { color: note.color }]}>
-              {currentFontSize}px
-            </Text>
-            <TouchableOpacity
-              style={[styles.fontSizeButton, { borderColor: note.color }]}
-              onPress={increaseFontSize}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              disabled={!writingEnabled}
-            >
-              <Ionicons name="add" size={18} color={note.color} />
-            </TouchableOpacity>
+          <View style={{
+            position: 'absolute',
+            top: -60,
+            left: 0,
+            width: '100%',
+            alignItems: 'center',
+            zIndex: 2000,
+          }}>
+            <View style={styles.fontSizeControls}>
+              {/* 1. PLUS */}
+              <TouchableOpacity
+                style={[styles.fontSizeButton, { borderColor: note.color }]}
+                onPress={increaseFontSize}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                disabled={!writingEnabled}
+              >
+                <Ionicons name="add" size={18} color={note.color} />
+              </TouchableOpacity>
+
+              {/* 2. MINUS */}
+              <TouchableOpacity
+                style={[styles.fontSizeButton, { borderColor: note.color }]}
+                onPress={decreaseFontSize}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                disabled={!writingEnabled}
+              >
+                <Ionicons name="remove" size={18} color={note.color} />
+              </TouchableOpacity>
+
+              {/* 3. Drag Handle (Hand Icon) */}
+              <View
+                {...dragPan.panHandlers}
+                style={[styles.fontSizeButton, { borderColor: note.color, marginHorizontal: 2 }]}
+              >
+                <Ionicons name="hand-right" size={16} color={note.color} />
+              </View>
+
+              {/* 4. DUSTBIN (Delete) */}
+              <TouchableOpacity
+                style={[styles.fontSizeButton, { borderColor: note.color }]}
+                onPress={() => onDelete(note.id)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                disabled={!writingEnabled}
+              >
+                <Ionicons name="trash-outline" size={18} color={note.color} />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Floating Close Button at Top-Right Corner */}
-          <TouchableOpacity
-            style={{
-              position: 'absolute',
-              top: -12,
-              right: -12,
-              backgroundColor: '#fff',
-              borderRadius: 12,
-              width: 24,
-              height: 24,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: 1,
-              borderColor: note.color,
-              zIndex: 102,
-              elevation: 5
-            }}
-            onPress={() => onDelete(note.id)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            disabled={!writingEnabled}
-          >
-            <Ionicons name="close" size={16} color={note.color} />
-          </TouchableOpacity>
+          {/* Floating Close Button at Top-Right Corner - REMOVED */}
         </>
       )}
 
@@ -1029,15 +1034,15 @@ function DraggableVoiceText({
               */}
               <View
                 style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 7,
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
                   backgroundColor: '#fff',
                   borderWidth: 1.5,
                   borderColor: note.color,
                   position: 'absolute',
-                  left: -24,
-                  bottom: -24,
+                  left: -29,
+                  bottom: -29,
                 }}
               />
             </Animated.View>
@@ -4058,16 +4063,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   fontSizeControls: {
-    position: 'absolute',
-    top: -42,
-    left: 0,
+    // position: 'absolute', // Removed (handled by wrapper)
+    // top: -60,             // Removed
+    // left: 0,              // Removed
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffffee',
     borderRadius: 18,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    zIndex: 2000,
+    // zIndex: 2000,         // Removed
     elevation: 5,
   },
   fontSizeButton: {
