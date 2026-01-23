@@ -208,7 +208,7 @@ function DraggableVoiceText({
   const MIN_FONT_SIZE = 10;
   const MAX_FONT_SIZE = 36;
 
-  const PADDING_H = 6;
+  const PADDING_H = 4;
   const PADDING_V = 4;
 
   const currentPosRef = useRef<{ x: number; y: number }>(
@@ -316,9 +316,10 @@ function DraggableVoiceText({
       const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
       const buffer = 0;
-      const HEIGHT_BUFFER = 12;
+      const HEIGHT_BUFFER = 0;
+      const WIDTH_BUFFER = 6; // Little more gap on right side
 
-      const contentW = clamp(Math.ceil(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
+      const contentW = clamp(Math.ceil(c.w + PADDING_H * 2 + buffer + WIDTH_BUFFER), MIN_WIDTH, maxWidth);
       const contentH = clamp(Math.ceil(c.h + PADDING_V * 2 + buffer + HEIGHT_BUFFER), MIN_HEIGHT, maxHeight);
 
       // Force update to content size, ignoring manual overrides
@@ -344,7 +345,7 @@ function DraggableVoiceText({
       // Only add buffer if we are in auto-fit mode (no manual width set).
       // If manual width is set, we want to respect it exactly without drift found in a loop.
       const buffer = note.boxWidth ? 0 : 16;
-      const HEIGHT_BUFFER = 12; // Extra buffer to prevent scrolling/clipping
+      const HEIGHT_BUFFER = 0; // Extra buffer to prevent scrolling/clipping
       const contentW = clamp(Math.ceil(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
       const contentH = clamp(Math.ceil(c.h + PADDING_V * 2 + buffer + HEIGHT_BUFFER), MIN_HEIGHT, maxHeight);
 
@@ -370,10 +371,22 @@ function DraggableVoiceText({
     }
   }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef, isEditing]);
 
-  const handleContentLayout = (layout: LayoutRectangle) => {
+  /* REMOVED handleContentLayout favor of handleTextLayout */
+  const handleTextLayout = (e: any) => {
+    const lines = e.nativeEvent.lines;
+    if (!lines || lines.length === 0) return;
+
+    let maxW = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].width > maxW) maxW = lines[i].width;
+    }
+
+    const lastLine = lines[lines.length - 1];
+    const totalH = lastLine.y + lastLine.height; // approximate height
+
     measuredContentSizeRef.current = {
-      w: layout.width,
-      h: layout.height
+      w: maxW,
+      h: totalH
     };
     setMeasuredFlag((v) => v + 1);
   };
@@ -728,9 +741,10 @@ function DraggableVoiceText({
     const sizeRatio = newFontSize / oldFontSize;
 
     const buffer = 0;
+    const WIDTH_BUFFER = 6;
     // in updateBoxSize
-    const neededWidth = Math.ceil((measured.w * sizeRatio) + PADDING_H * 2 + buffer);
-    const neededHeight = Math.ceil((measured.h * sizeRatio) + PADDING_V * 2 + buffer + 12); // + HEIGHT_BUFFER
+    const neededWidth = Math.ceil((measured.w * sizeRatio) + PADDING_H * 2 + buffer + WIDTH_BUFFER);
+    const neededHeight = Math.ceil((measured.h * sizeRatio) + PADDING_V * 2 + buffer + 0); // + HEIGHT_BUFFER
 
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
@@ -773,7 +787,10 @@ function DraggableVoiceText({
 
   const handleContentSizeChange = (e: any) => {
     const { width, height } = e.nativeEvent.contentSize;
-    const HEIGHT_BUFFER = 12;
+
+    // REMOVED: Do not update ref here. TextInput width behaves like container width (bad for shrinking).
+
+    const HEIGHT_BUFFER = 0;
     const measuredH = Math.ceil(height + PADDING_V * 2 + HEIGHT_BUFFER);
 
     // If content + padding exceeds current height, expand
@@ -798,8 +815,9 @@ function DraggableVoiceText({
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
     const buffer = 0;
-    const neededWidth = Math.ceil(measured.w + PADDING_H * 2 + buffer);
-    const neededHeight = Math.ceil(measured.h + PADDING_V * 2 + buffer + 12); // Extra buffer
+    const WIDTH_BUFFER = 6;
+    const neededWidth = Math.ceil(measured.w + PADDING_H * 2 + buffer + WIDTH_BUFFER);
+    const neededHeight = Math.ceil(measured.h + PADDING_V * 2 + buffer + 0); // Extra buffer
 
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
@@ -972,7 +990,6 @@ function DraggableVoiceText({
                   width: '100%',
                 }
               ]}
-              numberOfLines={0}
             >
               {note.text}
             </Text>
@@ -1093,9 +1110,7 @@ function DraggableVoiceText({
               flexWrap: 'wrap',
             },
           ]}
-          onLayout={(e) => {
-            handleContentLayout(e.nativeEvent.layout);
-          }}
+          onTextLayout={handleTextLayout}
         >
           {note.text || ''}
         </Text>
