@@ -229,7 +229,6 @@ public class DrawingView extends View {
                 return true;
 
             case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
                 if (currentStroke != null) {
                     strokes.add(currentStroke);
                     currentStroke = null;
@@ -241,8 +240,26 @@ public class DrawingView extends View {
                 }
                 return true;
 
+            case MotionEvent.ACTION_CANCEL:
+                // Discard the current stroke if gesture is cancelled
+                if (currentStroke != null) {
+                    currentStroke = null;
+                    invalidate();
+                }
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
+                return true;
+
             default:
                 return super.onTouchEvent(event);
+        }
+    }
+
+    public void cancelCurrentStroke() {
+        if (currentStroke != null) {
+            currentStroke = null;
+            invalidate();
         }
     }
 

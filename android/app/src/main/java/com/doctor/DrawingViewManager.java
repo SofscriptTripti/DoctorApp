@@ -23,6 +23,7 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
     public static final int CMD_REDO = 2;
     public static final int CMD_CLEAR = 3;
     public static final int CMD_SAVE = 4;
+    public static final int CMD_CANCEL_STROKE = 5;
 
     @NonNull
     @Override
@@ -100,7 +101,8 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
                 "undo", CMD_UNDO,
                 "redo", CMD_REDO,
                 "clear", CMD_CLEAR,
-                "saveToFile", CMD_SAVE);
+                "saveToFile", CMD_SAVE,
+                "cancelStroke", CMD_CANCEL_STROKE);
     }
 
     @Override
@@ -129,6 +131,10 @@ public class DrawingViewManager extends SimpleViewManager<DrawingView> {
                         root.saveToFile(new File(path));
                     }
                 }
+                break;
+
+            case CMD_CANCEL_STROKE:
+                root.cancelCurrentStroke();
                 break;
         }
     }

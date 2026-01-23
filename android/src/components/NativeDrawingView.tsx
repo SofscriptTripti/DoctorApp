@@ -35,7 +35,9 @@ export type DrawingRef = {
   setColor: (hex: string) => void;
   setBrushSize: (size: number) => void;
   setEraser: (enable: boolean) => void;
+
   saveToFile: (path: string) => Promise<boolean>;
+  cancelStroke: () => void;
 };
 
 const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
@@ -99,6 +101,9 @@ const NativeDrawingView = forwardRef<DrawingRef, NativeProps>(
             }
           });
         },
+
+
+        cancelStroke: () => sendCommand('cancelStroke'),
       }),
       []
     );
