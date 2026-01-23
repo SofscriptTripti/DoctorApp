@@ -566,15 +566,6 @@ function DraggableVoiceText({
           pan.setValue({ x: newX, y: newY });
         }
 
-        // 🔹 Auto-scale Font if dragging CORNER (both X and Y change)
-        if (opts.signX !== 0 && opts.signY !== 0) {
-          const heightRatio = newHeight / sizeStartRef.current.height;
-          const newFS = Math.max(MIN_FONT_SIZE, Math.round(startFontSizeRef.current * heightRatio));
-          if (newFS !== currentFontSize) {
-            setCurrentFontSize(newFS);
-          }
-        }
-
         // Remove manual overwrites of currentRefs here. Let listeners or specific setters handle it.
         // currentWidthRef.current = newWidth; 
         // currentHeightRef.current = newHeight;
@@ -618,10 +609,6 @@ function DraggableVoiceText({
           finalHeight
         );
         onPositionChange(note.id, finalX, finalY);
-
-        if (opts.signX !== 0 && opts.signY !== 0) {
-          onChangeFontSize(note.id, currentFontSize);
-        }
 
         setManualResizeFlag(v => v + 1);
         isResizingRef.current = false;
