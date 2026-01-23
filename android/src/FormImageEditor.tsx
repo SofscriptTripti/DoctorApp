@@ -322,8 +322,9 @@ function DraggableVoiceText({
       // Only add buffer if we are in auto-fit mode (no manual width set).
       // If manual width is set, we want to respect it exactly without drift found in a loop.
       const buffer = note.boxWidth ? 0 : 16;
-      const contentW = clamp(Math.round(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
-      const contentH = clamp(Math.round(c.h + PADDING_V * 2 + buffer), MIN_HEIGHT, maxHeight);
+      const HEIGHT_BUFFER = 12; // Extra buffer to prevent scrolling/clipping
+      const contentW = clamp(Math.ceil(c.w + PADDING_H * 2 + buffer), MIN_WIDTH, maxWidth);
+      const contentH = clamp(Math.ceil(c.h + PADDING_V * 2 + buffer + HEIGHT_BUFFER), MIN_HEIGHT, maxHeight);
 
       // Current manual size (fallback to MIN if undefined to allow shrink-to-fit)
       const manualW = note.boxWidth ?? MIN_WIDTH;
@@ -705,8 +706,9 @@ function DraggableVoiceText({
     const sizeRatio = newFontSize / oldFontSize;
 
     const buffer = 16;
-    const neededWidth = Math.round((measured.w * sizeRatio) + PADDING_H * 2 + buffer);
-    const neededHeight = Math.round((measured.h * sizeRatio) + PADDING_V * 2 + buffer);
+    // in updateBoxSize
+    const neededWidth = Math.ceil((measured.w * sizeRatio) + PADDING_H * 2 + buffer);
+    const neededHeight = Math.ceil((measured.h * sizeRatio) + PADDING_V * 2 + buffer + 12); // + HEIGHT_BUFFER
 
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
@@ -749,7 +751,8 @@ function DraggableVoiceText({
 
   const handleContentSizeChange = (e: any) => {
     const { width, height } = e.nativeEvent.contentSize;
-    const measuredH = Math.ceil(height + PADDING_V * 2);
+    const HEIGHT_BUFFER = 12;
+    const measuredH = Math.ceil(height + PADDING_V * 2 + HEIGHT_BUFFER);
 
     // If content + padding exceeds current height, expand
     if (measuredH > currentHeightRef.current) {
@@ -773,8 +776,8 @@ function DraggableVoiceText({
     const { maxWidth, maxHeight } = calculateDynamicMaximums(note.x, note.y);
 
     const buffer = 16;
-    const neededWidth = Math.round(measured.w + PADDING_H * 2 + buffer);
-    const neededHeight = Math.round(measured.h + PADDING_V * 2 + buffer);
+    const neededWidth = Math.ceil(measured.w + PADDING_H * 2 + buffer);
+    const neededHeight = Math.ceil(measured.h + PADDING_V * 2 + buffer + 12); // Extra buffer
 
     const newWidth = clamp(neededWidth, MIN_WIDTH, maxWidth);
     const newHeight = clamp(neededHeight, MIN_HEIGHT, maxHeight);
