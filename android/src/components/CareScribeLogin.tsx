@@ -144,7 +144,7 @@ export default function CareScribeLogin({ navigation }: any) {
         'HOSP1'
       );
 
-      await saveAuth(response.accessToken, response.userInfo);
+      await saveAuth(response.accessToken, response.refreshToken, response.userInfo);
 
       await saveUserContext(
         response.userInfo.userId,
