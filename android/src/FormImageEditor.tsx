@@ -1427,6 +1427,16 @@ export default function FormImageEditor() {
     writingEnabledRef.current = writingEnabled;
   }, [writingEnabled]);
 
+  const thicknessToolRef = useRef(thicknessTool);
+  useEffect(() => {
+    thicknessToolRef.current = thicknessTool;
+  }, [thicknessTool]);
+
+  const colorPanelOpenRef = useRef(colorPanelOpen);
+  useEffect(() => {
+    colorPanelOpenRef.current = colorPanelOpen;
+  }, [colorPanelOpen]);
+
   const [saveStatus, setSaveStatus] = useState<
     'idle' | 'saving' | 'success' | 'error'
   >('idle');
@@ -2231,6 +2241,14 @@ export default function FormImageEditor() {
   const pinchResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: (evt) => {
+        // Auto-close panels on any touch on the canvas
+        if (thicknessToolRef.current !== null) {
+          setThicknessTool(null);
+        }
+        if (colorPanelOpenRef.current) {
+          setColorPanelOpen(false);
+        }
+
         if (editingNoteId || editingStickerId) return false;
         const touches = evt.nativeEvent.touches || [];
         const count = touches.length;
@@ -2960,7 +2978,11 @@ export default function FormImageEditor() {
           >
             {/* Writing ON/OFF toggle */}
             <TouchableOpacity
-              onPress={() => setWritingEnabled((prev) => !prev)}
+              onPress={() => {
+                setWritingEnabled((prev) => !prev);
+                setThicknessTool(null);
+                setColorPanelOpen(false);
+              }}
               style={[
                 styles.toolButton,
                 !writingEnabled && styles.writeToggleActive,
@@ -2979,7 +3001,10 @@ export default function FormImageEditor() {
 
             {/* Color picker circle */}
             <TouchableOpacity
-              onPress={() => setColorPanelOpen((v) => !v)}
+              onPress={() => {
+                setColorPanelOpen((v) => !v);
+                setThicknessTool(null);
+              }}
               style={[
                 styles.toolButton,
                 !writingEnabled && styles.toolsDisabled,
@@ -2992,7 +3017,11 @@ export default function FormImageEditor() {
 
             {/* ➕ Add Text icon (typed text) */}
             <TouchableOpacity
-              onPress={handleAddTextIconPress}
+              onPress={() => {
+                handleAddTextIconPress();
+                setThicknessTool(null);
+                setColorPanelOpen(false);
+              }}
               style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
@@ -3007,7 +3036,11 @@ export default function FormImageEditor() {
             {/* Undo / Redo / Clear group */}
             <View style={styles.toolGroup}>
               <TouchableOpacity
-                onPress={performUndo}
+                onPress={() => {
+                  performUndo();
+                  setThicknessTool(null);
+                  setColorPanelOpen(false);
+                }}
                 style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
@@ -3020,7 +3053,11 @@ export default function FormImageEditor() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={performRedo}
+                onPress={() => {
+                  performRedo();
+                  setThicknessTool(null);
+                  setColorPanelOpen(false);
+                }}
                 style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
@@ -3040,6 +3077,8 @@ export default function FormImageEditor() {
                     return;
                   }
                   setConfirmClearVisible(true);
+                  setThicknessTool(null);
+                  setColorPanelOpen(false);
                 }}
                 style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
@@ -3055,7 +3094,11 @@ export default function FormImageEditor() {
 
             {/* Patient Sticker */}
             <TouchableOpacity
-              onPress={handlePatientStickerPress}
+              onPress={() => {
+                handlePatientStickerPress();
+                setThicknessTool(null);
+                setColorPanelOpen(false);
+              }}
               style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
@@ -3069,7 +3112,11 @@ export default function FormImageEditor() {
 
             {/* Doctor Sticker */}
             <TouchableOpacity
-              onPress={handleDoctorStickerPress}
+              onPress={() => {
+                handleDoctorStickerPress();
+                setThicknessTool(null);
+                setColorPanelOpen(false);
+              }}
               style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
@@ -3085,7 +3132,11 @@ export default function FormImageEditor() {
             <View style={styles.toolGroup}>
               {/* Pen */}
               <TouchableOpacity
-                onPress={activatePen}
+                onPress={() => {
+                  activatePen();
+                  setThicknessTool(null);
+                  setColorPanelOpen(false);
+                }}
                 style={[styles.toolChip, tool === 'pen' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
@@ -3102,7 +3153,14 @@ export default function FormImageEditor() {
                   Pen
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setThicknessTool((prev) => (prev === 'pen' ? null : 'pen'))}
+                  onPress={() => {
+                    setThicknessTool((prev) => {
+                      if (prev === 'pen') return null;
+                      // Close color panel if opening thickness
+                      setColorPanelOpen(false);
+                      return 'pen';
+                    });
+                  }}
                   style={styles.thicknessToggle}
                   disabled={saveStatus === 'saving' || !writingEnabled}
                 >
@@ -3116,7 +3174,11 @@ export default function FormImageEditor() {
 
               {/* Eraser */}
               <TouchableOpacity
-                onPress={activateEraser}
+                onPress={() => {
+                  activateEraser();
+                  setThicknessTool(null);
+                  setColorPanelOpen(false);
+                }}
                 style={[styles.toolChip, tool === 'eraser' && styles.toolChipActive, !writingEnabled && styles.toolsDisabled]}
                 disabled={saveStatus === 'saving' || !writingEnabled}
               >
@@ -3133,7 +3195,14 @@ export default function FormImageEditor() {
                   Eraser
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setThicknessTool((prev) => (prev === 'eraser' ? null : 'eraser'))}
+                  onPress={() => {
+                    setThicknessTool((prev) => {
+                      if (prev === 'eraser') return null;
+                      // Close color panel if opening thickness
+                      setColorPanelOpen(false);
+                      return 'eraser';
+                    });
+                  }}
                   style={styles.thicknessToggle}
                   disabled={saveStatus === 'saving' || !writingEnabled}
                 >
