@@ -742,9 +742,16 @@ function DraggableVoiceText({
         let newY = sizeStartRef.current.y;
 
         // 4. Constraints & Clamping
-        // Simple Clamp for Min Dimensions
+        // Standard Min
+        let effectiveMinHeight = MIN_HEIGHT;
+        if (measuredContentSizeRef.current) {
+          const HEIGHT_BUFFER = 0; // Same as in auto-resize
+          const minContentH = Math.ceil(measuredContentSizeRef.current.h + PADDING_V * 2 + HEIGHT_BUFFER);
+          effectiveMinHeight = Math.max(effectiveMinHeight, minContentH);
+        }
+
         newWidth = Math.max(MIN_WIDTH, newWidth);
-        newHeight = Math.max(MIN_HEIGHT, newHeight);
+        newHeight = Math.max(effectiveMinHeight, newHeight);
 
         // Check Right Boundary (Screen - 5)
         if (newX + newWidth > IMAGE_WIDTH - 5) {
@@ -899,9 +906,11 @@ function DraggableVoiceText({
 
 
   const handleContentSizeChange = (e: any) => {
-    if (isUserResizingRef.current) return; // Prevent shaking during manual resize
-
     const { width, height } = e.nativeEvent.contentSize;
+    // Always track content size for min-height constraints
+    measuredContentSizeRef.current = { w: width, h: height };
+
+    if (isUserResizingRef.current) return; // Prevent shaking during manual resize
 
     // REMOVED: Do not update ref here. TextInput width behaves like container width (bad for shrinking).
 
