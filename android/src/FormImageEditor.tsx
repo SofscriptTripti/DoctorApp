@@ -695,7 +695,113 @@ function DraggableVoiceText({
     createResizePan({ signX: 1, signY: -1 })
   ).current;
   const blResizePan = useRef(
-    createResizePan({ signX: -1, signY: 1 })
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => writingEnabled,
+      onMoveShouldSetPanResponder: () => writingEnabled,
+      onStartShouldSetPanResponderCapture: () => {
+        if (!writingEnabled) return false;
+        isResizingRef.current = true;
+        return true;
+      },
+      onMoveShouldSetPanResponderCapture: () => {
+        if (!writingEnabled) return false;
+        isResizingRef.current = true;
+        return true;
+      },
+
+      onPanResponderGrant: () => {
+        if (!writingEnabled) return;
+        isUserResizingRef.current = true;
+        isResizingRef.current = true;
+        if (onResizeStart) onResizeStart();
+        startFontSizeRef.current = currentFontSize;
+        sizeStartRef.current = {
+          width: currentWidthRef.current,
+          height: currentHeightRef.current,
+          x: currentPosRef.current.x,
+          y: currentPosRef.current.y,
+        };
+      },
+
+      onPanResponderMove: (_evt, gs) => {
+        if (!writingEnabled) return;
+        const scale = pageScaleRef.current || 1;
+        const dx = gs.dx / scale;
+        const dy = gs.dy / scale;
+
+        const { maxWidth, maxHeight } = calculateDynamicMaximums(currentPosRef.current.x, currentPosRef.current.y);
+
+        // Height Logic (Bottom Handle: signY = 1)
+        let newHeight = sizeStartRef.current.height + dy;
+        newHeight = clamp(newHeight, MIN_HEIGHT, maxHeight);
+
+        let newWidth = sizeStartRef.current.width;
+        let newX = sizeStartRef.current.x;
+
+        if (dx <= 0) {
+          // Drag Left: Expand Left Logic
+          newWidth = sizeStartRef.current.width - dx;
+          newX = sizeStartRef.current.x + dx;
+        } else {
+          // Drag Right: Stretch Right Logic
+          // Increase width AND move X to track finger
+          newWidth = sizeStartRef.current.width + dx;
+          newX = sizeStartRef.current.x + dx;
+        }
+
+        const dynamicMax = calculateDynamicMaximums(newX, sizeStartRef.current.y);
+        newWidth = clamp(newWidth, MIN_WIDTH, dynamicMax.maxWidth);
+
+        if (dx <= 0) {
+          // Force X to match width change for left expansion
+          const widthChange = newWidth - sizeStartRef.current.width;
+          newX = sizeStartRef.current.x - widthChange;
+        }
+
+        widthAnim.setValue(newWidth);
+        heightAnim.setValue(newHeight);
+
+        if (newX !== currentPosRef.current.x || sizeStartRef.current.y !== currentPosRef.current.y) {
+          pan.setValue({ x: newX, y: sizeStartRef.current.y });
+          currentPosRef.current = { x: newX, y: sizeStartRef.current.y };
+        }
+      },
+
+      onPanResponderRelease: () => {
+        if (!writingEnabled) return;
+        const finalWidth = currentWidthRef.current;
+        const finalHeight = currentHeightRef.current;
+
+        // Correctly read latest pos
+        const finalX = currentPosRef.current.x;
+        const finalY = currentPosRef.current.y;
+
+        onBoxSizeChange(note.id, finalWidth, finalHeight);
+        onPositionChange(note.id, finalX, finalY);
+
+        setManualResizeFlag(v => v + 1);
+        isResizingRef.current = false;
+        if (onResizeEnd) onResizeEnd();
+
+        currentPosRef.current = { x: finalX, y: finalY };
+      },
+
+      onPanResponderTerminate: () => {
+        if (!writingEnabled) return;
+        const finalWidth = currentWidthRef.current;
+        const finalHeight = currentHeightRef.current;
+        const finalX = currentPosRef.current.x;
+        const finalY = currentPosRef.current.y;
+
+        onBoxSizeChange(note.id, finalWidth, finalHeight);
+        onPositionChange(note.id, finalX, finalY);
+
+        setManualResizeFlag(v => v + 1);
+        isResizingRef.current = false;
+        if (onResizeEnd) onResizeEnd();
+        currentPosRef.current = { x: finalX, y: finalY };
+      }
+    })
   ).current;
   const brResizePan = useRef(
     createResizePan({ signX: 1, signY: 1 })
