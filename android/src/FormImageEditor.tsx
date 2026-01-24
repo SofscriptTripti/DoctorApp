@@ -729,24 +729,17 @@ function DraggableVoiceText({
         const dx = gs.dx / scale;
         const dy = gs.dy / scale;
 
-        // 1. Calculate new dimensions (Always Grow logic based on user request)
-        // Horizontal: Left/Right growth
+        // 1. Horizontal: Left/Right growth (Bi-directional "Stretch")
         let newWidth = sizeStartRef.current.width + Math.abs(dx);
-        // Vertical: Up/Down growth
-        let newHeight = sizeStartRef.current.height + Math.abs(dy);
 
-        // 2. Calculate New X (Handle is on Left, so X tracks Handle)
-        // Drag Left (dx < 0): X moves left.
-        // Drag Right (dx > 0): X moves right.
+        // 2. Vertical: Standard Bottom Resize (Up shrinks, Down grows)
+        let newHeight = sizeStartRef.current.height + dy;
+
+        // 3. Horizontal Handle Tracking
         let newX = sizeStartRef.current.x + dx;
 
-        // 3. Calculate New Y (Handle is on Bottom)
-        // We know Bottom = Y + Height.
-        // And Handle follows finger: NewBottom = StartBottom + dy.
-        // So: NewY + NewHeight = StartY + StartHeight + dy.
-        // NewY = (StartY + StartHeight + dy) - NewHeight.
-        const startBottom = sizeStartRef.current.y + sizeStartRef.current.height;
-        let newY = (startBottom + dy) - newHeight;
+        // 4. Vertical Y Logic (Top stays FIXED during bottom resize)
+        let newY = sizeStartRef.current.y;
 
         // 4. Constraints & Clamping
         // Simple Clamp for Min Dimensions
