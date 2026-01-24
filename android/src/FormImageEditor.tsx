@@ -3714,6 +3714,18 @@ export default function FormImageEditor() {
       <Modal visible={unsavedChangesVisible} transparent animationType="fade" onRequestClose={() => setUnsavedChangesVisible(false)}>
         <View style={styles.confirmModalBackdrop}>
           <View style={styles.confirmModalCard}>
+            <TouchableOpacity
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                padding: 4,
+                zIndex: 10,
+              }}
+              onPress={() => setUnsavedChangesVisible(false)}
+            >
+              <Ionicons name="close" size={20} color="#9ca3af" />
+            </TouchableOpacity>
             <Text style={styles.confirmModalMessage}>You want to save changes?</Text>
             <View style={styles.confirmModalButtonsRow}>
               <TouchableOpacity
