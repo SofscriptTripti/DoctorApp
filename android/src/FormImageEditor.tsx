@@ -906,6 +906,8 @@ function DraggableVoiceText({
 
 
   const handleContentSizeChange = (e: any) => {
+    if (isUserResizingRef.current) return; // Prevent shaking during manual resize
+
     const { width, height } = e.nativeEvent.contentSize;
 
     // REMOVED: Do not update ref here. TextInput width behaves like container width (bad for shrinking).
