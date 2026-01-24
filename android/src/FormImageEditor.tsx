@@ -331,7 +331,7 @@ function DraggableVoiceText({
         onBoxSizeChange(note.id, contentW, contentH);
       }
     }
-  }, [isEditing, note.id, onBoxSizeChange]);
+  }, [isEditing, note.id, onBoxSizeChange, measuredFlag]);
 
   useEffect(() => {
     // If content measurement changes AND user is NOT currently manually resizing,
@@ -793,16 +793,15 @@ function DraggableVoiceText({
     const HEIGHT_BUFFER = 0;
     const measuredH = Math.ceil(height + PADDING_V * 2 + HEIGHT_BUFFER);
 
-    // If content + padding exceeds current height, expand
-    if (measuredH > currentHeightRef.current) {
+    // If content + padding differs significantly from current height, update
+    // We allow SHRINKING now too, in case user deleted text.
+    if (Math.abs(measuredH - currentHeightRef.current) > 2) {
       const { maxHeight } = calculateDynamicMaximums(note.x, note.y);
       const newHeight = clamp(measuredH, MIN_HEIGHT, maxHeight);
 
-      if (newHeight > currentHeightRef.current) {
-        heightAnim.setValue(newHeight);
-        currentHeightRef.current = newHeight;
-        onBoxSizeChange(note.id, currentWidthRef.current, newHeight);
-      }
+      heightAnim.setValue(newHeight);
+      currentHeightRef.current = newHeight;
+      onBoxSizeChange(note.id, currentWidthRef.current, newHeight);
     }
   };
 
@@ -964,7 +963,7 @@ function DraggableVoiceText({
             underlineColorAndroid="transparent"
             placeholder=""
             allowFontScaling={false}
-            scrollEnabled={true}
+            scrollEnabled={false} // Disable scrolling to force auto-grow/wrap
             autoFocus={false}
             onTouchStart={(e) => e.stopPropagation()}
             editable={writingEnabled}
@@ -988,8 +987,10 @@ function DraggableVoiceText({
                   fontSize: currentFontSize,
                   flexWrap: 'wrap',
                   width: '100%',
+                  includeFontPadding: false,
                 }
               ]}
+              allowFontScaling={false}
             >
               {note.text}
             </Text>
@@ -1111,6 +1112,7 @@ function DraggableVoiceText({
             },
           ]}
           onTextLayout={handleTextLayout}
+          allowFontScaling={false}
         >
           {note.text || ''}
         </Text>
