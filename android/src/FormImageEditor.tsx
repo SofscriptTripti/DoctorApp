@@ -208,8 +208,8 @@ function DraggableVoiceText({
   const MIN_FONT_SIZE = 10;
   const MAX_FONT_SIZE = 36;
 
-  const PADDING_H = 4;
-  const PADDING_V = 4;
+  const PADDING_H = 12;
+  const PADDING_V = 12;
 
   const currentPosRef = useRef<{ x: number; y: number }>(
     { x: note.x, y: note.y }
@@ -1069,7 +1069,8 @@ function DraggableVoiceText({
                 padding: 0,
                 margin: 0,
                 textAlign: 'left',
-                includeFontPadding: false,
+                includeFontPadding: true,
+                paddingTop: 2,
                 overflow: 'visible',
               },
             ]}
