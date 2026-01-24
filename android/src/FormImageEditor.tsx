@@ -271,8 +271,8 @@ function DraggableVoiceText({
     const maxAvailableHeight = IMAGE_HEIGHT - y - 10;
 
     return {
-      maxWidth: Math.max(MIN_WIDTH, Math.min(maxAvailableWidth, IMAGE_WIDTH * 0.8)),
-      maxHeight: Math.max(MIN_HEIGHT, Math.min(maxAvailableHeight, IMAGE_HEIGHT * 0.8))
+      maxWidth: Math.max(MIN_WIDTH, maxAvailableWidth),
+      maxHeight: Math.max(MIN_HEIGHT, maxAvailableHeight)
     };
   };
 
@@ -729,41 +729,57 @@ function DraggableVoiceText({
         const dx = gs.dx / scale;
         const dy = gs.dy / scale;
 
-        const { maxWidth, maxHeight } = calculateDynamicMaximums(currentPosRef.current.x, currentPosRef.current.y);
+        // 1. Calculate new dimensions (Always Grow logic based on user request)
+        // Horizontal: Left/Right growth
+        let newWidth = sizeStartRef.current.width + Math.abs(dx);
+        // Vertical: Up/Down growth
+        let newHeight = sizeStartRef.current.height + Math.abs(dy);
 
-        // Height Logic (Bottom Handle: signY = 1)
-        let newHeight = sizeStartRef.current.height + dy;
-        newHeight = clamp(newHeight, MIN_HEIGHT, maxHeight);
+        // 2. Calculate New X (Handle is on Left, so X tracks Handle)
+        // Drag Left (dx < 0): X moves left.
+        // Drag Right (dx > 0): X moves right.
+        let newX = sizeStartRef.current.x + dx;
 
-        let newWidth = sizeStartRef.current.width;
-        let newX = sizeStartRef.current.x;
+        // 3. Calculate New Y (Handle is on Bottom)
+        // We know Bottom = Y + Height.
+        // And Handle follows finger: NewBottom = StartBottom + dy.
+        // So: NewY + NewHeight = StartY + StartHeight + dy.
+        // NewY = (StartY + StartHeight + dy) - NewHeight.
+        const startBottom = sizeStartRef.current.y + sizeStartRef.current.height;
+        let newY = (startBottom + dy) - newHeight;
 
-        if (dx <= 0) {
-          // Drag Left: Expand Left Logic
-          newWidth = sizeStartRef.current.width - dx;
-          newX = sizeStartRef.current.x + dx;
-        } else {
-          // Drag Right: Stretch Right Logic
-          // Increase width AND move X to track finger
-          newWidth = sizeStartRef.current.width + dx;
-          newX = sizeStartRef.current.x + dx;
+        // 4. Constraints & Clamping
+        // Simple Clamp for Min Dimensions
+        newWidth = Math.max(MIN_WIDTH, newWidth);
+        newHeight = Math.max(MIN_HEIGHT, newHeight);
+
+        // Check Right Boundary (Screen - 5)
+        if (newX + newWidth > IMAGE_WIDTH - 5) {
+          newWidth = (IMAGE_WIDTH - 5) - newX;
+        }
+        // Check Left Boundary (5)
+        if (newX < 5) {
+          newX = 5;
+          // If X is clamped, Width might still grow if there's room on right?
+          // With dx logic, handle stops at 5. 
         }
 
-        const dynamicMax = calculateDynamicMaximums(newX, sizeStartRef.current.y);
-        newWidth = clamp(newWidth, MIN_WIDTH, dynamicMax.maxWidth);
-
-        if (dx <= 0) {
-          // Force X to match width change for left expansion
-          const widthChange = newWidth - sizeStartRef.current.width;
-          newX = sizeStartRef.current.x - widthChange;
+        // Check Bottom Boundary (Screen - 5)
+        if (newY + newHeight > IMAGE_HEIGHT - 5) {
+          newHeight = (IMAGE_HEIGHT - 5) - newY;
+        }
+        // Check Top Boundary (5)
+        if (newY < 5) {
+          newY = 5;
         }
 
+        // Apply
         widthAnim.setValue(newWidth);
         heightAnim.setValue(newHeight);
 
-        if (newX !== currentPosRef.current.x || sizeStartRef.current.y !== currentPosRef.current.y) {
-          pan.setValue({ x: newX, y: sizeStartRef.current.y });
-          currentPosRef.current = { x: newX, y: sizeStartRef.current.y };
+        if (newX !== currentPosRef.current.x || newY !== currentPosRef.current.y) {
+          pan.setValue({ x: newX, y: newY });
+          currentPosRef.current = { x: newX, y: newY };
         }
       },
 
@@ -771,8 +787,6 @@ function DraggableVoiceText({
         if (!writingEnabled) return;
         const finalWidth = currentWidthRef.current;
         const finalHeight = currentHeightRef.current;
-
-        // Correctly read latest pos
         const finalX = currentPosRef.current.x;
         const finalY = currentPosRef.current.y;
 
