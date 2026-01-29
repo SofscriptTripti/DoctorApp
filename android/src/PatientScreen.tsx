@@ -682,9 +682,15 @@ export default function PatientScreen() {
             </View>
 
             {/* Status Badge (FLOATING RIGHT) */}
-            <View style={styles.badge}>
-              <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>
+            <View style={[
+              styles.badge,
+              !isDark && {
+                backgroundColor: '#E6FFFA',
+                borderColor: '#0EA5A4'
+              }
+            ]}>
+              <View style={[styles.badgeDot, !isDark && { backgroundColor: '#0EA5A4' }]} />
+              <Text style={[styles.badgeText, !isDark && { color: '#0EA5A4' }]}>
                 {personTab === 'OUT' ? 'OutPatient' : 'InPatient'}
               </Text>
             </View>
@@ -787,23 +793,43 @@ export default function PatientScreen() {
 
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: '#0B1220' }}
+      style={{ flex: 1, backgroundColor: isDark ? '#0B1220' : '#F1F5F9' }}
       edges={['top', 'left', 'right']}
     >
-      <LinearGradient
-        colors={['#0B1220', '#0E1626', '#0B1220']}
-        style={{ flex: 1 }}
-      >
-        <StatusBar
-          barStyle={isDark ? 'light-content' : 'dark-content'}
-          backgroundColor={isDark ? '#0B1220' : '#FFFFFF'}
-        />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={isDark ? '#0B1220' : '#0EA5A4'}
+      />
 
+      {isDark ? (
+        <LinearGradient
+          colors={['#0B1220', '#0E1626', '#0B1220']}
+          style={{ flex: 1 }}
+        >
+          {renderMainContent()}
+        </LinearGradient>
+      ) : (
+        <View style={{ flex: 1, backgroundColor: '#0EA5A4' }}>
+          {renderMainContent()}
+        </View>
+      )}
+    </SafeAreaView>
+  );
 
-
-        <View style={styles.header}>
-
-
+  function renderMainContent() {
+    return (
+      <>
+        {/* Header */}
+        <View style={[
+          styles.header,
+          !isDark && {
+            backgroundColor: '#0EA5A4',
+            borderBottomLeftRadius: 18,
+            borderBottomRightRadius: 18,
+            elevation: 6,
+            paddingVertical: 14,
+          }
+        ]}>
           <Image
             source={require('./Images/Sofscript.png')}
             style={styles.logo} />
@@ -839,23 +865,28 @@ export default function PatientScreen() {
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         </View>
-        <View {...(!editingVital ? panResponder.panHandlers : {})}>
 
-          <View style={[styles.personTabWrapper, { backgroundColor: isDark ? colors.surfaceHighlight : '#cdd3dbff' }]}>
+        <View {...(!editingVital ? panResponder.panHandlers : {})}>
+          <View style={[
+            styles.personTabWrapper,
+            { backgroundColor: isDark ? colors.surfaceHighlight : '#0EA5A4' },
+            !isDark && { marginHorizontal: 0, borderRadius: 0, paddingHorizontal: 16, paddingBottom: 8 }
+          ]}>
             <TouchableOpacity
               onPress={() => setPersonTab('IN')}
-
               style={[
                 styles.personTab,
                 personTab === 'IN' && styles.personTabActive,
+                !isDark && personTab === 'IN' && { backgroundColor: '#FFFFFF' }
               ]}
-
             >
               <Text
                 style={[
                   styles.personTabText,
                   personTab === 'IN' && styles.personTabTextActive,
-                  isDark && personTab !== 'IN' && { color: colors.textSecondary }
+                  isDark && personTab !== 'IN' && { color: colors.textSecondary },
+                  !isDark && personTab === 'IN' && { color: '#0EA5A4' },
+                  !isDark && personTab !== 'IN' && { color: 'rgba(255,255,255,0.7)' }
                 ]}
               >
                 In Patient
@@ -867,14 +898,16 @@ export default function PatientScreen() {
               style={[
                 styles.personTab,
                 personTab === 'OUT' && styles.personTabActive,
+                !isDark && personTab === 'OUT' && { backgroundColor: '#FFFFFF' }
               ]}
-
             >
               <Text
                 style={[
                   styles.personTabText,
                   personTab === 'OUT' && styles.personTabTextActive,
-                  isDark && personTab !== 'OUT' && { color: colors.textSecondary }
+                  isDark && personTab !== 'OUT' && { color: colors.textSecondary },
+                  !isDark && personTab === 'OUT' && { color: '#0EA5A4' },
+                  !isDark && personTab !== 'OUT' && { color: 'rgba(255,255,255,0.7)' }
                 ]}
               >
                 Out Patient
@@ -885,10 +918,23 @@ export default function PatientScreen() {
 
         {/* Content */}
         <View style={styles.contentWrapper}>
-          <View style={[styles.sectionHeader, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
+          <View style={[
+            styles.sectionHeader,
+            { backgroundColor: isDark ? colors.background : '#0EA5A4' },
+            !isDark && {
+              borderBottomLeftRadius: 18,
+              borderBottomRightRadius: 18,
+              paddingBottom: 14,
+              paddingTop: 0, // already has padding from header or tabs?
+            }
+          ]}>
             <View style={styles.searchRow}>
               {/* Search box */}
-              <View style={[styles.searchWrapperContent, { backgroundColor: colors.surface }]}>
+              <View style={[
+                styles.searchWrapperContent,
+                { backgroundColor: colors.surface },
+                !isDark && { elevation: 2, shadowOpacity: 0.1 }
+              ]}>
                 <Icon
                   name="search"
                   size={18}
@@ -896,7 +942,7 @@ export default function PatientScreen() {
                   style={{ marginRight: 8 }} />
                 <TextInput
                   multiline={false}
-                  placeholder="Search by Name, Ward, Doctor or Patient No"
+                  placeholder="by Name, Ward, Doctor or Patient No"
                   placeholderTextColor={isDark ? colors.textSecondary : "#64748B"}
                   value={searchText}
                   onChangeText={setSearchText}
@@ -908,29 +954,12 @@ export default function PatientScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-
-              {/* Filter icon on same row */}
-              {/* <TouchableOpacity
-      style={[
-        styles.filterButton,
-        filtersActive && styles.filterButtonActive,
-      ]}
-      activeOpacity={0.8}
-      onPress={() => setFilterModalVisible(true)}
-    >
-      <Icon
-        name="filter"
-        size={18}
-        color={filtersActive ? '#0EA5A4' : '#64748B'}
-      />
-    </TouchableOpacity> */}
             </View>
           </View>
 
-
           {loadingPatients ? (
             <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#0F172A' }}>Loading patients...</Text>
+              <Text style={{ color: colors.textPrimary }}>Loading patients...</Text>
             </View>
           ) : (
             <FlatList
@@ -940,23 +969,16 @@ export default function PatientScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent} />
           )}
-
         </View>
 
-
+        {/* Modal: Patient Details */}
         <Modal
           transparent
           visible={modalVisible}
           animationType="none"
           onRequestClose={closePatientModal}
         >
-
-          <View
-            style={styles.modalBackdrop}
-            onStartShouldSetResponderCapture={() => false}
-            onMoveShouldSetResponderCapture={() => false}
-          >
-
+          <View style={styles.modalBackdrop}>
             <TouchableOpacity
               style={StyleSheet.absoluteFill}
               activeOpacity={1}
@@ -972,9 +994,9 @@ export default function PatientScreen() {
                     opacity: vitalsOpacity,
                     transform: [{ scale: vitalsScale }],
                   },
+                  isDark && { backgroundColor: colors.surface, borderColor: '#0EA5A4', borderWidth: 1 }
                 ]}
               >
-
                 <TouchableOpacity
                   onPress={toggleVitals}
                   style={{
@@ -985,11 +1007,11 @@ export default function PatientScreen() {
                     zIndex: 20,
                   }}
                 >
-                  <Feather name="x" size={22} color="#444" />
+                  <Feather name="x" size={22} color={isDark ? colors.textSecondary : "#444"} />
                 </TouchableOpacity>
                 <View style={styles.vitalsHeaderRow}>
                   <FA5 name="stethoscope" size={18} color="#0EA5A4" />
-                  <Text style={styles.vitalsHeaderText}>Recent Vitals</Text>
+                  <Text style={[styles.vitalsHeaderText, isDark && { color: colors.textPrimary }]}>Recent Vitals</Text>
                 </View>
                 <View style={styles.vitalsGrid}>
                   {/* Row 1 */}
@@ -998,23 +1020,19 @@ export default function PatientScreen() {
                     <VitalTile label="SPO₂" vitalKey="spo2" value={vitalsData.spo2} />
                     <VitalTile label="Blood Pressure" vitalKey="bp" value={vitalsData.bp} />
                   </View>
-
                   {/* Row 2 */}
                   <View style={styles.vitalRowContainer}>
                     <VitalTile label="Respiration" vitalKey="respiration" value={vitalsData.respiration} />
                     <VitalTile label="Heart Rate" vitalKey="heartRate" value={vitalsData.heartRate} />
                     <VitalTile label="Weight" vitalKey="weight" value={vitalsData.weight} />
                   </View>
-
                   {/* Row 3 */}
                   <View style={styles.vitalRowContainer}>
                     <VitalTile label="Height" vitalKey="height" value={vitalsData.height} />
                     <VitalTile label="BMI" vitalKey="bmi" value={vitalsData.bmi} />
-                    {/* Empty space for alignment */}
                     <View style={styles.emptyVitalTile} />
                   </View>
                 </View>
-
               </Animated.View>
             )}
 
@@ -1027,28 +1045,29 @@ export default function PatientScreen() {
                   transform: [
                     { scale: scaleAnim },
                     { translateY: translateYAnim },
-                    // { translateY: modalExtraShiftWhenVitals },
-                    { translateY: translateYAnim },
                   ],
+                  backgroundColor: isDark ? colors.surface : '#FFFFFF',
                 },
+                isDark && {
+                  borderColor: '#0EA5A4',
+                  borderWidth: 1,
+                }
               ]}
             >
               <View style={styles.modalAccentStrip} />
-
               <Animated.View
                 style={[
                   styles.modalHeroCircle,
                   { transform: [{ scale: heroPulse }] },
+                  isDark && { backgroundColor: 'rgba(14, 165, 164, 0.2)' }
                 ]}
               >
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  onPress={() => {
-                    toggleVitals();
-                  }}
+                  onPress={toggleVitals}
                   style={styles.modalHeroInnerTouchable}
                 >
-                  <View style={styles.modalHeroInnerCircle}>
+                  <View style={[styles.modalHeroInnerCircle, isDark && { backgroundColor: colors.surfaceHighlight }]}>
                     <FA5 name="heartbeat" size={42} color="#0EA5A4" />
                   </View>
                 </TouchableOpacity>
@@ -1071,112 +1090,36 @@ export default function PatientScreen() {
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                 >
-                  {/* Top row: avatar + name + tags */}
                   <View style={[styles.modalTopRow, { marginTop: 18 }]}>
                     <View style={styles.modalAvatar}>
                       <Text style={styles.modalAvatarText}>
                         {getInitials(selectedPatient.name)}
                       </Text>
                     </View>
-
                     <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.modalName}>{selectedPatient.name}</Text>
-
+                      <Text style={[styles.modalName, { color: colors.textPrimary }]}>{selectedPatient.name}</Text>
                       <View style={styles.modalChipsRow}>
-                        <View style={styles.chip}>
-                          <Icon
-                            name={selectedPatient.gender === 'Male'
-                              ? 'male'
-                              : selectedPatient.gender === 'Female'
-                                ? 'female'
-                                : 'person'}
-                            size={14}
-                            color="#0EA5A4"
-                            style={{ marginRight: 4 }} />
-                          <Text style={styles.chipText}>
-                            {selectedPatient.gender} • {selectedPatient.age} yrs
-                          </Text>
-                        </View>
-
-                        <View style={[styles.chip, { marginLeft: 6 }]}>
-                          <Icon
-                            name="barcode-outline"
-                            size={14}
-                            color="#0EA5A4"
-                            style={{ marginRight: 4 }} />
-                          <Text style={styles.chipText}>
-                            {/* {personTab === 'OUT' ? 'Visit No:' : 'IP:'} {selectedPatient.IP} */}
-                          </Text>
-
+                        <View style={[styles.chip, { backgroundColor: isDark ? colors.surfaceHighlight : '#F1F5F9' }]}>
+                          <Icon name={selectedPatient.gender === 'Male' ? 'male' : selectedPatient.gender === 'Female' ? 'female' : 'person'} size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
+                          <Text style={[styles.chipText, { color: colors.textPrimary }]}>{selectedPatient.gender} • {selectedPatient.age} yrs</Text>
                         </View>
                       </View>
-
                       <View style={[styles.modalChipsRow, { marginTop: 6 }]}>
-                        <View style={[styles.chipSoft]}>
-                          <Icon
-                            name="bed-outline"
-                            size={13}
-                            color="#0EA5A4"
-                            style={{ marginRight: 4 }} />
-                          <Text style={styles.chipSoftText}>
-                            {getAdmissionType(selectedPatient)}
-                          </Text>
+                        <View style={[styles.chipSoft, { backgroundColor: isDark ? 'rgba(14, 165, 164, 0.15)' : '#ECFEFF' }]}>
+                          <Icon name="bed-outline" size={13} color="#0EA5A4" style={{ marginRight: 4 }} />
+                          <Text style={[styles.chipSoftText, { color: isDark ? '#0EA5A4' : '#0EA5A4' }]}>{getAdmissionType(selectedPatient)}</Text>
                         </View>
-
-                        {!/opd|day care/i.test(selectedPatient.room) && (
-                          <View style={[styles.chipSoft, { marginLeft: 6 }]}>
-                            <Icon
-                              name="time-outline"
-                              size={13}
-                              color="#0EA5A4"
-                              style={{ marginRight: 4 }} />
-                            <Text style={styles.chipSoftText}>
-                              {getAdmissionDay(selectedPatient)}
-                            </Text>
-                          </View>
-                        )}
                       </View>
                     </View>
                   </View>
 
-                  {/* Rectangular info grid */}
                   <View style={styles.infoGrid}>
-                    <View style={styles.infoTile}>
-                      <Text style={styles.infoLabel}>Room / Location</Text>
-                      <Text style={styles.infoValue}>{selectedPatient.room}</Text>
-                    </View>
-                    <View style={styles.infoTile}>
-                      <Text style={styles.infoLabel}>Admit Date</Text>
-
-                      <Text style={styles.infoValue}>
-                        {formatDate(selectedPatient.admitDate)}
-                      </Text>
-                    </View>
-                    <View style={styles.infoTile}>
-                      <Text style={styles.infoLabel}>Primary Concern</Text>
-                      <Text
-                        style={styles.infoValue}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                      >
-                        {selectedPatient.diagnosis}
-                      </Text>
-                    </View>
-                    <View style={styles.infoTile}>
-                      <Text style={styles.infoLabel}>Doctor</Text>
-                      <Text style={styles.infoValue}>
-                        {selectedPatient.doctorName}
-                      </Text>
-                    </View>
-
-                    <View style={[styles.infoTile, styles.rxNotesButtonContainer]}>
-                      <TouchableOpacity
-                        style={styles.rxNotesButton}
-                        activeOpacity={0.8}
-                        onPress={goToRxNotes}
-
-
-                      >
+                    <InfoTile label="Room / Location" value={selectedPatient.room} />
+                    <InfoTile label="Admit Date" value={formatDate(selectedPatient.admitDate)} />
+                    <InfoTile label="Primary Concern" value={selectedPatient.diagnosis} lines={2} />
+                    <InfoTile label="Doctor" value={selectedPatient.doctorName} />
+                    <View style={[styles.infoTile, styles.rxNotesButtonContainer, isDark && { backgroundColor: 'transparent', borderColor: '#0EA5A4' }]}>
+                      <TouchableOpacity style={styles.rxNotesButton} activeOpacity={0.8} onPress={goToRxNotes}>
                         <Icon name="document-text-outline" size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
                         <Text style={styles.rxNotesText}>RxNotes</Text>
                       </TouchableOpacity>
@@ -1188,6 +1131,7 @@ export default function PatientScreen() {
           </View>
         </Modal>
 
+        {/* Modal: Filters */}
         <Modal
           transparent
           visible={filterModalVisible}
@@ -1195,18 +1139,14 @@ export default function PatientScreen() {
           onRequestClose={() => setFilterModalVisible(false)}
         >
           <View style={styles.filterModalBackdrop}>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => setFilterModalVisible(false)} />
-            <View style={styles.filterModalCard}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setFilterModalVisible(false)} />
+            <View style={[styles.filterModalCard, { backgroundColor: colors.surface }]}>
               <View style={styles.filterModalHeader}>
-                <Text style={styles.filterTitle}>Search Filters</Text>
+                <Text style={[styles.filterTitle, { color: colors.textPrimary }]}>Search Filters</Text>
                 <TouchableOpacity onPress={handleClearFilters}>
-                  <Icon name="trash-outline" size={18} color="#64748B" />
+                  <Icon name="trash-outline" size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-
               <View style={styles.filterOptionsWrapper}>
                 {[
                   { key: 'name' as FilterKey, label: 'Name' },
@@ -1218,29 +1158,18 @@ export default function PatientScreen() {
                   return (
                     <TouchableOpacity
                       key={opt.key}
-                      style={[
-                        styles.filterOptionRow,
-                        isSelected && styles.filterOptionRowActive,
-                      ]}
+                      style={[styles.filterOptionRow, isSelected && { backgroundColor: isDark ? colors.surfaceHighlight : '#F1F5F9', borderRadius: 10 }]}
                       activeOpacity={0.8}
                       onPress={() => toggleFilter(opt.key)}
                     >
-                      <Icon
-                        name={isSelected ? 'checkbox-outline' : 'square-outline'}
-                        size={20}
-                        color={isSelected ? '#0EA5A4' : '#94A3B8'}
-                        style={{ marginRight: 10 }} />
-                      <Text style={styles.filterOptionLabel}>{opt.label}</Text>
+                      <Icon name={isSelected ? 'checkbox-outline' : 'square-outline'} size={20} color={isSelected ? '#0EA5A4' : colors.textMuted} style={{ marginRight: 10 }} />
+                      <Text style={[styles.filterOptionLabel, { color: colors.textPrimary }]}>{opt.label}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-
               <View style={styles.filterFooter}>
-                <TouchableOpacity
-                  style={styles.filterDoneButton}
-                  onPress={() => setFilterModalVisible(false)}
-                >
+                <TouchableOpacity style={styles.filterDoneButton} onPress={() => setFilterModalVisible(false)}>
                   <Text style={styles.filterDoneText}>Done</Text>
                 </TouchableOpacity>
               </View>
@@ -1248,39 +1177,39 @@ export default function PatientScreen() {
           </View>
         </Modal>
 
-
-        {/* ✅ NEW: Logout Confirmation Modal */}
+        {/* Modal: Logout Confirmation */}
         <Modal
           visible={confirmLogoutVisible}
           transparent
           animationType="fade"
           onRequestClose={() => setConfirmLogoutVisible(false)}
         >
-          <View style={styles.confirmModalBackdrop}>
-            <View style={styles.confirmModalCard}>
-              <Text style={styles.confirmModalMessage}>Are you sure you want to logout?</Text>
+          <View style={[styles.confirmModalBackdrop, isDark && { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+            <View style={[styles.confirmModalCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.confirmModalMessage, { color: colors.textPrimary }]}>Are you sure you want to logout?</Text>
               <View style={styles.confirmModalButtonsRow}>
-                <TouchableOpacity
-                  style={[styles.confirmModalButton, styles.confirmModalCancel]}
-                  onPress={() => setConfirmLogoutVisible(false)}
-                >
-                  <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>No</Text>
+                <TouchableOpacity style={[styles.confirmModalButton, styles.confirmModalCancel, isDark && { backgroundColor: colors.surfaceHighlight }]} onPress={() => setConfirmLogoutVisible(false)}>
+                  <Text style={[styles.confirmModalButtonText, { color: colors.textSecondary }]}>No</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.confirmModalButton, styles.confirmModalConfirm]}
-                  onPress={performLogout}
-                >
-                  <Text style={[styles.confirmModalButtonText, styles.confirmModalConfirmText]}>Yes</Text>
+                <TouchableOpacity style={[styles.confirmModalButton, styles.confirmModalConfirm]} onPress={performLogout}>
+                  <Text style={[styles.confirmModalButtonText, { color: '#fff' }]}>Yes</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </Modal>
-      </LinearGradient >
+      </>
+    );
+  }
 
-    </SafeAreaView>
-
-  );
+  function InfoTile({ label, value, lines = 1 }: { label: string; value: string; lines?: number }) {
+    return (
+      <View style={[styles.infoTile, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+        <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{label}</Text>
+        <Text style={[styles.infoValue, { color: colors.textPrimary }]} numberOfLines={lines} ellipsizeMode="tail">{value}</Text>
+      </View>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
@@ -1289,10 +1218,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 18,
+    paddingVertical: 14,
     backgroundColor: 'transparent',
-  }
-  ,
+  },
 
   logo: {
     width: 60,
@@ -1507,7 +1435,7 @@ const styles = StyleSheet.create({
     top: 12,
     right: 12,
     backgroundColor: '#052E2B',
-    borderColor: '#22C55E',
+    borderColor: '#e8f3ecff',
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -1520,10 +1448,10 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#16A34A',
+    backgroundColor: 'white',
     marginRight: 4,
   },
-  badgeText: { fontSize: 11, color: '#166534', fontWeight: '600' },
+  badgeText: { fontSize: 11, color: 'white', fontWeight: '600' },
 
   divider: {
     height: 1,
@@ -1606,6 +1534,7 @@ const styles = StyleSheet.create({
     borderColor: '#0EA5A4',
     borderWidth: 5,
     zIndex: 20,
+    // Dynamic background handles in render/inline style, but default here is white
   },
 
   modalAccentStrip: {
@@ -1624,7 +1553,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#0EA5A433',
+    backgroundColor: '#0EA5A433', // Keep transparent teal
     justifyContent: 'center',
     alignItems: 'center',
   },

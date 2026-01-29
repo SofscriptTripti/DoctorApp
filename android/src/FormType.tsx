@@ -532,14 +532,14 @@ export default function FormTypeScreen() {
           {/* Prevent closing when clicking inside the box */}
           <TouchableOpacity
             activeOpacity={1}
-            style={styles.filterBox}
+            style={[styles.filterBox, isDark && { backgroundColor: colors.surface, borderColor: colors.border }]}
             onPress={() => { }}
           >
             {/* Header Row: Title + Close Button */}
             <View style={styles.filterHeaderRow}>
-              <Text style={styles.filterTitle}>Filter by Color</Text>
+              <Text style={[styles.filterTitle, isDark && { color: colors.textPrimary }]}>Filter by Color</Text>
               <TouchableOpacity onPress={() => setFilterVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Icon name="close" size={20} color="#64748B" />
+                <Icon name="close" size={20} color={isDark ? colors.textMuted : "#64748B"} />
               </TouchableOpacity>
             </View>
 
@@ -560,12 +560,11 @@ export default function FormTypeScreen() {
                       )
                     }
                   >
-                    <View style={[styles.colorCheckbox, isSelected && styles.colorCheckboxSelected]}>
+                    <View style={[styles.colorCheckbox, isSelected && styles.colorCheckboxSelected, isDark && !isSelected && { borderColor: colors.textMuted }]}>
                       {isSelected && <Icon name="checkmark" size={12} color="#fff" />}
                     </View>
 
-                    <View style={[styles.colorSwatch, { backgroundColor: color }]} />
-
+                    <View style={[styles.colorSwatch, { backgroundColor: color, borderColor: isDark ? colors.border : '#E2E8F0' }]} />
 
                   </TouchableOpacity>
                 );
@@ -586,10 +585,10 @@ export default function FormTypeScreen() {
       )}
 
       <SafeAreaView edges={['left', 'right', 'bottom']} style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={{ height: insets.top, backgroundColor: '#0EA5A4' }} />
-        <StatusBar backgroundColor="#0EA5A4" barStyle="light-content" />
+        <View style={{ height: insets.top, backgroundColor: isDark ? colors.surface : '#0EA5A4' }} />
+        <StatusBar backgroundColor={isDark ? colors.surface : '#0EA5A4'} barStyle="light-content" />
         {/* HEADER */}
-        <View style={styles.header}>
+        <View style={[styles.header, isDark && { backgroundColor: colors.surface }]}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.navigate('PatientScreen', { ...route.params })}
@@ -603,7 +602,10 @@ export default function FormTypeScreen() {
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
-              style={styles.hmisButton}
+              style={[
+                styles.hmisButton,
+                isDark && { backgroundColor: 'transparent', borderColor: '#0EA5A4' }
+              ]}
               onPress={() =>
                 navigation.navigate('HMISFormType', {
                   patientName,
@@ -614,27 +616,7 @@ export default function FormTypeScreen() {
                 })
               }
             >
-              <Text style={styles.hmisButtonText}>HMIS Report</Text>
-            </TouchableOpacity>
-
-            {/* 🌗 Theme Toggle */}
-            <TouchableOpacity
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 19,
-                justifyContent: 'center',
-                alignItems: 'center',
-                backgroundColor: '#ffffff',
-                marginLeft: 12
-              }}
-              onPress={toggleTheme}
-            >
-              <Icon
-                name={isDark ? 'sunny' : 'moon'}
-                size={20}
-                color="#0EA5A4"
-              />
+              <Text style={[styles.hmisButtonText, isDark && { color: '#0EA5A4' }]}>HMIS Report</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -644,12 +626,14 @@ export default function FormTypeScreen() {
                 borderRadius: 19,
                 justifyContent: 'center',
                 alignItems: 'center',
-                backgroundColor: 'rgba(255,255,255,0.18)',
+                backgroundColor: isDark ? 'transparent' : 'rgba(255,255,255,0.18)',
+                borderWidth: isDark ? 1 : 0,
+                borderColor: isDark ? '#0EA5A4' : 'transparent',
                 marginLeft: 12
               }}
               onPress={() => navigation.navigate('PatientScreen')}
             >
-              <Icon name="home" size={22} color="#fff" />
+              <Icon name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
             </TouchableOpacity>
           </View>
         </View>
@@ -657,36 +641,68 @@ export default function FormTypeScreen() {
         {/* CONTENT */}
         <View style={[styles.contentWrapper, { backgroundColor: colors.background }]}>
           <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
-            <View style={styles.patientInfoCard}>
+            <View style={[
+              styles.patientInfoCard,
+              isDark && {
+                backgroundColor: '#0EA5A4',
+                borderWidth: 1,
+                borderColor: 'rgba(14, 165, 164, 0.3)'
+              }
+            ]}>
               <View style={styles.patientInfoCol}>
-                <Text style={styles.patientLabel}>Patient</Text>
-                <Text style={styles.patientValue} numberOfLines={1}>
+                <Text style={[
+                  styles.patientLabel,
+                  isDark && { color: colors.textSecondary }
+                ]}>Patient</Text>
+                <Text style={[
+                  styles.patientValue,
+                  isDark && { color: colors.textPrimary }
+                ]} numberOfLines={1}>
                   {patientName}
                 </Text>
               </View>
               <View style={styles.patientInfoColCenter}>
-                <Text style={styles.patientLabel}>Admission</Text>
-                <Text style={styles.patientValue} numberOfLines={1}>
+                <Text style={[
+                  styles.patientLabel,
+                  isDark && { color: colors.textSecondary }
+                ]}>Admission</Text>
+                <Text style={[
+                  styles.patientValue,
+                  isDark && { color: colors.textPrimary }
+                ]} numberOfLines={1}>
                   {admissionNo || 'N/A'}
                 </Text>
               </View>
               {patientIP && (
                 <View style={styles.patientInfoColRight}>
-                  <Text style={styles.patientLabel}>IP No</Text>
-                  <Text style={styles.patientValue}>{patientIP}</Text>
+                  <Text style={[
+                    styles.patientLabel,
+                    isDark && { color: colors.textSecondary }
+                  ]}>IP No</Text>
+                  <Text style={[
+                    styles.patientValue,
+                    isDark && { color: colors.textPrimary }
+                  ]}>{patientIP}</Text>
                 </View>
               )}
             </View>
 
-            <View style={styles.searchWrapperContent}>
-              <Icon name="search" size={18} color="#94A3B8" />
+            <View style={[
+              styles.searchWrapperContent,
+              { backgroundColor: colors.surface },
+              isDark && { borderColor: '#1F2937', borderWidth: 1 }
+            ]}>
+              <Icon name="search" size={18} color={isDark ? colors.textMuted : "#94A3B8"} />
 
               <TextInput
                 placeholder="Search Forms"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={isDark ? colors.textSecondary : "#64748B"}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                style={styles.searchInputContent}
+                style={[
+                  styles.searchInputContent,
+                  { color: colors.textPrimary }
+                ]}
               />
 
               <TouchableOpacity
@@ -699,7 +715,7 @@ export default function FormTypeScreen() {
                 <Icon
                   name="filter"
                   size={18}
-                  color={selectedColors.length > 0 ? "#0EA5A4" : "#94A3B8"}
+                  color={selectedColors.length > 0 ? "#0EA5A4" : (isDark ? colors.textMuted : "#94A3B8")}
                 />
                 {selectedColors.length > 0 && (
                   <View style={styles.filterBadge}>
@@ -868,6 +884,9 @@ const styles = StyleSheet.create({
     elevation: 1,
     marginBottom: 10,
     minHeight: 44,
+    // Base border for light mode (can vary, but usually none or light)
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
 
   searchInputContent: {
@@ -1014,7 +1033,7 @@ const styles = StyleSheet.create({
     top: 180, // Approximate position below filter icon
     right: 24,
     width: 220,
-    backgroundColor: '#fff',
+    backgroundColor: '#fff', // This seems hard-coded, might need check in render
     borderRadius: 12,
     padding: 16,
     elevation: 10,
@@ -1023,7 +1042,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E2E8F0', // Might want to update
   },
 
   filterHeaderRow: {
