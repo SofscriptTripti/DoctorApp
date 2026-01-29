@@ -10,6 +10,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // 🔹 REDUX
 import { Provider } from 'react-redux';
 import { store } from './android/src/store';
+import { ThemeProvider } from './android/src/theme/ThemeContext';
 
 // Screens
 import PatientScreen from './android/src/PatientScreen';
@@ -51,68 +52,70 @@ function App() {
   return (
     // 🔹 Redux Provider (TOP LEVEL)
     <Provider store={store}>
-      <GestureHandlerRootView style={styles.root}>
-        <SafeAreaProvider>
-          <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+      <ThemeProvider>
+        <GestureHandlerRootView style={styles.root}>
+          <SafeAreaProvider>
+            <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
-          <NavigationContainer>
-            <Stack.Navigator
-              initialRouteName="CareScribeLogin"
-              screenOptions={{ headerShown: false }}
-            >
-              {/* Auth */}
-              <Stack.Screen
-                name="CareScribeLogin"
-                component={CareScribeLogin}
-              />
+            <NavigationContainer>
+              <Stack.Navigator
+                initialRouteName="CareScribeLogin"
+                screenOptions={{ headerShown: false }}
+              >
+                {/* Auth */}
+                <Stack.Screen
+                  name="CareScribeLogin"
+                  component={CareScribeLogin}
+                />
 
-              {/* Main Screens */}
-              <Stack.Screen
-                name="PatientScreen"
-                component={PatientScreen}
-              />
-              <Stack.Screen
-                name="FormType"
-                component={FormType}
-              />
+                {/* Main Screens */}
+                <Stack.Screen
+                  name="PatientScreen"
+                  component={PatientScreen}
+                />
+                <Stack.Screen
+                  name="FormType"
+                  component={FormType}
+                />
 
-              {/* Form / Editor */}
-              <Stack.Screen
-                name="FormImageEditor"
-                component={FormImageEditor}
-              />
-              <Stack.Screen
-                name="FormImageScreen"
-                component={FormImageScreen}
-              />
-              <Stack.Screen
-                name="HMISFormType"
-                component={HMISFormType}
-              />
-              <Stack.Screen
-                name="NoOFReport"
-                component={NoOFReport}
-              />
-              <Stack.Screen
-                name="PdfViewer"
-                component={PdfViewerScreen}
-              />
-              <Stack.Screen
-                name="EditorHistory"
-                component={EditorHistory}
-              />
-              <Stack.Screen
-                name="RxNotes"
-                component={RxNotes}
-              />
-              <Stack.Screen
-                name="ImagePdfViewer"
-                component={ImagePdfViewerScreen}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
+                {/* Form / Editor */}
+                <Stack.Screen
+                  name="FormImageEditor"
+                  component={FormImageEditor}
+                />
+                <Stack.Screen
+                  name="FormImageScreen"
+                  component={FormImageScreen}
+                />
+                <Stack.Screen
+                  name="HMISFormType"
+                  component={HMISFormType}
+                />
+                <Stack.Screen
+                  name="NoOFReport"
+                  component={NoOFReport}
+                />
+                <Stack.Screen
+                  name="PdfViewer"
+                  component={PdfViewerScreen}
+                />
+                <Stack.Screen
+                  name="EditorHistory"
+                  component={EditorHistory}
+                />
+                <Stack.Screen
+                  name="RxNotes"
+                  component={RxNotes}
+                />
+                <Stack.Screen
+                  name="ImagePdfViewer"
+                  component={ImagePdfViewerScreen}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </ThemeProvider>
     </Provider>
   );
 }

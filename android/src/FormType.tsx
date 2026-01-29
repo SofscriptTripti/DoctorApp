@@ -18,6 +18,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDocumentPages, getFormList } from './api/documentsApi';
+import { useTheme } from './theme/ThemeContext';
+import { StatusBar } from 'react-native';
 
 const DOCUMENT_STORAGE_KEY = 'documentId';
 const STORAGE_KEYS = {
@@ -74,7 +76,9 @@ type ApiForm = {
 export default function FormTypeScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+
   const insets = useSafeAreaInsets();
+  const { colors, isDark, toggleTheme } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [forms, setForms] = useState<ApiForm[]>([]);
@@ -395,8 +399,29 @@ export default function FormTypeScreen() {
   /* ================= RENDER ITEM ================= */
 
   const renderItem = ({ item }: { item: ApiForm }) => {
-    const bgColor = item?.backgroundColor ?? '#FFFFFF';
-    const textColor = item.textColor ?? '#0F172A';
+    let bgColor = item?.backgroundColor;
+    let textColor = item.textColor;
+
+    // Smart override: If background is white (default) and we are in dark mode, use surface color
+    if (!bgColor || (isDark && bgColor.toUpperCase() === '#FFFFFF')) {
+      bgColor = colors.surface;
+    } else if (!isDark && bgColor?.toUpperCase() === '#000000') {
+      bgColor = colors.surface;
+    } else if (!bgColor) {
+      bgColor = colors.surface;
+    }
+
+    // Smart override for text
+    if (!textColor || (isDark && textColor.toUpperCase() === '#0F172A')) {
+      textColor = colors.textPrimary;
+    } else if (!textColor) {
+      textColor = colors.textPrimary;
+    }
+
+    // Fallback
+    bgColor = bgColor || colors.surface;
+    textColor = textColor || colors.textPrimary;
+
     const totalPages = item.totalPages || 0;
     const editedPages = item.editedPages || 0;
     const filledCount = filledCounts[item.documentId] || 0;
@@ -560,14 +585,16 @@ export default function FormTypeScreen() {
         </TouchableOpacity>
       )}
 
-      <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+      <SafeAreaView edges={['left', 'right', 'bottom']} style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={{ height: insets.top, backgroundColor: '#0EA5A4' }} />
+        <StatusBar backgroundColor="#0EA5A4" barStyle="light-content" />
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.navigate('PatientScreen', { ...route.params })}
           >
-            <Icon name="arrow-back" size={22} color="#fff" />?
+            <Icon name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
 
           <View style={{ flex: 1, alignItems: 'center' }}>
@@ -590,6 +617,26 @@ export default function FormTypeScreen() {
               <Text style={styles.hmisButtonText}>HMIS Report</Text>
             </TouchableOpacity>
 
+            {/* 🌗 Theme Toggle */}
+            <TouchableOpacity
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: '#ffffff',
+                marginLeft: 12
+              }}
+              onPress={toggleTheme}
+            >
+              <Icon
+                name={isDark ? 'sunny' : 'moon'}
+                size={20}
+                color="#0EA5A4"
+              />
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={{
                 width: 38,
@@ -608,8 +655,8 @@ export default function FormTypeScreen() {
         </View>
 
         {/* CONTENT */}
-        <View style={styles.contentWrapper}>
-          <View style={styles.sectionHeader}>
+        <View style={[styles.contentWrapper, { backgroundColor: colors.background }]}>
+          <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
             <View style={styles.patientInfoCard}>
               <View style={styles.patientInfoCol}>
                 <Text style={styles.patientLabel}>Patient</Text>
@@ -694,7 +741,7 @@ export default function FormTypeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F1F5F9'
+    // backgroundColor: '#F1F5F9'
   },
   filterTitle: {
     fontSize: 18,
