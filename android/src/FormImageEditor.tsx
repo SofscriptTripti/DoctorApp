@@ -39,6 +39,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Slider from '@react-native-community/slider';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTheme } from './theme/ThemeContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LayoutChangeEvent } from 'react-native';
 
@@ -259,7 +260,7 @@ function DraggableVoiceText({
 
   const measuredContentSizeRef = useRef<{ w: number; h: number } | null>(null);
   const [measuredFlag, setMeasuredFlag] = useState(0);
-  const resizeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const resizeDebounceRef = useRef<any>(null);
 
   const textInputRef = useRef<TextInput>(null);
   const pageScaleRef = useRef(pageScale);
@@ -1553,6 +1554,7 @@ function DraggableImageSticker({
 
 // ----- main component
 export default function FormImageEditor() {
+  const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
@@ -2836,7 +2838,7 @@ export default function FormImageEditor() {
             );
             return true;
           }
-          await new Promise(res => setTimeout(res, intervalMs));
+          await new Promise<void>(res => setTimeout(() => res(), intervalMs));
         } catch (e) {
           console.warn(`⚠️ [BASE64] Attempt ${attempts} error`, e);
         }
@@ -3233,52 +3235,59 @@ export default function FormImageEditor() {
   }, [navigation, onSaveAll]);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, isDark && { backgroundColor: colors.surface }]}>
       {/* Loading indicator for previous overlays */}
       {loadingPreviousOverlays && (
-        <View style={styles.previousOverlaysLoading}>
+        <View style={[styles.previousOverlaysLoading, isDark && { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
           <ActivityIndicator size="small" color="#fff" />
           <Text style={styles.previousOverlaysText}>Loading previous overlays...</Text>
         </View>
       )}
 
       {/* Combined Header - Back + Tools + SAVE */}
-      <View style={styles.combinedHeader}>
+      <View style={[
+        styles.combinedHeader,
+        { paddingTop: 14, paddingBottom: 10 },
+        isDark ? { backgroundColor: colors.surface } : {
+          borderBottomLeftRadius: 18,
+          borderBottomRightRadius: 18,
+          elevation: 6,
+        }
+      ]}>
         {/* Top row: Back button on left, SAVE on right */}
         <View style={styles.topRow}>
           {/* Back button on left */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={styles.backButton}
+            style={styles.backButtonCircular}
             disabled={saveStatus === 'saving'}
           >
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
 
-          {/* SAVE button on right */}
           {/* Right Side: SAVE + Home */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
               onPress={onSaveAll}
-              style={[styles.saveButton, { marginRight: 10 }]}
+              style={[
+                styles.saveButton,
+                { marginRight: 10 },
+                isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }
+              ]}
               disabled={saveStatus === 'saving'}
             >
-              <Text style={styles.saveButtonText}>SAVE</Text>
+              <Text style={[styles.saveButtonText, isDark && { color: '#fff' }]}>SAVE</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => navigation.navigate('PatientScreen')}
-              style={{
-                width: 38,
-                height: 38,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'rgba(255,255,255,0.18)',
-                borderRadius: 19
-              }}
+              style={[
+                styles.backButtonCircular,
+                isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }
+              ]}
               disabled={saveStatus === 'saving'}
             >
-              <Ionicons name="home" size={20} color="#fff" />
+              <Ionicons name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
             </TouchableOpacity>
           </View>
         </View>
@@ -3535,7 +3544,7 @@ export default function FormImageEditor() {
 
       {/* Color palette panel */}
       {colorPanelOpen && (
-        <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }]}>
+        <Animated.View style={[styles.colorPanel, { top: topPadding + 150 }, isDark && { backgroundColor: colors.surface }]}>
           {/* Close Icon */}
           <TouchableOpacity
             onPress={() => setColorPanelOpen(false)}
@@ -3547,7 +3556,7 @@ export default function FormImageEditor() {
               zIndex: 50,
             }}
           >
-            <Feather name="x" size={22} color="#333" />
+            <Feather name="x" size={22} color={isDark ? colors.textPrimary : "#333"} />
           </TouchableOpacity>
 
           <View style={styles.paletteGrid}>
@@ -3594,9 +3603,9 @@ export default function FormImageEditor() {
       )}
 
       {/* Wrapper that handles pinch zoom / pan */}
-      <View style={{ flex: 1 }} {...pinchResponder.panHandlers}>
+      <View style={[{ flex: 1 }, isDark && { backgroundColor: colors.background }]} {...pinchResponder.panHandlers}>
         <ScrollView
-          ref={(r) => (scrollRef.current = r)}
+          ref={(r) => { scrollRef.current = r; }}
           style={{ flex: 1 }}
           horizontal
           pagingEnabled
@@ -3636,7 +3645,7 @@ export default function FormImageEditor() {
 
               return (
                 <View key={`page-${pageIndex}`} style={styles.pageWrap}>
-                  <View style={styles.pageInner}>
+                  <View style={[styles.pageInner, isDark && { backgroundColor: colors.surfaceHighlight }]}>
                     <Animated.View
                       style={[
                         styles.zoomGroup,
@@ -3659,7 +3668,7 @@ export default function FormImageEditor() {
                       ) : (
                         <View style={styles.loadingContainer}>
                           <ActivityIndicator size="large" color="#0EA5A4" />
-                          <Text style={styles.loadingText}>Loading image...</Text>
+                          <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading image...</Text>
                         </View>
                       )}
 
@@ -3796,7 +3805,7 @@ export default function FormImageEditor() {
 
       {/* 🔊 floating mic FAB */}
       <TouchableOpacity
-        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled]}
+        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled, isDark && { backgroundColor: colors.surface }]}
         activeOpacity={0.8}
         onPress={handleVoiceFabPress}
         disabled={saveStatus === 'saving' || !writingEnabled}
@@ -3806,7 +3815,7 @@ export default function FormImageEditor() {
 
       {/* "Editing mode Off" bubble */}
       {editingOffHintVisible && (
-        <View style={[styles.writingOffBanner, { bottom: (insets.bottom ?? 0) + 24 + 56 + 8 }]}>
+        <View style={[styles.writingOffBanner, { bottom: (insets.bottom ?? 0) + 24 + 56 + 8 }, isDark && { backgroundColor: 'rgba(51, 65, 85, 0.9)' }]}>
           <Text style={styles.writingOffText}>Editing mode Off</Text>
         </View>
       )}
@@ -3815,14 +3824,14 @@ export default function FormImageEditor() {
       {/* Clear confirmation modal */}
       <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
         <View style={styles.confirmModalBackdrop}>
-          <View style={styles.confirmModalCard}>
-            <Text style={styles.confirmModalMessage}>Are you sure you want to clear everything?</Text>
+          <View style={[styles.confirmModalCard, isDark && { backgroundColor: colors.surface }]}>
+            <Text style={[styles.confirmModalMessage, isDark && { color: colors.textPrimary }]}>Are you sure you want to clear everything?</Text>
             <View style={styles.confirmModalButtonsRow}>
               <TouchableOpacity
-                style={[styles.confirmModalButton, styles.confirmModalCancel]}
+                style={[styles.confirmModalButton, styles.confirmModalCancel, isDark && { backgroundColor: colors.surfaceHighlight }]}
                 onPress={() => setConfirmClearVisible(false)}
               >
-                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>No</Text>
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText, isDark && { color: colors.textSecondary }]}>No</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmModalButton, styles.confirmModalConfirm]}
@@ -3838,7 +3847,7 @@ export default function FormImageEditor() {
       {/* Unsaved Changes modal - Matches Clear Modal Style */}
       <Modal visible={unsavedChangesVisible} transparent animationType="fade" onRequestClose={() => setUnsavedChangesVisible(false)}>
         <View style={styles.confirmModalBackdrop}>
-          <View style={styles.confirmModalCard}>
+          <View style={[styles.confirmModalCard, isDark && { backgroundColor: colors.surface }]}>
             <TouchableOpacity
               style={{
                 position: 'absolute',
@@ -3849,12 +3858,12 @@ export default function FormImageEditor() {
               }}
               onPress={() => setUnsavedChangesVisible(false)}
             >
-              <Ionicons name="close" size={20} color="#9ca3af" />
+              <Ionicons name="close" size={20} color={isDark ? colors.textMuted : "#9ca3af"} />
             </TouchableOpacity>
-            <Text style={styles.confirmModalMessage}>You want to save changes?</Text>
+            <Text style={[styles.confirmModalMessage, isDark && { color: colors.textPrimary }]}>You want to save changes?</Text>
             <View style={styles.confirmModalButtonsRow}>
               <TouchableOpacity
-                style={[styles.confirmModalButton, styles.confirmModalCancel]}
+                style={[styles.confirmModalButton, styles.confirmModalCancel, isDark && { backgroundColor: colors.surfaceHighlight }]}
                 onPress={() => {
                   setUnsavedChangesVisible(false);
                   if (pendingNavigationAction.current) {
@@ -3863,7 +3872,7 @@ export default function FormImageEditor() {
                   }
                 }}
               >
-                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText]}>Discard</Text>
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalCancelText, isDark && { color: colors.textSecondary }]}>Discard</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmModalButton, styles.confirmModalConfirm]}
@@ -3890,12 +3899,12 @@ export default function FormImageEditor() {
       {/* Sticker modal */}
       <Modal visible={stickerModalVisible} transparent animationType="fade" onRequestClose={() => setStickerModalVisible(false)}>
         <View style={styles.stickerModalBackdrop}>
-          <View style={styles.stickerModalContent}>
-            <Text style={styles.stickerModalTitle}>Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker</Text>
+          <View style={[styles.stickerModalContent, isDark && { backgroundColor: colors.surface }]}>
+            <Text style={[styles.stickerModalTitle, isDark && { color: colors.textPrimary }]}>Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker</Text>
             <Image source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE} style={styles.stickerModalImage} resizeMode="contain" />
             <View style={styles.stickerModalButtonsRow}>
-              <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => setStickerModalVisible(false)}>
-                <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
+              <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: isDark ? colors.surfaceHighlight : '#e5e7eb' }]} onPress={() => setStickerModalVisible(false)}>
+                <Text style={[styles.stickerModalButtonText, { color: isDark ? colors.textSecondary : '#111827' }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.stickerModalButton, { backgroundColor: '#0EA5A4' }]}
@@ -3917,9 +3926,9 @@ export default function FormImageEditor() {
       {/* 📝 Typed Text Modal */}
       <Modal visible={textModalVisible} transparent animationType="fade" onRequestClose={() => setTextModalVisible(false)}>
         <View style={styles.stickerModalBackdrop}>
-          <View style={styles.stickerModalContent}>
-            <Text style={styles.stickerModalTitle}>Add text</Text>
-            <TextInput style={styles.textModalInput} placeholder="Type text to add on image" placeholderTextColor="#9ca3af" multiline value={typedText} onChangeText={setTypedText} autoFocus />
+          <View style={[styles.stickerModalContent, isDark && { backgroundColor: colors.surface }]}>
+            <Text style={[styles.stickerModalTitle, isDark && { color: colors.textPrimary }]}>Add text</Text>
+            <TextInput style={[styles.textModalInput, isDark && { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Type text to add on image" placeholderTextColor={isDark ? colors.textMuted : "#9ca3af"} multiline value={typedText} onChangeText={setTypedText} autoFocus />
             <View style={styles.stickerModalButtonsRow}>
               <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => { setTextModalVisible(false); setTypedText(''); }}>
                 <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
@@ -3934,16 +3943,16 @@ export default function FormImageEditor() {
 
       {/* 🔽 Thickness dropdown panel */}
       {thicknessPanelOpen && thicknessTool && writingEnabled && (
-        <View style={[styles.thicknessPanel, { top: topPadding + 150 }]}>
+        <View style={[styles.thicknessPanel, { top: topPadding + 150 }, isDark && { backgroundColor: colors.surface }]}>
           <View style={styles.thicknessHeaderRow}>
-            <Text style={styles.thicknessTitle}>{thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}</Text>
+            <Text style={[styles.thicknessTitle, isDark && { color: colors.textPrimary }]}>{thicknessTool === 'pen' ? 'Pen thickness' : 'Eraser thickness'}</Text>
             <TouchableOpacity onPress={() => setThicknessTool(null)}>
-              <Ionicons name="chevron-up" size={18} color="#111827" />
+              <Ionicons name="chevron-up" size={18} color={isDark ? colors.textPrimary : "#111827"} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.thicknessContentRow}>
-            <Text style={styles.thicknessBigValue}>{thicknessTool === 'pen' ? penWidth : eraserWidth}px</Text>
+            <Text style={[styles.thicknessBigValue, isDark && { color: colors.textPrimary }]}>{thicknessTool === 'pen' ? penWidth : eraserWidth}px</Text>
 
             <Slider
               style={styles.thicknessSlider}
@@ -3977,22 +3986,22 @@ export default function FormImageEditor() {
       {/* Voice overlay */}
       {voiceVisible && (
         <View style={styles.voiceOverlay}>
-          <View style={styles.voiceDialog}>
+          <View style={[styles.voiceDialog, isDark && { backgroundColor: colors.surface }]}>
             <TouchableOpacity style={styles.voiceCloseButton} onPress={handleVoiceClose}>
-              <Ionicons name="close" size={24} color="#9ca3af" />
+              <Ionicons name="close" size={24} color={isDark ? colors.textMuted : "#9ca3af"} />
             </TouchableOpacity>
 
-            <Text style={styles.voiceTitle}>Google</Text>
-            <Text style={styles.voiceSubtitle}>{voiceListening ? voiceText || 'Listening...' : 'Processing...'}</Text>
+            <Text style={[styles.voiceTitle, isDark && { color: colors.textPrimary }]}>Google</Text>
+            <Text style={[styles.voiceSubtitle, isDark && { color: colors.textSecondary }]}>{voiceListening ? voiceText || 'Listening...' : 'Processing...'}</Text>
 
             <View style={styles.voiceMicContainer}>
-              {voiceListening && <View style={[styles.voiceMicPulse, { borderColor: '#2563eb' }]} />}
+              {voiceListening && <View style={[styles.voiceMicPulse, { borderColor: isDark ? colors.primary : '#2563eb' }]} />}
               <TouchableOpacity style={[styles.voiceMicButton, voiceListening && styles.voiceMicButtonActive]} onPress={handleVoiceStopPress} activeOpacity={0.8}>
                 <Ionicons name={voiceListening ? 'mic' : 'mic-off'} size={32} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            {voiceError ? <Text style={styles.voiceErrorText}>{voiceError}</Text> : null}
+            {voiceError ? <Text style={[styles.voiceErrorText, isDark && { color: colors.danger }]}>{voiceError}</Text> : null}
           </View>
         </View>
       )}
@@ -4000,7 +4009,7 @@ export default function FormImageEditor() {
       {/* Saving / Saved overlay */}
       {saveStatus !== 'idle' && (
         <View style={styles.saveOverlay}>
-          <View style={styles.saveDialog}>
+          <View style={[styles.saveDialog, isDark && { backgroundColor: colors.surface }]}>
             {saveStatus === 'saving' && (
               <>
                 <ActivityIndicator size="large" />
@@ -4012,8 +4021,8 @@ export default function FormImageEditor() {
             {saveStatus === 'success' && (
               <>
                 <Ionicons name="checkmark-circle" size={52} color="#16a34a" style={{ marginBottom: 8 }} />
-                <Text style={styles.saveTitle}>Changes saved</Text>
-                <Text style={styles.saveMessage}>
+                <Text style={[styles.saveTitle, isDark && { color: colors.textPrimary }]}>Changes saved</Text>
+                <Text style={[styles.saveMessage, isDark && { color: colors.textSecondary }]}>
                   {saveMessage}
                 </Text>
 
@@ -4026,8 +4035,8 @@ export default function FormImageEditor() {
             {saveStatus === 'error' && (
               <>
                 <Ionicons name="alert-circle" size={52} color="#dc2626" style={{ marginBottom: 8 }} />
-                <Text style={styles.saveTitle}>Save failed</Text>
-                <Text style={styles.saveMessage}>
+                <Text style={[styles.saveTitle, isDark && { color: colors.textPrimary }]}>Save failed</Text>
+                <Text style={[styles.saveMessage, isDark && { color: colors.textSecondary }]}>
                   {saveMessage}
                 </Text>
                 <TouchableOpacity style={styles.saveOkButton} onPress={handleSaveErrorOk}>
@@ -4085,11 +4094,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 6,
   },
-  backButton: {
-    flexDirection: 'row',
+  backButtonCircular: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   saveButton: {
     paddingHorizontal: 20,

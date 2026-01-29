@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useTheme } from './theme/ThemeContext';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AntDesign from 'react-native-vector-icons/AntDesign';
 import {
@@ -81,6 +82,7 @@ const tryParseStrokesJson = (base64?: string): string | null => {
 
 /* ================= SCREEN ================= */
 const FormImageScreen = () => {
+  const { colors, isDark } = useTheme();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const params = route.params || {};
@@ -670,13 +672,13 @@ const FormImageScreen = () => {
               {page.overlayLoading && (
                 <View style={styles.overlayLoadingContainer}>
                   <ActivityIndicator size="small" color="#0EA5A4" />
-                  <Text style={styles.overlayLoadingText}>Loading overlay...</Text>
+                  <Text style={[styles.overlayLoadingText, isDark && { color: colors.textSecondary }]}>Loading overlay...</Text>
                 </View>
               )}
 
               {/* No Overlay Indicator */}
               {page.overlayExists === false && !page.overlayLoading && (
-                <View style={styles.noOverlayIndicator}>
+                <View style={[styles.noOverlayIndicator, isDark && { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
                   {/* <Text style={styles.noOverlayText}>No overlay available</Text> */}
                 </View>
               )}
@@ -684,19 +686,19 @@ const FormImageScreen = () => {
           ) : page.loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#0EA5A4" />
-              <Text style={styles.loadingText}>Loading image...</Text>
+              <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading image...</Text>
             </View>
           ) : page.errorMessage ? (
             <View style={styles.messageContainer}>
               {/* <Ionicons name="warning-outline" size={48} color="#dc2626" /> */}
-              <Text style={styles.errorTitle}>No Form Available.</Text>
+              <Text style={[styles.errorTitle, isDark && { color: colors.danger }]}>No Form Available.</Text>
               {/* <Text style={styles.errorMessageText}>{page.errorMessage}</Text> */}
             </View>
           ) : (
             <View style={styles.errorContainer}>
-              <Ionicons name="image-off-outline" size={48} color="#9ca3af" />
-              <Text style={styles.errorTitle}>No Form</Text>
-              <Text style={styles.errorMessageText}>Image data not available</Text>
+              <Ionicons name="image-off-outline" size={48} color={isDark ? colors.textMuted : "#9ca3af"} />
+              <Text style={[styles.errorTitle, isDark && { color: colors.textPrimary }]}>No Form</Text>
+              <Text style={[styles.errorMessageText, isDark && { color: colors.textSecondary }]}>Image data not available</Text>
             </View>
           )}
 
@@ -760,8 +762,8 @@ const FormImageScreen = () => {
             ))}
         </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerTxt}>
+        <View style={[styles.footer, isDark && { backgroundColor: colors.surfaceHighlight, borderTopColor: colors.border }]}>
+          <Text style={[styles.footerTxt, isDark && { color: colors.textPrimary }]}>
             Page {index + 1} of {pages.length}
           </Text>
 
@@ -831,41 +833,53 @@ const FormImageScreen = () => {
 
   /* ---------- UI ---------- */
   return (
-    <View style={styles.container}>
-      <SafeAreaView edges={['top']} style={{ backgroundColor: '#0EA5A4' }}>
-        <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-            <TouchableOpacity
-              style={styles.navButton}
-              onPress={() => navigation.navigate('FormType')}
-            >
-              <Ionicons name="arrow-back" size={22} color="#fff" />
-            </TouchableOpacity>
-            <Text style={[styles.title, { flex: 1, marginRight: 8 }]} numberOfLines={1}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView edges={['top']} style={{ backgroundColor: isDark ? colors.surface : '#0EA5A4' }}>
+        <View style={[
+          styles.header,
+          { height: 'auto', paddingVertical: 14 },
+          isDark ? { backgroundColor: colors.surface } : {
+            borderBottomLeftRadius: 18,
+            borderBottomRightRadius: 18,
+            elevation: 6,
+          }
+        ]}>
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={() => navigation.navigate('FormType')}
+          >
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={styles.title} numberOfLines={1}>
               {formName}
             </Text>
           </View>
 
           <TouchableOpacity
-            style={styles.navButton}
+            style={[
+              styles.navButton,
+              isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }
+            ]}
             onPress={() => navigation.navigate('PatientScreen')}
           >
-            <Ionicons name="home" size={22} color="#fff" />
+            <Ionicons name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
       {isCreatingDocument ? (
-        <View style={styles.fullLoading}>
+        <View style={[styles.fullLoading, isDark && { backgroundColor: colors.background }]}>
           <ActivityIndicator size="large" color="#0EA5A4" />
-          <Text style={styles.loadingText}>Creating document instance...</Text>
-          <Text style={styles.documentIdText}>Please wait</Text>
+          <Text style={[styles.loadingText, isDark && { color: colors.textPrimary }]}>Creating document instance...</Text>
+          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Please wait</Text>
         </View>
       ) : !hasDocumentContext ? (
-        <View style={styles.errorContainerFull}>
-          <Ionicons name="alert-circle-outline" size={64} color="#dc2626" />
-          <Text style={styles.errorTitle}>Document Context Missing</Text>
-          <Text style={styles.errorMessage}>
+        <View style={[styles.errorContainerFull, isDark && { backgroundColor: colors.background }]}>
+          <Ionicons name="alert-circle-outline" size={64} color={isDark ? colors.danger : "#dc2626"} />
+          <Text style={[styles.errorTitle, isDark && { color: colors.textPrimary }]}>Document Context Missing</Text>
+          <Text style={[styles.errorMessage, isDark && { color: colors.textSecondary }]}>
             Unable to load document. Please go back and select a document again.
           </Text>
           <TouchableOpacity
@@ -879,11 +893,11 @@ const FormImageScreen = () => {
           </TouchableOpacity>
         </View>
       ) : loading && pages.length === 0 ? (
-        <View style={styles.fullLoading}>
+        <View style={[styles.fullLoading, isDark && { backgroundColor: colors.background }]}>
           <ActivityIndicator size="large" color="#0EA5A4" />
-          <Text style={styles.loadingText}>Loading document pages...</Text>
-          <Text style={styles.documentIdText}>Document ID: {displayDocumentId}</Text>
-          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
+          <Text style={[styles.loadingText, isDark && { color: colors.textPrimary }]}>Loading document pages...</Text>
+          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document ID: {displayDocumentId}</Text>
+          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
         </View>
       ) : pages.length > 0 ? (
         <>
@@ -902,17 +916,17 @@ const FormImageScreen = () => {
 
           {/* Show loading indicator for overlays */}
           {loadingOverlays && (
-            <View style={styles.overlayGlobalLoading}>
+            <View style={[styles.overlayGlobalLoading, isDark && { backgroundColor: colors.surfaceHighlight, borderTopColor: colors.border }]}>
               <ActivityIndicator size="small" color="#0EA5A4" />
-              <Text style={styles.overlayGlobalLoadingText}>Loading overlays...</Text>
+              <Text style={[styles.overlayGlobalLoadingText, isDark && { color: colors.primary }]}>Loading overlays...</Text>
             </View>
           )}
         </>
       ) : (
-        <View style={styles.noPagesContainer}>
-          <Text style={styles.noPagesText}>No pages found for this document</Text>
-          <Text style={styles.documentIdText}>Document ID: {displayDocumentId}</Text>
-          <Text style={styles.documentIdText}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
+        <View style={[styles.noPagesContainer, isDark && { backgroundColor: colors.background }]}>
+          <Text style={[styles.noPagesText, isDark && { color: colors.textPrimary }]}>No pages found for this document</Text>
+          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document ID: {displayDocumentId}</Text>
+          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
           <TouchableOpacity onPress={refreshPages} style={styles.retryButton}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
@@ -921,18 +935,18 @@ const FormImageScreen = () => {
 
       {/* History FAB Button */}
       <TouchableOpacity
-        style={styles.historyFab}
+        style={[styles.historyFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
         onPress={() => {
           navigation.navigate('EditorHistory');
         }}
       >
-        <Text style={styles.historyText}>History</Text>
+        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }]}>History</Text>
         <AntDesign name="folderopen" size={28} color="#0EA5A4" />
       </TouchableOpacity>
 
       {/* Open Full Editor Button */}
       {pages.length > 0 && documentInstanceId && displayDocumentId && hasValidImages && (
-        <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
+        <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
           <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
             <Ionicons name="create-outline" size={22} color="#fff" />
             <Text style={styles.btnTxt}>Open Full Editor</Text>
@@ -942,10 +956,10 @@ const FormImageScreen = () => {
 
       {/* Disabled Editor Button */}
       {pages.length > 0 && documentInstanceId && (!displayDocumentId || !hasValidImages) && (
-        <SafeAreaView edges={['bottom']} style={styles.bottomSafe}>
-          <View style={[styles.btn, styles.btnDisabled]}>
-            <Ionicons name="create-outline" size={22} color="#94a3b8" />
-            <Text style={[styles.btnTxt, styles.btnTxtDisabled]}>Open Full Editor</Text>
+        <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
+          <View style={[styles.btn, styles.btnDisabled, isDark && { backgroundColor: colors.surfaceHighlight }]}>
+            <Ionicons name="create-outline" size={22} color={isDark ? colors.textMuted : "#94a3b8"} />
+            <Text style={[styles.btnTxt, styles.btnTxtDisabled, isDark && { color: colors.textMuted }]}>Open Full Editor</Text>
           </View>
         </SafeAreaView>
       )}
@@ -979,14 +993,12 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#fff',
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '700',
-    flex: 1,
-    textAlign: 'center',
   },
   pageCard: { flex: 1 },
   imageBox: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -1180,7 +1192,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   bottomSafe: {
-    padding: 16,
+    padding: 14,
     backgroundColor: '#fff',
   },
   btn: {
