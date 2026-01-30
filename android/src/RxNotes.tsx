@@ -1954,6 +1954,7 @@ export default function RxNotes() {
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Dose"
+                        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                         style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeMedicine.dose}
                         onChangeText={t =>
@@ -1962,6 +1963,7 @@ export default function RxNotes() {
                       />
                       <TextInput
                         placeholder="Select unit"
+                        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                         style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeMedicine.unit}
                         onChangeText={t =>
@@ -2047,6 +2049,7 @@ export default function RxNotes() {
                     {/* Notes */}
                     <TextInput
                       placeholder="Enter note"
+                      placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                       multiline
                       style={[styles.medNote, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                       value={activeMedicine.note}
@@ -2205,6 +2208,7 @@ export default function RxNotes() {
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Dose (mg)"
+                        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                         style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.dose}
                         onChangeText={t => setActiveInfusion({ ...activeInfusion, dose: t })}
@@ -2246,6 +2250,7 @@ export default function RxNotes() {
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Diluent Volume (mL)"
+                        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                         style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.diluentVolume}
                         onChangeText={t =>
@@ -2256,6 +2261,7 @@ export default function RxNotes() {
 
                       <TextInput
                         placeholder="Time (hr)"
+                        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                         style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.time}
                         onChangeText={t => setActiveInfusion({ ...activeInfusion, time: t })}
@@ -2267,12 +2273,13 @@ export default function RxNotes() {
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Drop Factor"
+                        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                         style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.dropFactor}
                         onChangeText={t => setActiveInfusion({ ...activeInfusion, dropFactor: t })}
                         keyboardType="numeric"
                       />
-                      <View style={[styles.medInput, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]} />
+                      <View style={[styles.medInput]} />
                     </View>
 
                     {/* Calculation Results */}
@@ -3550,12 +3557,12 @@ const styles = StyleSheet.create({
   },
   medInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#CBD5F5',
-    borderRadius: 6,
+    // borderWidth: 1,
+    // borderColor: '#CBD5F5',
+    // borderRadius: 6,
     padding: 8,
     fontSize: 13,
-    backgroundColor: '#fff',
+    // backgroundColor: '#fff',
   },
   optionRow: {
     flexDirection: 'row',
