@@ -1708,6 +1708,9 @@ export default function FormImageEditor() {
   // Track unsaved changes
   const hasUnsavedChangesRef = useRef(false);
 
+  // Eraser Cursor Ref
+  const cursorRef = useRef<View>(null);
+
   const scrollRef = useRef<ScrollView | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
@@ -3694,10 +3697,37 @@ export default function FormImageEditor() {
 
 
 
-                      {/* Canvas container */}
                       <View
                         style={styles.canvasContainer}
+                        onTouchStart={(e) => {
+                          if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
+                            const { locationX, locationY } = e.nativeEvent;
+                            cursorRef.current?.setNativeProps({
+                              style: {
+                                top: locationY - eraserWidth / 2,
+                                left: locationX - eraserWidth / 2,
+                                opacity: 1,
+                              }
+                            });
+                          }
+                        }}
+                        onTouchMove={(e) => {
+                          if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
+                            const { locationX, locationY } = e.nativeEvent;
+                            cursorRef.current?.setNativeProps({
+                              style: {
+                                top: locationY - eraserWidth / 2,
+                                left: locationX - eraserWidth / 2,
+                              }
+                            });
+                          }
+                        }}
                         onTouchEnd={() => {
+                          // Hide cursor
+                          cursorRef.current?.setNativeProps({
+                            style: { opacity: 0 }
+                          });
+
                           const isCooldown = (Date.now() - lastZoomEndTime.current) < 500;
                           if (
                             writingEnabled &&
@@ -3720,6 +3750,23 @@ export default function FormImageEditor() {
                           strokesJson={strokesJson}
                           ref={(r) => refSetters.current[pageIndex](r)}
                           drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
+                        />
+
+                        {/* Eraser Cursor */}
+                        <View
+                          ref={cursorRef}
+                          pointerEvents="none"
+                          style={{
+                            position: 'absolute',
+                            width: eraserWidth,
+                            height: eraserWidth,
+                            borderRadius: eraserWidth / 2,
+                            borderWidth: 1,
+                            borderColor: '#333',
+                            backgroundColor: 'rgba(200, 200, 200, 0.3)',
+                            zIndex: 9999,
+                            opacity: 0, // Hidden by default
+                          }}
                         />
                       </View>
 
