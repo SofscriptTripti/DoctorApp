@@ -103,6 +103,7 @@ type ThemeContextType = {
     colors: ColorTheme;
     toggleTheme: () => void;
     setTheme: (theme: 'light' | 'dark') => void;
+    resetTheme: () => void;
 };
 
 /* ─────────────────────────────
@@ -113,6 +114,7 @@ const ThemeContext = createContext<ThemeContextType>({
     colors: LightColors,
     toggleTheme: () => { },
     setTheme: () => { },
+    resetTheme: () => { },
 });
 
 /* ─────────────────────────────
@@ -141,6 +143,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         setIsDark(theme === 'dark');
     };
 
+    const resetTheme = () => {
+        setIsDark(false);
+        AsyncStorage.setItem('user_theme', 'light');
+    };
+
     // Save theme when it changes
     useEffect(() => {
         AsyncStorage.setItem('user_theme', isDark ? 'dark' : 'light');
@@ -153,6 +160,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
                 colors: isDark ? DarkColors : LightColors,
                 toggleTheme,
                 setTheme,
+                resetTheme,
             }}
         >
             {children}

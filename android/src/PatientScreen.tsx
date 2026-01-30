@@ -82,7 +82,7 @@ const clearPatientSession = async () => {
 };
 
 export default function PatientScreen() {
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors, isDark, toggleTheme, setTheme, resetTheme } = useTheme();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
@@ -242,6 +242,7 @@ export default function PatientScreen() {
     // Clear both patient session AND auth token
     await clearPatientSession();
     await clearAuth();
+    resetTheme(); // ✅ Reset to Light Mode on Logout
 
     navigation.reset({
       index: 0,
