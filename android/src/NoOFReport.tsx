@@ -8,10 +8,14 @@ import {
   TouchableOpacity,
   FlatList,
   ScrollView,
+  Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Calendar } from 'react-native-calendars';
+import { useTheme } from './theme/ThemeContext';
 
 const BRAND = {
   primary: '#0EA5A4',
@@ -121,6 +125,7 @@ const formatDisplayDate = (date: Date): string => {
 
 export default function NoOFReport({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { isDark, colors } = useTheme();
 
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState<Date | null>(null);
@@ -205,11 +210,11 @@ export default function NoOFReport({ navigation }: any) {
         onPress={() => handleOpenReport(item)}
       >
         <View style={styles.cardAccent} />
-        <View style={styles.card}>
+        <View style={[styles.card, isDark && { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
           <View style={styles.cardHeaderRow}>
             <View>
-              <Text style={styles.cardLabel}>Sample No</Text>
-              <Text style={styles.cardTitle}>{item.sampleNo}</Text>
+              <Text style={[styles.cardLabel, isDark && { color: colors.textMuted }]}>Sample No</Text>
+              <Text style={[styles.cardTitle, isDark && { color: colors.textPrimary }]}>{item.sampleNo}</Text>
             </View>
             <View
               style={[
@@ -235,14 +240,14 @@ export default function NoOFReport({ navigation }: any) {
           </View>
 
           <View style={styles.cardRow}>
-            <Icon name="barcode-outline" size={16} color="#64748B" />
-            <Text style={styles.cardMetaValue}>{item.cbp}</Text>
+            <Icon name="barcode-outline" size={16} color={isDark ? colors.textMuted : "#64748B"} />
+            <Text style={[styles.cardMetaValue, isDark && { color: colors.textPrimary }]}>{item.cbp}</Text>
           </View>
 
           <View style={styles.cardRow}>
-            <Icon name="calendar-outline" size={16} color="#64748B" />
-            <Text style={styles.cardMetaLabel}>Date</Text>
-            <Text style={styles.cardMetaValue}>{item.date}</Text>
+            <Icon name="calendar-outline" size={16} color={isDark ? colors.textMuted : "#64748B"} />
+            <Text style={[styles.cardMetaLabel, isDark && { color: colors.textMuted }]}>Date</Text>
+            <Text style={[styles.cardMetaValue, isDark && { color: colors.textPrimary }]}>{item.date}</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -273,23 +278,39 @@ export default function NoOFReport({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+      <View style={[
+        styles.header,
+        isDark && { backgroundColor: colors.surface, elevation: 0 }
+      ]}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[
+            styles.backButton,
+            isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }
+          ]}
           onPress={() => navigation.goBack()}
+          activeOpacity={0.6}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Icon name="chevron-back" size={22} color="#0F172A" />
+          <Icon name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
 
-        <View style={{ flex: 1 }} />
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={[styles.headerTitle, !isDark && { color: '#fff' }, isDark && { color: colors.textPrimary }]}>Report Details</Text>
+        </View>
 
         <TouchableOpacity
-          style={styles.backButton}
+          style={[
+            styles.backButton,
+            { marginRight: 0 },
+            isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }
+          ]}
           onPress={() => navigation.navigate('PatientScreen')}
+          activeOpacity={0.6}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Icon name="home" size={20} color="#0EA5A4" />
+          <Icon name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
       </View>
 
@@ -298,9 +319,9 @@ export default function NoOFReport({ navigation }: any) {
         showsVerticalScrollIndicator={false}
       >
         {/* Date Range Section */}
-        <View style={styles.section}>
+        <View style={[styles.section, isDark && { backgroundColor: colors.surface, elevation: 0 }]}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Date Range</Text>
+            <Text style={[styles.sectionTitle, isDark && { color: colors.textPrimary }]}>Date Range</Text>
 
             {!hasRange ? (
               <View style={styles.chip}>
@@ -317,13 +338,13 @@ export default function NoOFReport({ navigation }: any) {
 
           <View style={styles.dateRow}>
             <TouchableOpacity
-              style={styles.dateBox}
+              style={[styles.dateBox, isDark && { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
               onPress={() => setShowFromPicker(true)}
             >
-              <Text style={styles.dateLabel}>From</Text>
+              <Text style={[styles.dateLabel, isDark && { color: colors.textSecondary }]}>From</Text>
               <View style={styles.dateValueRow}>
-                <Icon name="calendar-outline" size={16} color="#64748B" />
-                <Text style={styles.dateValueText}>
+                <Icon name="calendar-outline" size={16} color={isDark ? colors.textMuted : "#64748B"} />
+                <Text style={[styles.dateValueText, isDark && { color: colors.textPrimary }]}>
                   {fromDate ? formatDisplayDate(fromDate) : 'Start date'}
                 </Text>
               </View>
@@ -336,13 +357,13 @@ export default function NoOFReport({ navigation }: any) {
             </View>
 
             <TouchableOpacity
-              style={styles.dateBox}
+              style={[styles.dateBox, isDark && { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
               onPress={() => setShowToPicker(true)}
             >
-              <Text style={styles.dateLabel}>To</Text>
+              <Text style={[styles.dateLabel, isDark && { color: colors.textSecondary }]}>To</Text>
               <View style={styles.dateValueRow}>
-                <Icon name="calendar-outline" size={16} color="#64748B" />
-                <Text style={styles.dateValueText}>
+                <Icon name="calendar-outline" size={16} color={isDark ? colors.textMuted : "#64748B"} />
+                <Text style={[styles.dateValueText, isDark && { color: colors.textPrimary }]}>
                   {toDate ? formatDisplayDate(toDate) : 'End date'}
                 </Text>
               </View>
@@ -351,14 +372,14 @@ export default function NoOFReport({ navigation }: any) {
         </View>
 
         {/* Search Bar */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Search</Text>
-          <View style={styles.searchContainer}>
-            <Icon name="search-outline" size={18} color="#64748B" />
+        <View style={[styles.section, isDark && { backgroundColor: colors.surface, elevation: 0 }]}>
+          <Text style={[styles.sectionTitle, isDark && { color: colors.textPrimary }]}>Search</Text>
+          <View style={[styles.searchContainer, isDark && { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+            <Icon name="search-outline" size={18} color={isDark ? colors.textMuted : "#64748B"} />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, isDark && { color: colors.textPrimary }]}
               placeholder="Search by Sample No, Name"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={isDark ? colors.textMuted : "#94A3B8"}
               value={search}
               onChangeText={setSearch}
               returnKeyType="search"
@@ -367,9 +388,9 @@ export default function NoOFReport({ navigation }: any) {
         </View>
 
         {/* Report List */}
-        <View style={styles.section}>
+        <View style={[styles.section, isDark && { backgroundColor: colors.surface, elevation: 0 }]}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Reports</Text>
+            <Text style={[styles.sectionTitle, isDark && { color: colors.textPrimary }]}>Reports</Text>
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{filteredReports.length}</Text>
             </View>
@@ -385,23 +406,83 @@ export default function NoOFReport({ navigation }: any) {
         </View>
       </ScrollView>
 
-      {/* Date Pickers */}
+      {/* Date Picker: From */}
       {showFromPicker && (
-        <DateTimePicker
-          value={fromDate || new Date()}
-          mode="date"
-          display="calendar"
-          onChange={onFromDateChange}
-        />
+        <Modal transparent animationType="fade" visible={showFromPicker} onRequestClose={() => setShowFromPicker(false)}>
+          <View style={styles.calendarBackdrop}>
+            <View style={[styles.calendarCard, isDark && { backgroundColor: colors.surface }]}>
+              <Calendar
+                current={fromDate ? fromDate.toISOString().split('T')[0] : undefined}
+                theme={{
+                  calendarBackground: isDark ? colors.surface : '#ffffff',
+                  textSectionTitleColor: isDark ? colors.textMuted : '#b6c1cd',
+                  selectedDayBackgroundColor: '#0EA5A4',
+                  selectedDayTextColor: '#ffffff',
+                  todayTextColor: '#0EA5A4',
+                  dayTextColor: isDark ? colors.textPrimary : '#2d4150',
+                  textDisabledColor: isDark ? colors.border : '#d9e1e8',
+                  dotColor: '#0EA5A4',
+                  selectedDotColor: '#ffffff',
+                  arrowColor: '#0EA5A4',
+                  monthTextColor: isDark ? colors.textPrimary : '#2d4150',
+                  indicatorColor: '#0EA5A4',
+                }}
+                onDayPress={(day) => {
+                  // day.timestamp is UTC midnight, which is safe for date selection
+                  onFromDateChange({}, new Date(day.timestamp));
+                }}
+                markedDates={{
+                  [fromDate ? fromDate.toISOString().split('T')[0] : '']: { selected: true, selectedColor: '#0EA5A4' }
+                }}
+              />
+              <TouchableOpacity
+                onPress={() => setShowFromPicker(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
 
+      {/* Date Picker: To */}
       {showToPicker && (
-        <DateTimePicker
-          value={toDate || fromDate || new Date()}
-          mode="date"
-          display="calendar"
-          onChange={onToDateChange}
-        />
+        <Modal transparent animationType="fade" visible={showToPicker} onRequestClose={() => setShowToPicker(false)}>
+          <View style={styles.calendarBackdrop}>
+            <View style={[styles.calendarCard, isDark && { backgroundColor: colors.surface }]}>
+              <Calendar
+                current={toDate ? toDate.toISOString().split('T')[0] : (fromDate ? fromDate.toISOString().split('T')[0] : undefined)}
+                theme={{
+                  calendarBackground: isDark ? colors.surface : '#ffffff',
+                  textSectionTitleColor: isDark ? colors.textMuted : '#b6c1cd',
+                  selectedDayBackgroundColor: '#0EA5A4',
+                  selectedDayTextColor: '#ffffff',
+                  todayTextColor: '#0EA5A4',
+                  dayTextColor: isDark ? colors.textPrimary : '#2d4150',
+                  textDisabledColor: isDark ? colors.border : '#d9e1e8',
+                  dotColor: '#0EA5A4',
+                  selectedDotColor: '#ffffff',
+                  arrowColor: '#0EA5A4',
+                  monthTextColor: isDark ? colors.textPrimary : '#2d4150',
+                  indicatorColor: '#0EA5A4',
+                }}
+                onDayPress={(day) => {
+                  onToDateChange({}, new Date(day.timestamp));
+                }}
+                markedDates={{
+                  [toDate ? toDate.toISOString().split('T')[0] : '']: { selected: true, selectedColor: '#0EA5A4' }
+                }}
+              />
+              <TouchableOpacity
+                onPress={() => setShowToPicker(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -410,31 +491,31 @@ export default function NoOFReport({ navigation }: any) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#ECFEFF',
+    backgroundColor: '#F1F5F9',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 8,
-    backgroundColor: '#ECFEFF',
+    paddingVertical: 14,
+    backgroundColor: '#0EA5A4',
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    elevation: 6,
   },
   backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.4)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginRight: 12,
   },
   headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
+    color: '#fff',
+    fontSize: 20,
     fontWeight: '700',
-    color: '#0F172A',
   },
   contentContainer: {
     paddingHorizontal: 16,
@@ -631,5 +712,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0F172A',
     fontWeight: '600',
+  },
+  calendarBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarCard: {
+    width: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    elevation: 10,
+  },
+  modalCloseBtn: {
+    marginTop: 10,
+    alignSelf: 'center',
+    padding: 10,
+  },
+  modalCloseText: {
+    color: BRAND.primary,
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

@@ -481,13 +481,13 @@ export default function FormTypeScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
+      <SafeAreaView style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <View style={[styles.header, isDark && { backgroundColor: colors.surface }]}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.backButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
             onPress={() => navigation.goBack()}
           >
-            <Icon name="arrow-back" size={22} color="#fff" />
+            <Icon name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
             <Text style={styles.headerTitle}>Form Types</Text>
@@ -496,7 +496,7 @@ export default function FormTypeScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0EA5A4" />
-          <Text style={styles.loadingText}>Loading forms...</Text>
+          <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading forms...</Text>
         </View>
       </SafeAreaView>
     );
@@ -509,9 +509,9 @@ export default function FormTypeScreen() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="document-text-outline" size={60} color="#CBD5E1" />
-        <Text style={styles.emptyTitle}>No Forms Found</Text>
-        <Text style={styles.emptySubtitle}>
+        <Icon name="document-text-outline" size={60} color={isDark ? colors.surfaceHighlight : "#CBD5E1"} />
+        <Text style={[styles.emptyTitle, isDark && { color: colors.textSecondary }]}>No Forms Found</Text>
+        <Text style={[styles.emptySubtitle, isDark && { color: colors.textMuted }]}>
           {forms.length === 0
             ? 'No forms available for this category.'
             : 'No forms match your search criteria.'}
@@ -590,10 +590,12 @@ export default function FormTypeScreen() {
         {/* HEADER */}
         <View style={[styles.header, isDark && { backgroundColor: colors.surface }]}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.backButton, isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }]}
             onPress={() => navigation.navigate('PatientScreen', { ...route.params })}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Icon name="arrow-back" size={22} color="#fff" />
+            <Icon name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>
 
           <View style={{ flex: 1, alignItems: 'center' }}>
@@ -615,6 +617,8 @@ export default function FormTypeScreen() {
                   loginUserId,
                 })
               }
+              activeOpacity={0.6}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={[styles.hmisButtonText, isDark && { color: '#0EA5A4' }]}>HMIS Report</Text>
             </TouchableOpacity>
@@ -632,6 +636,8 @@ export default function FormTypeScreen() {
                 marginLeft: 12
               }}
               onPress={() => navigation.navigate('PatientScreen')}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Icon name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
             </TouchableOpacity>

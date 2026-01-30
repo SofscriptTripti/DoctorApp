@@ -11,6 +11,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useTheme } from './theme/ThemeContext';
 
 // 🔹 Total page count for each report
 const FORM_TOTAL_PAGES: Record<string, number> = {
@@ -39,6 +40,7 @@ export default function HMISFormType() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
 
+  const { isDark, colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
 
   // 🔹 Robust parameter extraction — FIXED
@@ -101,18 +103,18 @@ export default function HMISFormType() {
 
     return (
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, isDark && { backgroundColor: colors.surface, elevation: 0 }]}
         activeOpacity={isDisabled ? 1 : 0.9}
         onPress={() => !isDisabled && handlePress(item)}
         disabled={isDisabled}
       >
         <View style={styles.cardRow}>
-          <View style={styles.iconCircle}>
+          <View style={[styles.iconCircle, isDark && { backgroundColor: colors.surfaceHighlight }]}>
             <Text style={styles.iconText}>{item.title.charAt(0)}</Text>
           </View>
 
           <View style={styles.cardTextBlock}>
-            <Text style={styles.formName}>{item.title}</Text>
+            <Text style={[styles.formName, isDark && { color: colors.textPrimary }]}>{item.title}</Text>
           </View>
 
           {/* 🔹 Page Count */}
@@ -121,7 +123,7 @@ export default function HMISFormType() {
           </View>
 
           <View style={styles.chevronWrap}>
-            <Text style={styles.chevron}>›</Text>
+            <Text style={[styles.chevron, isDark && { color: colors.textMuted }]}>›</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -129,11 +131,14 @@ export default function HMISFormType() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top, backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
       {/* HEADER */}
-      <View style={styles.header}>
+      <View style={[
+        styles.header,
+        isDark && { backgroundColor: colors.surface, elevation: 0 }
+      ]}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
           onPress={() =>
             navigation.navigate('FormType', {
               patientName,
@@ -143,7 +148,7 @@ export default function HMISFormType() {
           }
           activeOpacity={0.7}
         >
-          <Icon name="arrow-back" size={22} color="#fff" />
+          <Icon name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
 
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -151,10 +156,14 @@ export default function HMISFormType() {
         </View>
 
         <TouchableOpacity
-          style={[styles.backButton, { marginRight: 0, marginLeft: 0 }]}
+          style={[
+            styles.backButton,
+            { marginRight: 0, marginLeft: 0 },
+            isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }
+          ]}
           onPress={() => navigation.navigate('PatientScreen')}
         >
-          <Icon name="home" size={22} color="#fff" />
+          <Icon name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
       </View>
 
@@ -169,26 +178,26 @@ export default function HMISFormType() {
           </View>
 
           {/* SEARCH */}
-          <View style={styles.searchWrapperContent}>
+          <View style={[styles.searchWrapperContent, isDark && { backgroundColor: colors.surfaceHighlight, elevation: 0 }]}>
             <Icon
               name="search"
               size={18}
-              color="#94A3B8"
+              color={isDark ? colors.textMuted : "#94A3B8"}
               style={{ marginRight: 8 }}
             />
 
             <TextInput
               placeholder="Search Reports"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={isDark ? colors.textMuted : "#64748B"}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              style={styles.searchInputContent}
+              style={[styles.searchInputContent, isDark && { color: colors.textPrimary }]}
               returnKeyType="search"
             />
 
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Icon name="close-circle" size={18} color="#94A3B8" />
+                <Icon name="close-circle" size={18} color={isDark ? colors.textMuted : "#94A3B8"} />
               </TouchableOpacity>
             )}
           </View>
@@ -207,7 +216,7 @@ export default function HMISFormType() {
           }}
           ListEmptyComponent={() => (
             <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#94A3B8' }}>No reports match your search.</Text>
+              <Text style={{ color: isDark ? colors.textMuted : '#94A3B8' }}>No reports match your search.</Text>
             </View>
           )}
         />

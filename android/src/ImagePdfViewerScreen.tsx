@@ -7,10 +7,12 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  TouchableOpacity,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useTheme } from './theme/ThemeContext';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -26,6 +28,7 @@ type Props = {
 };
 
 export default function ImagePdfViewer({ route, navigation }: Props) {
+  const { isDark, colors } = useTheme();
   const { storageKey, title } = route.params;
 
   const [imagePaths, setImagePaths] = useState<string[]>([]);
@@ -67,26 +70,34 @@ export default function ImagePdfViewer({ route, navigation }: Props) {
 
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Ionicons
-          name="arrow-back"
-          size={22}
-          color="#fff"
+      <View style={[styles.header, !isDark && { backgroundColor: '#0EA5A4' }, isDark && { backgroundColor: colors.surface }]}>
+        <TouchableOpacity
+          style={[
+            { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
+            !isDark && { backgroundColor: 'rgba(255,255,255,0.18)' },
+            isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }
+          ]}
           onPress={() => navigation.goBack()}
-        />
-        <Text style={styles.headerTitle} numberOfLines={1}>
+        >
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={isDark ? '#0EA5A4' : '#fff'}
+          />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, !isDark && { color: '#fff' }, isDark && { color: colors.textPrimary }]} numberOfLines={1}>
           {title}
         </Text>
-        <View style={{ width: 22 }} />
+        <View style={{ width: 38 }} />
       </View>
 
       {/* Loading */}
       {loading && (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#0EA5A4" />
-          <Text style={{ marginTop: 8 }}>Loading pages…</Text>
+          <Text style={[{ marginTop: 8 }, { color: colors.textPrimary }]}>Loading pages…</Text>
         </View>
       )}
 
@@ -106,7 +117,7 @@ export default function ImagePdfViewer({ route, navigation }: Props) {
                   style={styles.pageImage}
                   resizeMode="contain"
                 />
-                <Text style={styles.pageLabel}>
+                <Text style={[styles.pageLabel, isDark && { color: colors.textSecondary }]}>
                   Page {idx + 1} of {imagePaths.length}
                 </Text>
               </View>
@@ -114,7 +125,7 @@ export default function ImagePdfViewer({ route, navigation }: Props) {
           })}
 
           {imagePaths.length === 0 && (
-            <Text style={styles.empty}>
+            <Text style={[styles.empty, isDark && { color: colors.textSecondary }]}>
               No saved pages found
             </Text>
           )}

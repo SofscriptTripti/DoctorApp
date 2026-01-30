@@ -842,10 +842,12 @@ export default function PatientScreen() {
           <TouchableOpacity
             style={[
               styles.themeToggle,
-              { backgroundColor: isDark ? colors.surface : '#ffffff' }
+              { backgroundColor: isDark ? 'transparent' : '#ffffff' },
+              isDark && { borderWidth: 1.5, borderColor: '#0EA5A4', elevation: 0 }
             ]}
             onPress={toggleTheme}
-            activeOpacity={0.7}
+            activeOpacity={0.6}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Icon
               name={isDark ? 'sunny' : 'moon'}
@@ -856,10 +858,11 @@ export default function PatientScreen() {
           <TouchableOpacity
             style={[
               styles.logoutButton,
-              isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }
+              isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }
             ]}
-            activeOpacity={0.7}
+            activeOpacity={0.6}
             onPress={handleLogout}
+            hitSlop={{ top: 10, bottom: 10, left: 8, right: 10 }}
           >
             <Icon name="log-out-outline" size={20} color="#0EA5A4" />
             <Text style={styles.logoutText}>Logout</Text>
@@ -933,7 +936,8 @@ export default function PatientScreen() {
               <View style={[
                 styles.searchWrapperContent,
                 { backgroundColor: colors.surface },
-                !isDark && { elevation: 2, shadowOpacity: 0.1 }
+                !isDark && { elevation: 2, shadowOpacity: 0.1, borderColor: 'transparent' },
+                isDark && { borderColor: colors.border, borderWidth: 1 }
               ]}>
                 <Icon
                   name="search"
@@ -942,7 +946,7 @@ export default function PatientScreen() {
                   style={{ marginRight: 8 }} />
                 <TextInput
                   multiline={false}
-                  placeholder="by Name, Ward, Doctor or Patient No"
+                  placeholder="Search by Name, Ward, Doctor or Patient No"
                   placeholderTextColor={isDark ? colors.textSecondary : "#64748B"}
                   value={searchText}
                   onChangeText={setSearchText}
@@ -1006,6 +1010,8 @@ export default function PatientScreen() {
                     padding: 6,
                     zIndex: 20,
                   }}
+                  activeOpacity={0.6}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Feather name="x" size={22} color={isDark ? colors.textSecondary : "#444"} />
                 </TouchableOpacity>
@@ -1076,7 +1082,8 @@ export default function PatientScreen() {
               <TouchableOpacity
                 onPress={goToFormType}
                 style={styles.modalArrowOuter}
-                activeOpacity={0.9}
+                activeOpacity={0.7}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
                 <View style={styles.modalArrowButton}>
                   <Icon name="arrow-forward" size={22} color="#ffffff" />
@@ -1317,8 +1324,8 @@ const styles = StyleSheet.create({
     elevation: 1,
     marginBottom: 10,
     minHeight: 40,
-    backgroundColor: '#111827',
-    borderColor: '#1F2937',
+    backgroundColor: '#FFFFFF',
+    borderColor: 'transparent',
     borderWidth: 1,
   },
   searchInputContent: {

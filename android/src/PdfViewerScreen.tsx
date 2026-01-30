@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Pdf from 'react-native-pdf';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTheme } from './theme/ThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } =
   Dimensions.get('window');
@@ -30,6 +31,7 @@ type RouteParams = {
 export default function PdfViewerScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { isDark, colors } = useTheme();
 
   const {
     title = 'Report',
@@ -59,17 +61,27 @@ export default function PdfViewerScreen() {
     : null;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[
+        styles.header,
+        !isDark && { backgroundColor: '#0EA5A4' },
+        isDark && { backgroundColor: colors.surface }
+      ]}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[
+            styles.backButton,
+            !isDark && { backgroundColor: 'rgba(255,255,255,0.18)' },
+            isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }
+          ]}
           onPress={() => navigation.goBack()}
+          activeOpacity={0.6}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="chevron-back" size={22} color="#0F172A" />
+          <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle} numberOfLines={1}>
+        <Text style={[styles.headerTitle, !isDark && { color: '#fff' }, isDark && { color: colors.textPrimary }]} numberOfLines={1}>
           {title}
         </Text>
 
@@ -147,14 +159,12 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.4)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    marginRight: 12,
   },
 
   headerTitle: {

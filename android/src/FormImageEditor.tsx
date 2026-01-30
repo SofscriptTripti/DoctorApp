@@ -3256,13 +3256,12 @@ export default function FormImageEditor() {
       ]}>
         {/* Top row: Back button on left, SAVE on right */}
         <View style={styles.topRow}>
-          {/* Back button on left */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={styles.backButtonCircular}
+            style={[styles.backButtonCircular, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
             disabled={saveStatus === 'saving'}
           >
-            <Ionicons name="arrow-back" size={22} color="#fff" />
+            <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>
 
           {/* Right Side: SAVE + Home */}
@@ -3272,11 +3271,11 @@ export default function FormImageEditor() {
               style={[
                 styles.saveButton,
                 { marginRight: 10 },
-                isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }
+                isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4', elevation: 0, shadowOpacity: 0 }
               ]}
               disabled={saveStatus === 'saving'}
             >
-              <Text style={[styles.saveButtonText, isDark && { color: '#fff' }]}>SAVE</Text>
+              <Text style={[styles.saveButtonText, isDark && { color: '#0EA5A4', fontWeight: '700', fontSize: 13 }]}>SAVE</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -3315,9 +3314,9 @@ export default function FormImageEditor() {
               <FontAwesome
                 name="pencil-square-o"
                 size={20}
-                color={writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff'}
+                color={isDark ? '#0EA5A4' : (writingEnabled ? 'rgba(255,255,255,0.6)' : '#ffffff')}
               />
-              <Text style={styles.toolButtonText}>
+              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>
                 {writingEnabled ? 'ON' : 'OFF'}
               </Text>
             </TouchableOpacity>
@@ -3335,7 +3334,7 @@ export default function FormImageEditor() {
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
               <View style={[styles.colorCircle, { backgroundColor: color }]} />
-              <Text style={styles.toolButtonText}>Color</Text>
+              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Color</Text>
             </TouchableOpacity>
 
             {/* ➕ Add Text icon (typed text) */}
@@ -3351,9 +3350,9 @@ export default function FormImageEditor() {
               <MaterialCommunityIcons
                 name="format-text"
                 size={20}
-                color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+                color={isDark ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
               />
-              <Text style={styles.toolButtonText}>Text</Text>
+              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Text</Text>
             </TouchableOpacity>
 
             {/* Undo / Redo / Clear group */}
@@ -3370,9 +3369,9 @@ export default function FormImageEditor() {
                 <Ionicons
                   name="arrow-undo"
                   size={20}
-                  color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                  color={isDark ? '#0EA5A4' : (writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)')}
                 />
-                <Text style={styles.toolButtonText}>Undo</Text>
+                <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Undo</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -3387,9 +3386,9 @@ export default function FormImageEditor() {
                 <Ionicons
                   name="arrow-redo"
                   size={20}
-                  color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                  color={isDark ? '#0EA5A4' : (writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)')}
                 />
-                <Text style={styles.toolButtonText}>Redo</Text>
+                <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Redo</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -3409,9 +3408,9 @@ export default function FormImageEditor() {
                 <MaterialCommunityIcons
                   name="broom"
                   size={20}
-                  color={writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)'}
+                  color={isDark ? '#0EA5A4' : (writingEnabled ? '#fff' : 'rgba(255,255,255,0.6)')}
                 />
-                <Text style={styles.toolButtonText}>Clear</Text>
+                <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Clear</Text>
               </TouchableOpacity>
             </View>
 
@@ -3428,9 +3427,9 @@ export default function FormImageEditor() {
               <Ionicons
                 name="person"
                 size={20}
-                color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+                color={isDark ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
               />
-              <Text style={styles.toolButtonText}>Patient Sticker</Text>
+              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Patient Sticker</Text>
             </TouchableOpacity>
 
             {/* Doctor Sticker */}
@@ -3446,9 +3445,9 @@ export default function FormImageEditor() {
               <FontAwesome6
                 name="user-doctor"
                 size={20}
-                color={writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+                color={isDark ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
               />
-              <Text style={styles.toolButtonText}>Doctor Sticker</Text>
+              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Doctor Sticker</Text>
             </TouchableOpacity>
 
             {/* Pen / Eraser group */}
@@ -3466,11 +3465,12 @@ export default function FormImageEditor() {
                 <MaterialCommunityIcons
                   name="pencil"
                   size={18}
-                  color={tool === 'pen' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
+                  color={tool === 'pen' ? '#0EA5A4' : (isDark ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'))}
                 />
                 <Text style={[
                   styles.toolChipText,
                   tool === 'pen' && styles.toolChipTextActive,
+                  isDark && { color: '#0EA5A4' },
                   !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
                 ]}>
                   Pen
@@ -3508,11 +3508,12 @@ export default function FormImageEditor() {
                 <MaterialCommunityIcons
                   name="eraser"
                   size={18}
-                  color={tool === 'eraser' ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
+                  color={tool === 'eraser' ? '#0EA5A4' : (isDark ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)'))}
                 />
                 <Text style={[
                   styles.toolChipText,
                   tool === 'eraser' && styles.toolChipTextActive,
+                  isDark && { color: '#0EA5A4' },
                   !writingEnabled && { color: 'rgba(255,255,255,0.6)' }
                 ]}>
                   Eraser
@@ -3775,21 +3776,21 @@ export default function FormImageEditor() {
       {/* Navigation Arrows */}
       {(currentPageIndex > 0) && (
         <TouchableOpacity
-          style={[styles.navArrow, styles.navArrowLeft]}
+          style={[styles.navArrow, styles.navArrowLeft, isDark && { backgroundColor: 'rgba(255,255,255,0.45)' }]}
           onPress={() => scrollToPage(currentPageIndex - 1)}
           disabled={saveStatus === 'saving'}
         >
-          <Ionicons name="chevron-back" size={32} color="#fff" />
+          <Ionicons name="chevron-back" size={32} color={isDark ? '#000' : '#fff'} />
         </TouchableOpacity>
       )}
 
       {(currentPageIndex < IMAGES.length - 1) && (
         <TouchableOpacity
-          style={[styles.navArrow, styles.navArrowRight]}
+          style={[styles.navArrow, styles.navArrowRight, isDark && { backgroundColor: 'rgba(255,255,255,0.45)' }]}
           onPress={() => scrollToPage(currentPageIndex + 1)}
           disabled={saveStatus === 'saving'}
         >
-          <Ionicons name="chevron-forward" size={32} color="#fff" />
+          <Ionicons name="chevron-forward" size={32} color={isDark ? '#000' : '#fff'} />
         </TouchableOpacity>
       )}
 
@@ -3805,7 +3806,7 @@ export default function FormImageEditor() {
 
       {/* 🔊 floating mic FAB */}
       <TouchableOpacity
-        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled, isDark && { backgroundColor: colors.surface }]}
+        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled, isDark && { backgroundColor: '#0EA5A4' }]}
         activeOpacity={0.8}
         onPress={handleVoiceFabPress}
         disabled={saveStatus === 'saving' || !writingEnabled}
@@ -4013,8 +4014,8 @@ export default function FormImageEditor() {
             {saveStatus === 'saving' && (
               <>
                 <ActivityIndicator size="large" />
-                <Text style={styles.saveTitle}>Saving...</Text>
-                <Text style={styles.saveMessage}>{saveMessage}</Text>
+                <Text style={[styles.saveTitle, isDark && { color: colors.textPrimary }]}>Saving...</Text>
+                <Text style={[styles.saveMessage, isDark && { color: colors.textSecondary }]}>{saveMessage}</Text>
               </>
             )}
 

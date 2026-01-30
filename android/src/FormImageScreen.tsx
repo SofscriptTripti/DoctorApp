@@ -845,10 +845,10 @@ const FormImageScreen = () => {
           }
         ]}>
           <TouchableOpacity
-            style={styles.navButton}
+            style={[styles.navButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
             onPress={() => navigation.navigate('FormType')}
           >
-            <Ionicons name="arrow-back" size={22} color="#fff" />
+            <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>
 
           <View style={{ flex: 1, alignItems: 'center' }}>

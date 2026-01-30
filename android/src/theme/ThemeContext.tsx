@@ -133,16 +133,18 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         loadTheme();
     }, []);
 
-    const toggleTheme = async () => {
-        const next = !isDark;
-        setIsDark(next);
-        await AsyncStorage.setItem('user_theme', next ? 'dark' : 'light');
+    const toggleTheme = () => {
+        setIsDark(prev => !prev);
     };
 
-    const setTheme = async (theme: 'light' | 'dark') => {
+    const setTheme = (theme: 'light' | 'dark') => {
         setIsDark(theme === 'dark');
-        await AsyncStorage.setItem('user_theme', theme);
     };
+
+    // Save theme when it changes
+    useEffect(() => {
+        AsyncStorage.setItem('user_theme', isDark ? 'dark' : 'light');
+    }, [isDark]);
 
     return (
         <ThemeContext.Provider
