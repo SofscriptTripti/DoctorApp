@@ -25,6 +25,7 @@ const DOCUMENT_STORAGE_KEY = 'documentId';
 const STORAGE_KEYS = {
   admissionNo: 'admissionNo',
   loginUserId: 'userId',
+  patientName: 'patientName', // ✅ Added
 };
 
 /* ================= UTILS ================= */
@@ -88,7 +89,9 @@ export default function FormTypeScreen() {
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [tempSelectedColors, setTempSelectedColors] = useState<string[]>([]); // NEW: Temp state for modal
 
-  const patientName: string = route.params?.patientName ?? 'Unknown Patient';
+  const [currentPatientName, setCurrentPatientName] = useState<string>(
+    route.params?.patientName ?? 'Unknown Patient'
+  );
   const patientId: string | undefined = route.params?.patientId;
   const patientIP: number | undefined = route.params?.patientIP;
   const [admissionNo, setAdmissionNo] = useState<string | null>(null);
@@ -102,9 +105,10 @@ export default function FormTypeScreen() {
   useEffect(() => {
     const loadContextFromStorage = async () => {
       try {
-        const [[, admNo], [, userId]] = await AsyncStorage.multiGet([
+        const [[, admNo], [, userId], [, storedPatientName]] = await AsyncStorage.multiGet([
           STORAGE_KEYS.admissionNo,
           STORAGE_KEYS.loginUserId,
+          STORAGE_KEYS.patientName,
         ]);
 
         if (!admNo || !userId) {
@@ -116,10 +120,14 @@ export default function FormTypeScreen() {
 
         setAdmissionNo(admNo);
         setLoginUserId(userId);
+        if (storedPatientName && currentPatientName === 'Unknown Patient') {
+          setCurrentPatientName(storedPatientName);
+        }
 
         console.log('✅ Loaded context from storage:', {
           admissionNo: admNo,
           loginUserId: userId,
+          patientName: storedPatientName
         });
       } catch (e) {
         console.error('❌ Failed to load context from AsyncStorage', e);
@@ -128,6 +136,14 @@ export default function FormTypeScreen() {
 
     loadContextFromStorage();
   }, []);
+
+  // ✅ Save patientName if provided in params
+  useEffect(() => {
+    if (route.params?.patientName && route.params.patientName !== 'Unknown Patient') {
+      setCurrentPatientName(route.params.patientName);
+      AsyncStorage.setItem(STORAGE_KEYS.patientName, route.params.patientName);
+    }
+  }, [route.params?.patientName]);
 
 
   useEffect(() => {
@@ -244,7 +260,7 @@ export default function FormTypeScreen() {
       const result: Record<string, number> = {};
 
       for (const f of forms) {
-        const storageKey = makeStorageKey(patientName, f.title);
+        const storageKey = makeStorageKey(currentPatientName, f.title);
         const saved = await AsyncStorage.getItem(storageKey);
 
         if (!saved) {
@@ -272,7 +288,7 @@ export default function FormTypeScreen() {
       console.warn('Failed to load form counts', err);
       setFilledCounts({});
     }
-  }, [forms, patientName]);
+  }, [forms, currentPatientName]);
 
   useFocusEffect(
     useCallback(() => {
@@ -347,7 +363,7 @@ export default function FormTypeScreen() {
         await saveDocumentContext(form.documentId, []);
       }
 
-      const storageKey = makeStorageKey(patientName, form.title);
+      const storageKey = makeStorageKey(currentPatientName, form.title);
 
       console.log('🚀 Navigating to FormImageScreen with:', {
         documentId: form.documentId,
@@ -357,15 +373,15 @@ export default function FormTypeScreen() {
       });
 
       navigation.navigate('FormImageScreen', {
-        patientName,
+        patientName: currentPatientName,
         documentId: form.documentId,
         patientId,
         patientIP,
         admissionNo,
         loginUserId, // Pass loginUserId forward
         formName: form.title,
-        formKey: form.documentId,
         storageKey,
+        formKey: form.documentId,
         totalPages,
         editedPages: form.editedPages || 0,
         backgroundColor: form.backgroundColor,
@@ -375,18 +391,18 @@ export default function FormTypeScreen() {
     } catch (err) {
       console.error('❌ Error navigating to form:', err);
 
-      const storageKey = makeStorageKey(patientName, form.title);
+      const storageKey = makeStorageKey(currentPatientName, form.title);
 
       navigation.navigate('FormImageScreen', {
-        patientName,
+        patientName: currentPatientName,
         documentId: form.documentId,
         patientId,
         patientIP,
         admissionNo,
         loginUserId,
         formName: form.title,
-        formKey: form.documentId,
         storageKey,
+        formKey: form.documentId, // Reordered to match chunk 1 style if needed, but keeping original structure
         totalPages: form.totalPages || 0,
         editedPages: form.editedPages || 0,
         backgroundColor: form.backgroundColor,
@@ -443,7 +459,7 @@ export default function FormTypeScreen() {
             >
               {item.title}
             </Text>
-            {item.categoryName && (
+            {/* {item.categoryName && (
               <Text style={[styles.categoryText, { color: textColor, opacity: 0.7 }]}>
                 {item.categoryName}
               </Text>
@@ -455,7 +471,7 @@ export default function FormTypeScreen() {
               >
                 {item.description}
               </Text>
-            )}
+            )} */}
           </View>
 
           <View style={styles.pageInfoWrap}>
@@ -610,7 +626,7 @@ export default function FormTypeScreen() {
               ]}
               onPress={() =>
                 navigation.navigate('HMISFormType', {
-                  patientName,
+                  patientName: currentPatientName,
                   patientId,
                   patientIP,
                   admissionNo,
@@ -664,7 +680,7 @@ export default function FormTypeScreen() {
                   styles.patientValue,
                   isDark && { color: colors.textPrimary }
                 ]} numberOfLines={1}>
-                  {patientName}
+                  {currentPatientName}
                 </Text>
               </View>
               <View style={styles.patientInfoColCenter}>
