@@ -2064,10 +2064,13 @@ export default function FormImageEditor() {
   };
 
   const handleVoiceNotePositionChange = (id: string, x: number, y: number) => {
-    setVoiceNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, x, y } : n))
-    );
-    hasUnsavedChangesRef.current = true;
+    setVoiceNotes((prev) => {
+      const note = prev.find((n) => n.id === id);
+      if (note && note.x === x && note.y === y) return prev; // No change
+
+      hasUnsavedChangesRef.current = true;
+      return prev.map((n) => (n.id === id ? { ...n, x, y } : n));
+    });
   };
 
   const handleVoiceNoteBoxChange = (id: string, width: number, height: number) => {
@@ -2098,10 +2101,13 @@ export default function FormImageEditor() {
   };
 
   const handleStickerPositionChange = (id: string, x: number, y: number) => {
-    setImageStickers((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, x, y } : s))
-    );
-    hasUnsavedChangesRef.current = true;
+    setImageStickers((prev) => {
+      const sticker = prev.find((s) => s.id === id);
+      if (sticker && sticker.x === x && sticker.y === y) return prev; // No change
+
+      hasUnsavedChangesRef.current = true;
+      return prev.map((s) => (s.id === id ? { ...s, x, y } : s));
+    });
   };
 
   const handleStickerSizeChange = (id: string, width: number, height: number) => {
@@ -2424,6 +2430,8 @@ export default function FormImageEditor() {
     IMAGES.map(() => ({ x: 0, y: 0 }))
   ).current;
 
+  const lastZoomEndTime = useRef(0);
+
   const pinchStateRef = useRef<{
     initialDistance: number;
     initialMidX: number;
@@ -2706,6 +2714,7 @@ export default function FormImageEditor() {
 
       onPanResponderRelease: () => {
         const pageIndex = getCurrentPageIndex();
+        lastZoomEndTime.current = Date.now();
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
         // ENABLE AGAIN
@@ -2734,6 +2743,7 @@ export default function FormImageEditor() {
 
       onPanResponderTerminate: () => {
         const pageIndex = getCurrentPageIndex();
+        lastZoomEndTime.current = Date.now();
         const currentScale = lastScalePerPageRef[pageIndex] ?? 1;
 
         // ENABLE AGAIN
@@ -3688,7 +3698,13 @@ export default function FormImageEditor() {
                       <View
                         style={styles.canvasContainer}
                         onTouchEnd={() => {
-                          if (writingEnabled && !(editingNoteId || editingStickerId) && !multiTouchActive) {
+                          const isCooldown = (Date.now() - lastZoomEndTime.current) < 500;
+                          if (
+                            writingEnabled &&
+                            !(editingNoteId || editingStickerId) &&
+                            !multiTouchActiveRef.current &&
+                            !isCooldown
+                          ) {
                             registerStrokeAction(pageIndex);
                           }
                         }}
@@ -3861,7 +3877,7 @@ export default function FormImageEditor() {
             >
               <Ionicons name="close" size={20} color={isDark ? colors.textMuted : "#9ca3af"} />
             </TouchableOpacity>
-            <Text style={[styles.confirmModalMessage, isDark && { color: colors.textPrimary }]}>You want to save changes?</Text>
+            <Text style={[styles.confirmModalMessage, isDark && { color: colors.textPrimary }]}>You want to save changes before exit?</Text>
             <View style={styles.confirmModalButtonsRow}>
               <TouchableOpacity
                 style={[styles.confirmModalButton, styles.confirmModalCancel, isDark && { backgroundColor: colors.surfaceHighlight }]}
