@@ -19,6 +19,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Feather from 'react-native-vector-icons/Feather';
 import { Calendar } from 'react-native-calendars';
+import { useTheme } from './theme/ThemeContext';
+import { StatusBar } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 
 type Patient = {
   id: string;
@@ -211,6 +214,7 @@ const MONTHS = [
 export default function RxNotes() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { colors, isDark } = useTheme();
 
   const { patient, vitals: incomingVitals } = route.params as {
     patient: Patient;
@@ -1256,11 +1260,12 @@ export default function RxNotes() {
     const isTypeDropdownOpen = openTypeDropdownId === item.id;
 
     return (
-      <View key={item.id} style={styles.diagRow}>
-        <Text style={[styles.diagCell, styles.colICD]}>{item.code}</Text>
+      <View key={item.id} style={[styles.diagRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
+        <Text style={[styles.diagCell, styles.colICD, { color: colors.textPrimary }]}>{item.code}</Text>
 
         <TextInput
           placeholder="Add description"
+          placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
           value={item.description}
           multiline
           numberOfLines={50}
@@ -1272,28 +1277,28 @@ export default function RxNotes() {
               )
             )
           }
-          style={[styles.diagDescInput, styles.colDesc]}
+          style={[styles.diagDescInput, styles.colDesc, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
         />
 
-        <Text style={[styles.diagCell, styles.colDoctor]}>{item.doctor}</Text>
+        <Text style={[styles.diagCell, styles.colDoctor, { color: colors.textPrimary }]}>{item.doctor}</Text>
 
         <View style={[styles.colType, { position: 'relative' }]}>
           <TouchableOpacity
-            style={styles.typeChip}
+            style={[styles.typeChip, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
             onPress={() =>
               setOpenTypeDropdownId(
                 openTypeDropdownId === item.id ? null : item.id
               )
             }
           >
-            <Text style={styles.typeText}>
+            <Text style={[styles.typeText, { color: item.type ? colors.primary : colors.textSecondary }]}>
               {item.type || 'Type'}
             </Text>
-            <Feather name="chevron-down" size={12} />
+            <Feather name="chevron-down" size={12} color={isDark ? colors.textSecondary : "#64748B"} />
           </TouchableOpacity>
 
           {isTypeDropdownOpen && (
-            <View style={styles.typeMenu}>
+            <View style={[styles.typeMenu, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
               {DIAGNOSIS_TYPE_OPTIONS.map(t => (
                 <TouchableOpacity
                   key={t}
@@ -1303,7 +1308,8 @@ export default function RxNotes() {
                   <Text
                     style={[
                       styles.typeOptionText,
-                      item.type === t && { color: '#0EA5A4', fontWeight: '600' },
+                      { color: isDark ? colors.textPrimary : '#475569' },
+                      item.type === t && { color: colors.primary, fontWeight: '600' },
                     ]}
                   >
                     {t}
@@ -1314,7 +1320,7 @@ export default function RxNotes() {
           )}
         </View>
 
-        <Text style={[styles.diagCell, styles.colDate]}>{item.date}</Text>
+        <Text style={[styles.diagCell, styles.colDate, { color: colors.textPrimary }]}>{item.date}</Text>
 
         <TouchableOpacity
           style={styles.colDelete}
@@ -1328,16 +1334,16 @@ export default function RxNotes() {
 
   // Render past diagnosis row
   const renderPastDiagnosisRow = (item: DiagnosisItem) => (
-    <View key={item.id} style={styles.diagRow}>
-      <Text style={[styles.diagCell, styles.colICD]}>{item.code}</Text>
-      <Text style={[styles.diagDescText, styles.colDesc]}>{item.description || '-'}</Text>
-      <Text style={[styles.diagCell, styles.colDoctor]}>{item.doctor}</Text>
+    <View key={item.id} style={[styles.diagRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
+      <Text style={[styles.diagCell, styles.colICD, { color: colors.textPrimary }]}>{item.code}</Text>
+      <Text style={[styles.diagDescText, styles.colDesc, { color: isDark ? colors.textSecondary : '#475569' }]}>{item.description || '-'}</Text>
+      <Text style={[styles.diagCell, styles.colDoctor, { color: colors.textPrimary }]}>{item.doctor}</Text>
       <View style={styles.colType}>
-        <View style={styles.typeChip}>
-          <Text style={styles.typeText}>{item.type}</Text>
+        <View style={[styles.typeChip, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}>
+          <Text style={[styles.typeText, { color: colors.textSecondary }]}>{item.type}</Text>
         </View>
       </View>
-      <Text style={[styles.diagCell, styles.colDate]}>{item.date}</Text>
+      <Text style={[styles.diagCell, styles.colDate, { color: colors.textPrimary }]}>{item.date}</Text>
       <TouchableOpacity
         style={styles.colDelete}
         onPress={() => deleteDiagnosis(item.id, true)}
@@ -1349,14 +1355,14 @@ export default function RxNotes() {
 
   // Render symptom row
   const renderSymptomRow = (item: SymptomItem) => (
-    <View key={item.id} style={styles.symptomRow}>
-      <Text style={[styles.symptomCell, styles.sympColComplaint]}>{item.complaint}</Text>
-      <Text style={[styles.symptomCell, styles.sympColSince]}>
+    <View key={item.id} style={[styles.symptomRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
+      <Text style={[styles.symptomCell, styles.sympColComplaint, { color: colors.textPrimary }]}>{item.complaint}</Text>
+      <Text style={[styles.symptomCell, styles.sympColSince, { color: colors.textPrimary }]}>
         {item.since} {item.unit}
       </Text>
-      <Text style={[styles.symptomCell, styles.sympColSeverity]}>{item.severity}</Text>
-      <Text style={[styles.symptomCell, styles.sympColNotes]}>{item.notes || '-'}</Text>
-      <Text style={[styles.symptomCell, styles.sympColDate]}>{item.date}</Text>
+      <Text style={[styles.symptomCell, styles.sympColSeverity, { color: colors.textPrimary }]}>{item.severity}</Text>
+      <Text style={[styles.symptomCell, styles.sympColNotes, { color: colors.textSecondary }]}>{item.notes || '-'}</Text>
+      <Text style={[styles.symptomCell, styles.sympColDate, { color: colors.textPrimary }]}>{item.date}</Text>
       <TouchableOpacity
         style={[styles.sympColDelete, styles.deleteButton]}
         onPress={() => deleteSymptom(item.id)}
@@ -1368,21 +1374,21 @@ export default function RxNotes() {
 
   // Render investigation row
   const renderInvestigationRow = (item: InvestigationItem) => (
-    <View key={item.id} style={styles.investigationRow}>
+    <View key={item.id} style={[styles.investigationRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
       <TouchableOpacity
-        style={[styles.selectCheckbox, item.select && styles.selectCheckboxSelected]}
+        style={[styles.selectCheckbox, item.select && styles.selectCheckboxSelected, { borderColor: isDark ? colors.border : '#CBD5F5' }]}
         onPress={() => toggleInvestigationSelection(item.id)}
       >
         {item.select && <Feather name="check" size={12} color="#fff" />}
       </TouchableOpacity>
-      <Text style={[styles.investigationCell, styles.invColCategory]}>{item.category}</Text>
-      <Text style={[styles.investigationCell, styles.invColService]}>{item.serviceName}</Text>
-      <Text style={[styles.investigationCell, styles.invColDate]}>{item.date}</Text>
-      <Text style={[styles.investigationCell, styles.invColTime]}>{item.time}</Text>
-      <Text style={[styles.investigationCell, styles.invColQty]}>{item.qty}</Text>
-      <Text style={[styles.investigationCell, styles.invColSource]}>{item.source}</Text>
+      <Text style={[styles.investigationCell, styles.invColCategory, { color: colors.textPrimary }]}>{item.category}</Text>
+      <Text style={[styles.investigationCell, styles.invColService, { color: colors.textPrimary }]}>{item.serviceName}</Text>
+      <Text style={[styles.investigationCell, styles.invColDate, { color: colors.textPrimary }]}>{item.date}</Text>
+      <Text style={[styles.investigationCell, styles.invColTime, { color: colors.textPrimary }]}>{item.time}</Text>
+      <Text style={[styles.investigationCell, styles.invColQty, { color: colors.textPrimary }]}>{item.qty}</Text>
+      <Text style={[styles.investigationCell, styles.invColSource, { color: colors.textPrimary }]}>{item.source}</Text>
       <TextInput
-        style={[styles.investigationInput, styles.invColRemarks]}
+        style={[styles.investigationInput, styles.invColRemarks, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
         value={item.remarks}
         onChangeText={text => {
           setSelectedInvestigations(prev =>
@@ -1392,9 +1398,10 @@ export default function RxNotes() {
           );
         }}
         placeholder="Remarks"
+        placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
         multiline
       />
-      <Text style={[styles.investigationCell, styles.invColChecker]}>{item.checker}</Text>
+      <Text style={[styles.investigationCell, styles.invColChecker, { color: colors.textPrimary }]}>{item.checker}</Text>
       <TouchableOpacity
         style={[styles.invColDelete, styles.deleteButton]}
         onPress={() => deleteInvestigation(item.id)}
@@ -1426,38 +1433,60 @@ export default function RxNotes() {
 
   const vitalRows = chunkArray(VITALS_CONFIG, 3);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleBackPress}>
-          <Icon name="arrow-back" size={22} color="#fff" />
+  const renderHeaderContent = () => (
+    <>
+      <TouchableOpacity
+        style={[
+          styles.backButton,
+          isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }
+        ]}
+        onPress={handleBackPress}
+      >
+        <Icon name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>Rx Notes</Text>
+      <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', width: 'auto', gap: 12 }]}>
+        {hasUnsavedChanges && (
+          <View style={styles.draftBadge}>
+            <Text style={styles.draftText}>Draft</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={[
+            styles.backButton,
+            { marginRight: 0 },
+            isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }
+          ]}
+          onPress={() => navigation.navigate('PatientScreen')}
+        >
+          <Icon name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rx Notes</Text>
-        <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', width: 'auto', gap: 12 }]}>
-          {hasUnsavedChanges && (
-            <View style={styles.draftBadge}>
-              <Text style={styles.draftText}>Draft</Text>
-            </View>
-          )}
-          <TouchableOpacity
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              justifyContent: 'center',
-              alignItems: 'center',
-              backgroundColor: 'rgba(255,255,255,0.18)',
-            }}
-            onPress={() => navigation.navigate('PatientScreen')}
-          >
-            <Icon name="home" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
       </View>
+    </>
+  );
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={isDark ? colors.background : colors.primary}
+      />
+      {/* Header */}
+      {isDark ? (
+        <LinearGradient
+          colors={['#0B1220', '#0E1626', '#0B1220']}
+          style={styles.header}
+        >
+          {renderHeaderContent()}
+        </LinearGradient>
+      ) : (
+        <View style={[styles.header, { backgroundColor: colors.primary }]}>
+          {renderHeaderContent()}
+        </View>
+      )}
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'android' ? 'height' : 'padding'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView
@@ -1471,34 +1500,34 @@ export default function RxNotes() {
           scrollEventThrottle={16}
         >
           {/* Patient Details */}
-          <View style={styles.patientCard}>
-            <View style={styles.avatar}>
+          <View style={[styles.patientCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
+            <View style={[styles.avatar, { backgroundColor: isDark ? colors.primarySoft : '#E0F2F1' }]}>
               <Text style={styles.avatarText}>{getInitials(patient.name)}</Text>
             </View>
             <View style={styles.patientInfo}>
-              <Text style={styles.patientName}>{patient.name}</Text>
+              <Text style={[styles.patientName, { color: isDark ? colors.textPrimary : '#334155' }]}>{patient.name}</Text>
               <View style={styles.infoRow}>
-                <View style={styles.infoChip}>
-                  <Text style={styles.infoText}>
+                <View style={[styles.infoChip, { backgroundColor: isDark ? colors.primarySoft : '#ECFEFF' }]}>
+                  <Text style={[styles.infoText, { color: colors.primary }]}>
                     {patient.gender} • {patient.age} yrs
                   </Text>
                 </View>
-                <Text style={[styles.meta, styles.uhidText]}>UHID: {patient.patientId}</Text>
+                <Text style={[styles.meta, { color: isDark ? colors.textSecondary : '#475569' }]}>UHID: {patient.patientId}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={[styles.meta, styles.roomText]}>Room: {patient.room}</Text>
-                <Text style={[styles.meta, styles.doctorText]}>Doctor: {patient.doctorName}</Text>
+                <Text style={[styles.meta, { color: isDark ? colors.textSecondary : '#475569' }]}>Room: {patient.room}</Text>
+                <Text style={[styles.meta, styles.doctorText, { color: isDark ? colors.textSecondary : '#475569' }]}>Doctor: {patient.doctorName}</Text>
               </View>
             </View>
           </View>
 
           {/* Vitals Section */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('vitals')}
             >
-              <Text style={styles.sectionTitle}>Vitals</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Vitals</Text>
               <Feather
                 name={expandedSections.vitals ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -1512,9 +1541,9 @@ export default function RxNotes() {
                   {vitalRows.map((row, rowIndex) => (
                     <View key={rowIndex} style={styles.vitalRow}>
                       {row.map((vital, index) => (
-                        <View key={vital.key} style={styles.vitalTile}>
+                        <View key={vital.key} style={[styles.vitalTile, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                           <View style={styles.vitalHeader}>
-                            <Text style={styles.vitalLabel}>{vital.label}</Text>
+                            <Text style={[styles.vitalLabel, { color: isDark ? colors.textSecondary : '#64748B' }]}>{vital.label}</Text>
                             {vital.editable && (
                               <TouchableOpacity
                                 onPress={() =>
@@ -1539,11 +1568,11 @@ export default function RxNotes() {
                                 autoFocus
                                 style={styles.vitalInput}
                               />
-                              {vital.unit && <Text style={styles.unit}>{vital.unit}</Text>}
+                              {vital.unit && <Text style={[styles.unit, { color: isDark ? colors.textSecondary : '#64748B' }]}>{vital.unit}</Text>}
                             </View>
                           ) : (
-                            <Text style={styles.vitalValue}>
-                              {formData.vitals[vital.key] || '--'}
+                            <Text style={[styles.vitalValue, { color: colors.textPrimary }]}>
+                              {formData.vitals[vital.key] || '-'}
                             </Text>
                           )}
                         </View>
@@ -1556,17 +1585,28 @@ export default function RxNotes() {
                     </View>
                   ))}
                 </View>
+                <View style={styles.vitalHeader}>
+                  {/* <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Doctors Note</Text> */}
+                </View>
+                <TextInput
+                  placeholder="Enter note here..."
+                  placeholderTextColor={isDark ? "white" : '#94A3B8'}
+                  value={formData.doctorNote}
+                  onChangeText={text => updateField('doctorNote', text)}
+                  multiline
+                  style={[styles.prescriptionInput, { height: 80, textAlignVertical: 'top', color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderRadius: 8, borderWidth: 1, borderColor: isDark ? colors.border : '#CBD5F5', padding: 10, marginBottom: 16 }]}
+                />
               </View>
             )}
           </View>
 
           {/* Symptoms Section */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('symptoms')}
             >
-              <Text style={styles.sectionTitle}>Symptoms</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Symptoms</Text>
               <Feather
                 name={expandedSections.symptoms ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -1577,26 +1617,28 @@ export default function RxNotes() {
             {expandedSections.symptoms && (
               <View style={styles.sectionContent}>
                 {/* Add Symptoms Section */}
-                <Text style={styles.subTitle}>Add Symptoms</Text>
+                <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Add Symptoms</Text>
 
                 {/* Add Symptoms Row */}
-                <View style={styles.symptomAddRow}>
+                <View style={[styles.symptomAddRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
                   <TextInput
                     placeholder="Complaint"
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
                     value={newSymptom.complaint}
                     onChangeText={text => setNewSymptom(prev => ({ ...prev, complaint: text }))}
-                    style={[styles.symptomInput, styles.addSympColComplaint]}
+                    style={[styles.symptomInput, styles.addSympColComplaint, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceHighlight : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                   />
 
                   {/* Combined Since and Unit Input */}
-                  <View style={[styles.sinceContainer, styles.addSympColSince]}>
+                  <View style={[styles.sinceContainer, styles.addSympColSince, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}>
                     <TextInput
                       placeholder="0"
+                      placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                       value={newSymptom.since}
                       onChangeText={text => setNewSymptom(prev => ({ ...prev, since: text }))}
                       keyboardType="number-pad"
                       scrollEnabled={false}
-                      style={styles.sinceInput}
+                      style={[styles.sinceInput, { color: colors.textPrimary, borderRightColor: isDark ? colors.border : '#E2E8F0' }]}
                     />
 
                     {/* Unit Dropdown */}
@@ -1608,12 +1650,12 @@ export default function RxNotes() {
                           setSeverityOpen(false);
                         }}
                       >
-                        <Text style={styles.unitText}>{newSymptom.unit}</Text>
-                        <Feather name="chevron-down" size={14} color="#64748B" />
+                        <Text style={[styles.unitText, { color: colors.textPrimary }]}>{newSymptom.unit}</Text>
+                        <Feather name="chevron-down" size={14} color={isDark ? colors.textSecondary : "#64748B"} />
                       </TouchableOpacity>
 
                       {sinceOpen && (
-                        <View style={styles.unitMenu}>
+                        <View style={[styles.unitMenu, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                           {SINCE_UNITS.map(u => (
                             <TouchableOpacity
                               key={u}
@@ -1623,7 +1665,7 @@ export default function RxNotes() {
                                 setSinceOpen(false);
                               }}
                             >
-                              <Text style={styles.unitOptionText}>{u}</Text>
+                              <Text style={[styles.unitOptionText, { color: colors.textPrimary }]}>{u}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -1632,7 +1674,7 @@ export default function RxNotes() {
                   </View>
 
                   {/* Severity Dropdown */}
-                  <View style={[styles.severityContainer, styles.addSympColSeverity]}>
+                  <View style={[styles.severityContainer, styles.addSympColSeverity, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}>
                     <TouchableOpacity
                       style={styles.severityDropdown}
                       onPress={() => {
@@ -1640,12 +1682,12 @@ export default function RxNotes() {
                         setSinceOpen(false);
                       }}
                     >
-                      <Text style={styles.severityText}>{newSymptom.severity}</Text>
-                      <Feather name="chevron-down" size={14} color="#64748B" />
+                      <Text style={[styles.severityText, { color: colors.textPrimary }]}>{newSymptom.severity}</Text>
+                      <Feather name="chevron-down" size={14} color={isDark ? colors.textSecondary : "#64748B"} />
                     </TouchableOpacity>
 
                     {severityOpen && (
-                      <View style={styles.severityMenu}>
+                      <View style={[styles.severityMenu, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                         {SEVERITY_OPTIONS.map(s => (
                           <TouchableOpacity
                             key={s}
@@ -1655,7 +1697,7 @@ export default function RxNotes() {
                               setSeverityOpen(false);
                             }}
                           >
-                            <Text style={styles.severityOptionText}>{s}</Text>
+                            <Text style={[styles.severityOptionText, { color: colors.textPrimary }]}>{s}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -1664,11 +1706,10 @@ export default function RxNotes() {
 
                   <TextInput
                     placeholder="Remark"
-                    multiline
-                    numberOfLines={50}
+                    placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                     value={newSymptom.notes}
                     onChangeText={text => setNewSymptom(prev => ({ ...prev, notes: text }))}
-                    style={[styles.symptomInput, styles.addSympColNotes]}
+                    style={[styles.symptomInput, styles.addSympColNotes, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                   />
 
                   <TouchableOpacity
@@ -1680,15 +1721,15 @@ export default function RxNotes() {
                 </View>
 
                 {/* Symptoms Data Table */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Symptoms</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Symptoms</Text>
 
                 {/* Table Header */}
-                <View style={styles.symptomHeader}>
-                  <Text style={[styles.symptomHeaderText, styles.sympColComplaint]}>Complaint</Text>
-                  <Text style={[styles.symptomHeaderText, styles.sympColSince]}>Since</Text>
-                  <Text style={[styles.symptomHeaderText, styles.sympColSeverity]}>Severity</Text>
-                  <Text style={[styles.symptomHeaderText, styles.sympColNotes]}>Notes</Text>
-                  <Text style={[styles.symptomHeaderText, styles.sympColDate]}>Date</Text>
+                <View style={[styles.symptomHeader, { backgroundColor: isDark ? colors.surfaceHighlight : 'transparent' }]}>
+                  <Text style={[styles.symptomHeaderText, styles.sympColComplaint, { color: isDark ? colors.textSecondary : '#64748B' }]}>Complaint</Text>
+                  <Text style={[styles.symptomHeaderText, styles.sympColSince, { color: isDark ? colors.textSecondary : '#64748B' }]}>Since</Text>
+                  <Text style={[styles.symptomHeaderText, styles.sympColSeverity, { color: isDark ? colors.textSecondary : '#64748B' }]}>Severity</Text>
+                  <Text style={[styles.symptomHeaderText, styles.sympColNotes, { color: isDark ? colors.textSecondary : '#64748B' }]}>Notes</Text>
+                  <Text style={[styles.symptomHeaderText, styles.sympColDate, { color: isDark ? colors.textSecondary : '#64748B' }]}>Date</Text>
                   <View style={styles.sympColDelete}></View>
                 </View>
 
@@ -1715,12 +1756,12 @@ export default function RxNotes() {
           </View>
 
           {/* Doctor's Note Section */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('doctorsNote')}
             >
-              <Text style={styles.sectionTitle}>Doctor's Note</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Doctor's Note</Text>
               <Feather
                 name={expandedSections.doctorsNote ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -1730,13 +1771,14 @@ export default function RxNotes() {
 
             {expandedSections.doctorsNote && (
               <View style={styles.sectionContent}>
-                <View style={styles.prescriptionBox}>
+                <View style={[styles.prescriptionBox, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}>
                   <TextInput
                     placeholder="Write notes here..."
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
                     value={formData.prescription}
                     onChangeText={text => updateField('prescription', text)}
                     multiline
-                    style={styles.prescriptionInput}
+                    style={[styles.prescriptionInput, { color: colors.textPrimary }]}
                   />
                 </View>
               </View>
@@ -1744,12 +1786,12 @@ export default function RxNotes() {
           </View>
 
           {/* Diagnosis Section */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('diagnosis')}
             >
-              <Text style={styles.sectionTitle}>Diagnosis</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Diagnosis</Text>
               <Feather
                 name={expandedSections.diagnosis ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -1759,26 +1801,27 @@ export default function RxNotes() {
 
             {expandedSections.diagnosis && (
               <View style={styles.sectionContent}>
-                <Text style={styles.subTitle}>Current Diagnosis</Text>
+                <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Current Diagnosis</Text>
 
                 <View style={styles.searchRow}>
                   <TextInput
                     placeholder="Search / Add ICD code"
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
                     value={diagnosisSearch}
                     onChangeText={setDiagnosisSearch}
-                    style={styles.searchInput}
+                    style={[styles.searchInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceHighlight : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                   />
                   <TouchableOpacity style={styles.addBtn} onPress={addDiagnosis}>
                     <Text style={styles.addBtnText}>Add</Text>
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.diagHeader}>
-                  <Text style={[styles.diagHeaderText, styles.colICD]}>ICD</Text>
-                  <Text style={[styles.diagHeaderText, styles.colDesc]}>Description</Text>
-                  <Text style={[styles.diagHeaderText, styles.colDoctor]}>Doctor</Text>
-                  <Text style={[styles.diagHeaderText, styles.colType]}>Type</Text>
-                  <Text style={[styles.diagHeaderText, styles.colDate]}>Date</Text>
+                <View style={[styles.diagHeader, { backgroundColor: isDark ? colors.surfaceHighlight : 'transparent' }]}>
+                  <Text style={[styles.diagHeaderText, styles.colICD, { color: isDark ? colors.textSecondary : '#64748B' }]}>ICD</Text>
+                  <Text style={[styles.diagHeaderText, styles.colDesc, { color: isDark ? colors.textSecondary : '#64748B' }]}>Description</Text>
+                  <Text style={[styles.diagHeaderText, styles.colDoctor, { color: isDark ? colors.textSecondary : '#64748B' }]}>Doctor</Text>
+                  <Text style={[styles.diagHeaderText, styles.colType, { color: isDark ? colors.textSecondary : '#64748B' }]}>Type</Text>
+                  <Text style={[styles.diagHeaderText, styles.colDate, { color: isDark ? colors.textSecondary : '#64748B' }]}>Date</Text>
                   <View style={styles.colDelete}></View>
                 </View>
 
@@ -1800,7 +1843,7 @@ export default function RxNotes() {
                   </View>
                 )}
 
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Past Diagnosis</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Past Diagnosis</Text>
 
                 {(showAllPast ? formData.pastDiagnosis : formData.pastDiagnosis.slice(0, 3)).map(
                   renderPastDiagnosisRow
@@ -1824,12 +1867,12 @@ export default function RxNotes() {
           </View>
 
           {/* Medication Order Section */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('medication')}
             >
-              <Text style={styles.sectionTitle}>Medication Order</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Medication Order</Text>
               <Feather
                 name={expandedSections.medication ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -1843,9 +1886,10 @@ export default function RxNotes() {
                 <View style={styles.medSearchRow}>
                   <TextInput
                     placeholder="Search"
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
                     value={medSearch}
                     onChangeText={setMedSearch}
-                    style={styles.medSearchInput}
+                    style={[styles.medSearchInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceHighlight : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                   />
                   <TouchableOpacity style={styles.outsideBtn}>
                     <Text style={styles.outsideBtnText}>Add Outside Medicine</Text>
@@ -1853,7 +1897,7 @@ export default function RxNotes() {
                 </View>
 
                 {/* Recent Medicines */}
-                <Text style={[styles.subTitle, { marginTop: 6 }]}>Recent Medicines</Text>
+                <Text style={[styles.subTitle, { marginTop: 6, color: colors.textPrimary }]}>Recent Medicines</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {RECENT_MEDICINES.map(med => {
                     const isActive = selectedRecentMed === med;
@@ -1863,6 +1907,10 @@ export default function RxNotes() {
                         key={med}
                         style={[
                           styles.recentMedChip,
+                          {
+                            backgroundColor: isActive ? colors.primary : (isDark ? colors.surfaceHighlight : '#fff'),
+                            borderColor: colors.primary
+                          },
                           isActive && styles.recentMedChipActive,
                         ]}
                         onPress={() => {
@@ -1873,7 +1921,7 @@ export default function RxNotes() {
                         <Text
                           style={[
                             styles.recentMedText,
-                            isActive && { color: '#fff' },
+                            isActive ? { color: '#fff' } : { color: colors.primary },
                           ]}
                         >
                           {med}
@@ -1881,7 +1929,7 @@ export default function RxNotes() {
                         <Feather
                           name="plus"
                           size={14}
-                          color={isActive ? '#fff' : '#0EA5A4'}
+                          color={isActive ? '#fff' : colors.primary}
                         />
                       </TouchableOpacity>
                     );
@@ -1897,15 +1945,16 @@ export default function RxNotes() {
                         borderWidth: 2,
                         borderColor: '#0EA5A4',
                       },
+                      { backgroundColor: isDark ? colors.surfaceHighlight : '#fff' }
                     ]}
                   >
-                    <Text style={styles.medName}>{activeMedicine.name}</Text>
+                    <Text style={[styles.medName, { color: colors.textPrimary }]}>{activeMedicine.name}</Text>
 
                     {/* Dose + Unit */}
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Dose"
-                        style={styles.medInput}
+                        style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeMedicine.dose}
                         onChangeText={t =>
                           setActiveMedicine({ ...activeMedicine, dose: t })
@@ -1913,7 +1962,7 @@ export default function RxNotes() {
                       />
                       <TextInput
                         placeholder="Select unit"
-                        style={styles.medInput}
+                        style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeMedicine.unit}
                         onChangeText={t =>
                           setActiveMedicine({ ...activeMedicine, unit: t })
@@ -1922,7 +1971,7 @@ export default function RxNotes() {
                     </View>
 
                     {/* Frequency */}
-                    <Text style={styles.subTitle}>Frequency</Text>
+                    <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Frequency</Text>
                     <View style={styles.optionRow}>
                       {['1-0-1', '1-1-1', '1-0-0', '0-1-0', '0-0-1'].map(f => (
                         <TouchableOpacity
@@ -1930,12 +1979,13 @@ export default function RxNotes() {
                           style={[
                             styles.optionChip,
                             activeMedicine.frequency === f && styles.optionChipActive,
+                            { backgroundColor: activeMedicine.frequency === f ? '#0EA5A4' : (isDark ? colors.surfaceSoft : '#fff'), borderColor: isDark ? colors.border : '#CBD5F5' }
                           ]}
                           onPress={() =>
                             setActiveMedicine({ ...activeMedicine, frequency: f })
                           }
                         >
-                          <Text style={[styles.optionText, activeMedicine.frequency === f && { color: '#fff' }]}>
+                          <Text style={[styles.optionText, activeMedicine.frequency === f && { color: '#fff' }, { color: activeMedicine.frequency === f ? '#fff' : colors.textPrimary }]}>
                             {f}
                           </Text>
                         </TouchableOpacity>
@@ -1961,15 +2011,15 @@ export default function RxNotes() {
                           <Feather
                             name={timings.includes(t) ? 'check-square' : 'square'}
                             size={16}
-                            color="#0EA5A4"
+                            color={colors.primary}
                           />
-                          <Text style={{ marginLeft: 6 }}>{t}</Text>
+                          <Text style={[{ marginLeft: 6 }, { color: isDark ? colors.textPrimary : '#334155' }]}>{t}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
 
                     {/* Duration */}
-                    <Text style={[styles.subTitle, { marginTop: 10 }]}>Duration</Text>
+                    <Text style={[styles.subTitle, { marginTop: 10, color: colors.textPrimary }]}>Duration</Text>
                     <View style={styles.optionRow}>
                       {['1 day', '2 days', '3 days', '5 days', '1 week', '2 weeks'].map(d => (
                         <TouchableOpacity
@@ -1977,12 +2027,13 @@ export default function RxNotes() {
                           style={[
                             styles.optionChip,
                             activeMedicine.duration === d && styles.optionChipActive,
+                            { backgroundColor: activeMedicine.duration === d ? '#0EA5A4' : (isDark ? colors.surfaceSoft : '#fff'), borderColor: isDark ? colors.border : '#CBD5F5' }
                           ]}
                           onPress={() =>
                             setActiveMedicine({ ...activeMedicine, duration: d })
                           }
                         >
-                          <Text style={[styles.optionText, activeMedicine.duration === d && { color: '#fff' }]}>
+                          <Text style={[styles.optionText, activeMedicine.duration === d && { color: '#fff' }, { color: activeMedicine.duration === d ? '#fff' : colors.textPrimary }]}>
                             {d}
                           </Text>
                         </TouchableOpacity>
@@ -1997,7 +2048,7 @@ export default function RxNotes() {
                     <TextInput
                       placeholder="Enter note"
                       multiline
-                      style={styles.medNote}
+                      style={[styles.medNote, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                       value={activeMedicine.note}
                       onChangeText={t =>
                         setActiveMedicine({ ...activeMedicine, note: t })
@@ -2026,25 +2077,25 @@ export default function RxNotes() {
                   </View>
                 )}
                 {/* ===== Medication Order Table ===== */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Ordered Medicines</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Ordered Medicines</Text>
 
                 {/* Header */}
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.th, { width: '22%' }]}>Medicine</Text>
-                  <Text style={[styles.th, { width: '14%' }]}>Dose</Text>
-                  <Text style={[styles.th, { width: '14%' }]}>Freq</Text>
-                  <Text style={[styles.th, { width: '20%' }]}>Duration</Text>
-                  <Text style={[styles.th, { width: '22%' }]}>Note</Text>
+                <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.surfaceHighlight : '#F1F5F9' }]}>
+                  <Text style={[styles.th, { width: '22%', color: isDark ? colors.textSecondary : '#64748B' }]}>Medicine</Text>
+                  <Text style={[styles.th, { width: '14%', color: isDark ? colors.textSecondary : '#64748B' }]}>Dose</Text>
+                  <Text style={[styles.th, { width: '14%', color: isDark ? colors.textSecondary : '#64748B' }]}>Freq</Text>
+                  <Text style={[styles.th, { width: '20%', color: isDark ? colors.textSecondary : '#64748B' }]}>Duration</Text>
+                  <Text style={[styles.th, { width: '22%', color: isDark ? colors.textSecondary : '#64748B' }]}>Note</Text>
                   <View style={{ width: '8%' }} />
                 </View>
 
                 {(showAllMedOrders ? medicationOrderTable : medicationOrderTable.slice(0, 3)).map(item => (
-                  <View key={item.id} style={styles.tableRow}>
-                    <Text style={[styles.td, { width: '22%' }]}>{item.name}</Text>
-                    <Text style={[styles.td, { width: '14%' }]}>{item.dose}</Text>
-                    <Text style={[styles.td, { width: '14%' }]}>{item.freq}</Text>
-                    <Text style={[styles.td, { width: '20%' }]}>{item.duration}</Text>
-                    <Text style={[styles.td, { width: '22%' }]}>{item.note}</Text>
+                  <View key={item.id} style={[styles.tableRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
+                    <Text style={[styles.td, { width: '22%', color: colors.textPrimary }]}>{item.name}</Text>
+                    <Text style={[styles.td, { width: '14%', color: colors.textPrimary }]}>{item.dose}</Text>
+                    <Text style={[styles.td, { width: '14%', color: colors.textPrimary }]}>{item.freq}</Text>
+                    <Text style={[styles.td, { width: '20%', color: colors.textPrimary }]}>{item.duration}</Text>
+                    <Text style={[styles.td, { width: '22%', color: colors.textPrimary }]}>{item.note}</Text>
 
                     <View style={{ width: '8%', alignItems: 'center' }}>
                       <TouchableOpacity onPress={() => deleteMedicationOrder(item.id)}>
@@ -2075,12 +2126,12 @@ export default function RxNotes() {
           </View>
 
           {/* Medication Infusion Section */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('medicationInfusion')}
             >
-              <Text style={styles.sectionTitle}>Medication Infusion</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Medication Infusion</Text>
               <Feather
                 name={expandedSections.medicationInfusion ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -2094,7 +2145,8 @@ export default function RxNotes() {
                 <View style={styles.medSearchRow}>
                   <TextInput
                     placeholder="Search infusion medicine"
-                    style={styles.medSearchInput}
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
+                    style={[styles.medSearchInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceHighlight : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                   />
                   <TouchableOpacity style={styles.outsideBtn}>
                     <Text style={styles.outsideBtnText}>Add Outside Medicine</Text>
@@ -2102,7 +2154,7 @@ export default function RxNotes() {
                 </View>
 
                 {/* Recent Infusions */}
-                <Text style={[styles.subTitle, { marginTop: 6 }]}>
+                <Text style={[styles.subTitle, { marginTop: 6, color: colors.textPrimary }]}>
                   Recent Medication Infusion
                 </Text>
 
@@ -2115,6 +2167,10 @@ export default function RxNotes() {
                         key={med}
                         style={[
                           styles.recentMedChip,
+                          {
+                            backgroundColor: isActive ? colors.primary : (isDark ? colors.surfaceHighlight : '#fff'),
+                            borderColor: colors.primary
+                          },
                           isActive && styles.recentMedChipActive,
                         ]}
                         onPress={() => {
@@ -2125,7 +2181,7 @@ export default function RxNotes() {
                         <Text
                           style={[
                             styles.recentMedText,
-                            isActive && { color: '#fff' },
+                            isActive ? { color: '#fff' } : { color: colors.primary },
                           ]}
                         >
                           {med}
@@ -2133,7 +2189,7 @@ export default function RxNotes() {
                         <Feather
                           name="plus"
                           size={14}
-                          color={isActive ? '#fff' : '#0EA5A4'}
+                          color={isActive ? '#fff' : colors.primary}
                         />
                       </TouchableOpacity>
                     );
@@ -2142,14 +2198,14 @@ export default function RxNotes() {
 
                 {/* Infusion Card */}
                 {activeInfusion && (
-                  <View style={[styles.medCard, { borderWidth: 1, borderColor: '#0EA5A4' }]}>
-                    <Text style={styles.medName}>{activeInfusion.name}</Text>
+                  <View style={[styles.medCard, { borderWidth: 1, borderColor: '#0EA5A4', backgroundColor: isDark ? colors.surfaceHighlight : '#fff' }]}>
+                    <Text style={[styles.medName, { color: colors.textPrimary }]}>{activeInfusion.name}</Text>
 
                     {/* Dose + Diluent */}
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Dose (mg)"
-                        style={styles.medInput}
+                        style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.dose}
                         onChangeText={t => setActiveInfusion({ ...activeInfusion, dose: t })}
                         keyboardType="numeric"
@@ -2158,17 +2214,17 @@ export default function RxNotes() {
                       {/* Diluent Dropdown */}
                       <View style={[styles.diluentContainer]}>
                         <TouchableOpacity
-                          style={styles.diluentDropdown}
+                          style={[styles.diluentDropdown, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                           onPress={() => setDiluentOpen(!diluentOpen)}
                         >
-                          <Text style={styles.diluentText}>
+                          <Text style={[styles.diluentText, { color: activeInfusion.diluent ? colors.textPrimary : colors.textSecondary }]}>
                             {activeInfusion.diluent || 'Diluent'}
                           </Text>
                           <Feather name="chevron-down" size={14} color="#64748B" />
                         </TouchableOpacity>
 
                         {diluentOpen && (
-                          <View style={styles.diluentMenu}>
+                          <View style={[styles.diluentMenu, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                             {DILUENT_OPTIONS.map(option => (
                               <TouchableOpacity
                                 key={option}
@@ -2178,7 +2234,7 @@ export default function RxNotes() {
                                   setDiluentOpen(false);
                                 }}
                               >
-                                <Text style={styles.diluentOptionText}>{option}</Text>
+                                <Text style={[styles.diluentOptionText, { color: colors.textPrimary }]}>{option}</Text>
                               </TouchableOpacity>
                             ))}
                           </View>
@@ -2190,7 +2246,7 @@ export default function RxNotes() {
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Diluent Volume (mL)"
-                        style={styles.medInput}
+                        style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.diluentVolume}
                         onChangeText={t =>
                           setActiveInfusion({ ...activeInfusion, diluentVolume: t })
@@ -2200,7 +2256,7 @@ export default function RxNotes() {
 
                       <TextInput
                         placeholder="Time (hr)"
-                        style={styles.medInput}
+                        style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.time}
                         onChangeText={t => setActiveInfusion({ ...activeInfusion, time: t })}
                         keyboardType="numeric"
@@ -2211,44 +2267,45 @@ export default function RxNotes() {
                     <View style={styles.medRow}>
                       <TextInput
                         placeholder="Drop Factor"
-                        style={styles.medInput}
+                        style={[styles.medInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                         value={activeInfusion.dropFactor}
                         onChangeText={t => setActiveInfusion({ ...activeInfusion, dropFactor: t })}
                         keyboardType="numeric"
                       />
-                      <View style={styles.medInput} />
+                      <View style={[styles.medInput, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]} />
                     </View>
 
                     {/* Calculation Results */}
-                    <View style={styles.calculationSection}>
-                      <Text style={[styles.subTitle, { marginTop: 10 }]}>Calculations</Text>
+                    <View style={[styles.calculationSection, { backgroundColor: isDark ? colors.surfaceHighlight : '#F0F9FF', borderColor: isDark ? colors.border : '#E0F2FE' }]}>
+                      <Text style={[styles.subTitle, { marginTop: 10, color: colors.textPrimary }]}>Calculations</Text>
 
                       <View style={styles.calculationRow}>
-                        <Text style={styles.calculationLabel}>Drug Volume:</Text>
-                        <Text style={styles.calculationValue}>{activeInfusion.drugVolume || '0'} mL</Text>
+                        <Text style={[styles.calculationLabel, { color: isDark ? colors.textSecondary : '#64748B' }]}>Drug Volume:</Text>
+                        <Text style={[styles.calculationValue, { color: colors.textPrimary }]}>{activeInfusion.drugVolume || '0'} mL</Text>
                       </View>
 
                       <View style={styles.calculationRow}>
-                        <Text style={styles.calculationLabel}>Total Volume:</Text>
-                        <Text style={styles.calculationValue}>{activeInfusion.totalVolume || '0'} mL</Text>
+                        <Text style={[styles.calculationLabel, { color: isDark ? colors.textSecondary : '#64748B' }]}>Total Volume:</Text>
+                        <Text style={[styles.calculationValue, { color: colors.textPrimary }]}>{activeInfusion.totalVolume || '0'} mL</Text>
                       </View>
 
                       <View style={styles.calculationRow}>
-                        <Text style={styles.calculationLabel}>Rate:</Text>
-                        <Text style={styles.calculationValue}>{activeInfusion.rate || '0'} mL/hr</Text>
+                        <Text style={[styles.calculationLabel, { color: isDark ? colors.textSecondary : '#64748B' }]}>Rate:</Text>
+                        <Text style={[styles.calculationValue, { color: colors.textPrimary }]}>{activeInfusion.rate || '0'} mL/hr</Text>
                       </View>
 
                       <View style={styles.calculationRow}>
-                        <Text style={styles.calculationLabel}>Drops/min:</Text>
-                        <Text style={styles.calculationValue}>{activeInfusion.dropsPerMinute || '0'} gtt/min</Text>
+                        <Text style={[styles.calculationLabel, { color: isDark ? colors.textSecondary : '#64748B' }]}>Drops/min:</Text>
+                        <Text style={[styles.calculationValue, { color: colors.textPrimary }]}>{activeInfusion.dropsPerMinute || '0'} gtt/min</Text>
                       </View>
                     </View>
 
                     {/* Notes */}
                     <TextInput
                       placeholder="Enter note"
+                      placeholderTextColor={isDark ? "white" : '#94A3B8'}
                       multiline
-                      style={styles.medNote}
+                      style={[styles.medNote, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                       value={activeInfusion.note}
                       onChangeText={t => setActiveInfusion({ ...activeInfusion, note: t })}
                     />
@@ -2274,26 +2331,26 @@ export default function RxNotes() {
                   </View>
                 )}
                 {/* ===== Medication Infusion Table ===== */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Ordered Infusions</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Ordered Infusions</Text>
 
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.th, { width: '22%' }]}>Infusion</Text>
-                  <Text style={[styles.th, { width: '12%' }]}>Dose</Text>
-                  <Text style={[styles.th, { width: '10%' }]}>Diluent</Text>
-                  <Text style={[styles.th, { width: '14%' }]}>Time</Text>
-                  <Text style={[styles.th, { width: '16%' }]}>Volume</Text>
-                  <Text style={[styles.th, { width: '18%' }]}>Drops/min</Text>
+                <View style={[styles.tableHeader, { backgroundColor: isDark ? colors.surfaceHighlight : '#F1F5F9' }]}>
+                  <Text style={[styles.th, { width: '22%', color: isDark ? colors.textSecondary : '#64748B' }]}>Infusion</Text>
+                  <Text style={[styles.th, { width: '12%', color: isDark ? colors.textSecondary : '#64748B' }]}>Dose</Text>
+                  <Text style={[styles.th, { width: '10%', color: isDark ? colors.textSecondary : '#64748B' }]}>Diluent</Text>
+                  <Text style={[styles.th, { width: '14%', color: isDark ? colors.textSecondary : '#64748B' }]}>Time</Text>
+                  <Text style={[styles.th, { width: '16%', color: isDark ? colors.textSecondary : '#64748B' }]}>Volume</Text>
+                  <Text style={[styles.th, { width: '18%', color: isDark ? colors.textSecondary : '#64748B' }]}>Drops/min</Text>
                   <View style={{ width: '8%' }} />
                 </View>
 
                 {(showAllInfusions ? medicationInfusionTable : medicationInfusionTable.slice(0, 3)).map(item => (
-                  <View key={item.id} style={styles.tableRow}>
-                    <Text style={[styles.td, { width: '22%' }]}>{item.name}</Text>
-                    <Text style={[styles.td, { width: '12%' }]}>{item.dose}</Text>
-                    <Text style={[styles.td, { width: '10%' }]}>{item.diluent}</Text>
-                    <Text style={[styles.td, { width: '14%' }]}>{item.time}</Text>
-                    <Text style={[styles.td, { width: '16%' }]}>{item.vol}</Text>
-                    <Text style={[styles.td, { width: '18%' }]}>{item.drops}</Text>
+                  <View key={item.id} style={[styles.tableRow, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC' }]}>
+                    <Text style={[styles.td, { width: '18%', color: colors.textPrimary }]}>{item.name}</Text>
+                    <Text style={[styles.td, { width: '12%', color: colors.textPrimary }]}>{item.dose}</Text>
+                    <Text style={[styles.td, { width: '12%', color: colors.textPrimary }]}>{item.diluent}</Text>
+                    <Text style={[styles.td, { width: '12%', color: colors.textPrimary }]}>{item.time}</Text>
+                    <Text style={[styles.td, { width: '12%', color: colors.textPrimary }]}>{item.vol}</Text>
+                    <Text style={[styles.td, { width: '16%', color: colors.textPrimary }]}>{item.drops}</Text>
 
                     <View style={{ width: '8%', alignItems: 'center' }}>
                       <TouchableOpacity onPress={() => deleteMedicationInfusion(item.id)}>
@@ -2323,12 +2380,12 @@ export default function RxNotes() {
           </View>
 
           {/* ================= INVESTIGATIONS SECTION ================= */}
-          <View style={styles.sectionCard}>
+          <View style={[styles.sectionCard, { backgroundColor: isDark ? colors.surface : '#fff' }]}>
             <TouchableOpacity
               style={styles.sectionHeader}
               onPress={() => toggleSection('investigation')}
             >
-              <Text style={styles.sectionTitle}>Investigations</Text>
+              <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Investigations</Text>
               <Feather
                 name={expandedSections.investigation ? 'chevron-up' : 'chevron-down'}
                 size={20}
@@ -2339,25 +2396,25 @@ export default function RxNotes() {
             {expandedSections.investigation && (
               <View style={styles.sectionContent}>
                 {/* Filter by Category */}
-                <Text style={styles.subTitle}>Filter by</Text>
+                <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Filter by</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>
                   {INVESTIGATION_CATEGORIES.map(category => (
                     <TouchableOpacity
                       key={category.id}
                       style={[
                         styles.categoryChip,
+                        {
+                          backgroundColor: selectedCategory === category.id ? colors.primary : '#F0F9FF',
+                          borderColor: selectedCategory === category.id ? colors.primary : '#E0F2FE'
+                        },
                         selectedCategory === category.id && styles.categoryChipActive
                       ]}
                       onPress={() => setSelectedCategory(category.id)}
                     >
-                      <Feather
-                        name={category.icon as any}
-                        size={14}
-                        color={selectedCategory === category.id ? '#fff' : '#0EA5A4'}
-                      />
                       <Text style={[
                         styles.categoryText,
-                        selectedCategory === category.id && styles.categoryTextActive
+                        selectedCategory === category.id && styles.categoryTextActive,
+                        { color: selectedCategory === category.id ? '#fff' : colors.primary, marginLeft: 0 }
                       ]}>
                         {category.name}
                       </Text>
@@ -2370,9 +2427,10 @@ export default function RxNotes() {
                 <View style={styles.searchRow}>
                   <TextInput
                     placeholder="Search for investigation..."
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
                     value={investigationSearch}
                     onChangeText={setInvestigationSearch}
-                    style={[styles.searchInput, { flex: 1 }]}
+                    style={[styles.searchInput, { flex: 1, color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceHighlight : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                   />
                   <TouchableOpacity style={styles.addBtn} onPress={addNewInvestigation}>
                     <Text style={styles.addBtnText}>Add</Text>
@@ -2392,10 +2450,10 @@ export default function RxNotes() {
                     {INVESTIGATION_TEMPLATES.filter(t => t.type === 'General').map(template => (
                       <TouchableOpacity
                         key={template.id}
-                        style={styles.templateChip}
+                        style={[styles.templateChip, { backgroundColor: isDark ? colors.surfaceHighlight : '#F0F9FF', borderColor: isDark ? colors.border : '#E0F2FE' }]}
                         onPress={() => addFromTemplate(template)}
                       >
-                        <Text style={styles.templateChipText}>{template.name}</Text>
+                        <Text style={[styles.templateChipText, { color: colors.primary }]}>{template.name}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -2410,61 +2468,64 @@ export default function RxNotes() {
                     {INVESTIGATION_TEMPLATES.filter(t => t.type === 'My Templates').map(template => (
                       <TouchableOpacity
                         key={template.id}
-                        style={styles.templateChip}
+                        style={[styles.templateChip, { backgroundColor: isDark ? colors.surfaceHighlight : '#F0F9FF', borderColor: isDark ? colors.border : '#E0F2FE' }]}
                         onPress={() => addFromTemplate(template)}
                       >
-                        <Text style={styles.templateChipText}>{template.name}</Text>
+                        <Text style={[styles.templateChipText, { color: colors.primary }]}>{template.name}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View> */}
 
                 {/* Test Categories - Biochemistry */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Biochemistry</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Biochemistry</Text>
                 <View style={styles.testCategoryContainer}>
                   {ALL_INVESTIGATION_CATEGORIES.map(category => (
-                    <TouchableOpacity key={category} style={styles.testCategoryChip}>
-                      <Text style={styles.testCategoryText}>{category}</Text>
+                    <TouchableOpacity key={category} style={[styles.testCategoryChip, {
+                      backgroundColor: isDark ? colors.surfaceHighlight
+                        : '#F8FAFC', borderColor: isDark ? colors.primary : '#E2E8F0'
+                    }]}>
+                      <Text style={[styles.testCategoryText, { color: isDark ? colors.primary : colors.textSecondary }]}>{category}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
 
                 {/* Selected Tests */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Selected Tests</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Selected Tests</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {BIOCHEMISTRY_TESTS.slice(0, 5).map(test => (
-                    <TouchableOpacity key={test} style={styles.testChip}>
-                      <Text style={styles.testChipText}>{test}</Text>
-                      <Feather name="plus" size={12} color="#0EA5A4" />
+                    <TouchableOpacity key={test} style={[styles.testChip, { backgroundColor: isDark ? colors.surfaceHighlight : '#F0F9FF', borderColor: isDark ? colors.primary : '#E0F2FE' }]}>
+                      <Text style={[styles.testChipText, { color: colors.primary }]}>{test}</Text>
+                      <Feather name="plus" size={12} color={colors.primary} />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
 
                 {/* Recent Investigations */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Recent Investigations</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Recent Investigations</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {RECENT_INVESTIGATIONS.map(investigation => (
-                    <TouchableOpacity key={investigation} style={styles.testChip}>
-                      <Text style={styles.testChipText}>{investigation}</Text>
-                      <Feather name="plus" size={12} color="#0EA5A4" />
+                    <TouchableOpacity key={investigation} style={[styles.testChip, { backgroundColor: isDark ? colors.surfaceHighlight : '#F0F9FF', borderColor: isDark ? colors.primary : '#E0F2FE' }]}>
+                      <Text style={[styles.testChipText, { color: colors.primary }]}>{investigation}</Text>
+                      <Feather name="plus" size={12} color={colors.primary} />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
 
                 {/* Investigation Order Table */}
-                <Text style={[styles.subTitle, { marginTop: 16 }]}>Ordered Investigations</Text>
+                <Text style={[styles.subTitle, { marginTop: 16, color: colors.textPrimary }]}>Ordered Investigations</Text>
 
                 {/* Table Header */}
-                <View style={styles.investigationHeader}>
+                <View style={[styles.investigationHeader, { backgroundColor: isDark ? colors.surfaceHighlight : '#F1F5F9' }]}>
                   <View style={[styles.investigationHeaderCol, styles.invColSelect]}></View>
-                  <Text style={[styles.investigationHeaderText, styles.invColCategory]}>Category</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColService]}>Service name</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColDate]}>Date</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColTime]}>Time</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColQty]}>Qty</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColSource]}>Source</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColRemarks]}>Remarks</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColChecker]}>Checker</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColCategory, { color: isDark ? colors.textSecondary : '#64748B' }]}>Category</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColService, { color: isDark ? colors.textSecondary : '#64748B' }]}>Service name</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColDate, { color: isDark ? colors.textSecondary : '#64748B' }]}>Date</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColTime, { color: isDark ? colors.textSecondary : '#64748B' }]}>Time</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColQty, { color: isDark ? colors.textSecondary : '#64748B' }]}>Qty</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColSource, { color: isDark ? colors.textSecondary : '#64748B' }]}>Source</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColRemarks, { color: isDark ? colors.textSecondary : '#64748B' }]}>Remarks</Text>
+                  <Text style={[styles.investigationHeaderText, styles.invColChecker, { color: isDark ? colors.textSecondary : '#64748B' }]}>Checker</Text>
                   <View style={styles.invColDelete}></View>
                 </View>
 
@@ -2510,14 +2571,14 @@ export default function RxNotes() {
             onRequestClose={() => setShowFreqModal(false)}
           >
             <View style={styles.modalOverlay}>
-              <View style={styles.modalBox}>
-                <Text style={styles.modalTitle}>Custom Frequency</Text>
+              <View style={[styles.modalBox, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : 'transparent', borderWidth: isDark ? 1 : 0 }]}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Custom Frequency</Text>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
                   {customFrequency.map((v, i) => (
                     <TextInput
                       key={i}
-                      style={styles.freqInput}
+                      style={[styles.freqInput, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceHighlight : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
                       keyboardType="number-pad"
                       value={String(v)}
                       onChangeText={t => {
@@ -2565,36 +2626,36 @@ export default function RxNotes() {
             }}
           >
             <View style={styles.modalOverlay}>
-              <View style={[styles.modalBox, { width: '95%' }]}>
+              <View style={[styles.modalBox, { width: '95%', backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : 'transparent', borderWidth: isDark ? 1 : 0 }]}>
 
                 {/* ===== Title ===== */}
-                <Text style={styles.modalTitle}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
                   {calendarView === 'start' ? 'Select Start Date' : 'Select End Date'}
                 </Text>
 
                 {/* ===== Calendar Header with Month/Year Filter ===== */}
                 <View style={styles.calendarHeaderContainer}>
-                  <View style={styles.calendarHeader}>
+                  <View style={[styles.calendarHeader, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                     {/* Month Filter */}
                     <View style={styles.monthYearSelector}>
                       <TouchableOpacity
-                        style={styles.monthYearButton}
+                        style={[styles.monthYearButton, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC', borderColor: isDark ? colors.border : '#E2E8F0' }]}
                         onPress={toggleMonthFilter}
                       >
-                        <Text style={styles.monthYearButtonText}>
+                        <Text style={[styles.monthYearButtonText, { color: isDark ? colors.textPrimary : '#334155' }]}>
                           {MONTHS[currentMonth]}
                         </Text>
                         <Feather name="chevron-down" size={16} color="#0EA5A4" />
                       </TouchableOpacity>
 
-                      <Text style={styles.separator}> </Text>
+                      <Text style={[styles.separator, { color: isDark ? colors.textSecondary : '#64748B' }]}> </Text>
 
                       {/* Year Filter */}
                       <TouchableOpacity
-                        style={styles.monthYearButton}
+                        style={[styles.monthYearButton, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC', borderColor: isDark ? colors.border : '#E2E8F0' }]}
                         onPress={toggleYearFilter}
                       >
-                        <Text style={styles.monthYearButtonText}>
+                        <Text style={[styles.monthYearButtonText, { color: isDark ? colors.textPrimary : '#334155' }]}>
                           {currentYear}
                         </Text>
                         <Feather name="chevron-down" size={16} color="#0EA5A4" />
@@ -2635,7 +2696,7 @@ export default function RxNotes() {
 
                   {/* Month Filter Dropdown */}
                   {showMonthFilter && (
-                    <View style={styles.filterDropdown}>
+                    <View style={[styles.filterDropdown, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                       <ScrollView style={styles.filterList}>
                         {MONTHS.map((month, index) => (
                           <TouchableOpacity
@@ -2648,6 +2709,7 @@ export default function RxNotes() {
                           >
                             <Text style={[
                               styles.filterItemText,
+                              { color: isDark ? colors.textPrimary : '#334155' },
                               currentMonth === index && styles.selectedFilterItemText
                             ]}>
                               {month}
@@ -2660,7 +2722,7 @@ export default function RxNotes() {
 
                   {/* Year Filter Dropdown */}
                   {showYearFilter && (
-                    <View style={styles.filterDropdown}>
+                    <View style={[styles.filterDropdown, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
                       <ScrollView style={styles.filterList}>
                         {years.map((year) => (
                           <TouchableOpacity
@@ -2673,6 +2735,7 @@ export default function RxNotes() {
                           >
                             <Text style={[
                               styles.filterItemText,
+                              { color: isDark ? colors.textPrimary : '#334155' },
                               currentYear === year && styles.selectedFilterItemText
                             ]}>
                               {year}
@@ -2696,16 +2759,16 @@ export default function RxNotes() {
                   enableSwipeMonths
                   hideExtraDays
                   theme={{
-                    backgroundColor: '#ffffff',
-                    calendarBackground: '#ffffff',
-                    textSectionTitleColor: '#64748B',
-                    selectedDayBackgroundColor: '#0EA5A4',
+                    backgroundColor: isDark ? colors.surface : '#ffffff',
+                    calendarBackground: isDark ? colors.surface : '#ffffff',
+                    textSectionTitleColor: isDark ? colors.textSecondary : '#64748B',
+                    selectedDayBackgroundColor: colors.primary,
                     selectedDayTextColor: '#ffffff',
-                    todayTextColor: '#0EA5A4',
-                    dayTextColor: '#334155',
-                    textDisabledColor: '#CBD5E1',
-                    arrowColor: '#0ea5a4ff',
-                    monthTextColor: '#334155',
+                    todayTextColor: colors.primary,
+                    dayTextColor: isDark ? colors.textPrimary : '#334155',
+                    textDisabledColor: isDark ? colors.textMuted : '#CBD5E1',
+                    arrowColor: colors.primary,
+                    monthTextColor: isDark ? colors.textPrimary : '#334155',
                     textMonthFontWeight: '600',
                     textDayFontSize: 16,
                     textMonthFontSize: 16,
@@ -2939,6 +3002,15 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 4,
   },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginRight: 12,
+  },
   sectionCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -2954,7 +3026,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: "#0EA5A4",
+    color: '#334155',
   },
   sectionContent: {
     marginTop: 10,
@@ -2986,7 +3058,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#0EA5A4',
+    borderColor: '#E0F2FE',
     marginRight: 8,
     backgroundColor: '#fff',
   },

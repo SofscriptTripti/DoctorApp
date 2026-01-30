@@ -102,6 +102,13 @@ export default function PatientScreen() {
   ]);
   const [confirmLogoutVisible, setConfirmLogoutVisible] = useState(false); // NEW
 
+  // ✅ New: Restart heartbeat when modal opens
+  useEffect(() => {
+    if (modalVisible) {
+      startHeroPulse();
+    }
+  }, [modalVisible]);
+
   // vitals mini-card visibility (toggled by clicking the Beat icon)
   const [vitalsVisible, setVitalsVisible] = useState(false);
 
@@ -291,6 +298,7 @@ export default function PatientScreen() {
     };
 
     loadPatients();
+    startHeroPulse(); // ✅ Restored heartbeat animation
   }, []);
 
 
@@ -558,7 +566,7 @@ export default function PatientScreen() {
     const isEditable = vitalKey !== 'bmi';
 
     return (
-      <View style={styles.vitalTile}>
+      <View style={[styles.vitalTile, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC', borderColor: isDark ? colors.border : '#E2E8F0', borderWidth: 1 }]}>
         {/* Header row: Label + Edit icon */}
         <View style={styles.vitalHeaderRow}>
           <Text style={styles.vitalLabel}>{label}</Text>
@@ -889,7 +897,7 @@ export default function PatientScreen() {
                   personTab === 'IN' && styles.personTabTextActive,
                   isDark && personTab !== 'IN' && { color: colors.textSecondary },
                   !isDark && personTab === 'IN' && { color: '#0EA5A4' },
-                  !isDark && personTab !== 'IN' && { color: 'rgba(255,255,255,0.7)' }
+                  !isDark && personTab !== 'IN' && { color: '#FFFFFF' } // ✅ Pure White in Light Mode
                 ]}
               >
                 In Patient
@@ -910,7 +918,7 @@ export default function PatientScreen() {
                   personTab === 'OUT' && styles.personTabTextActive,
                   isDark && personTab !== 'OUT' && { color: colors.textSecondary },
                   !isDark && personTab === 'OUT' && { color: '#0EA5A4' },
-                  !isDark && personTab !== 'OUT' && { color: 'rgba(255,255,255,0.7)' }
+                  !isDark && personTab !== 'OUT' && { color: '#FFFFFF' } // ✅ Pure White in Light Mode
                 ]}
               >
                 Out Patient
@@ -1136,14 +1144,15 @@ export default function PatientScreen() {
               )}
             </Animated.View>
           </View>
-        </Modal>
+        </Modal >
 
         {/* Modal: Filters */}
-        <Modal
+        < Modal
           transparent
           visible={filterModalVisible}
           animationType="fade"
-          onRequestClose={() => setFilterModalVisible(false)}
+          onRequestClose={() => setFilterModalVisible(false)
+          }
         >
           <View style={styles.filterModalBackdrop}>
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setFilterModalVisible(false)} />
@@ -1182,14 +1191,15 @@ export default function PatientScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </Modal >
 
         {/* Modal: Logout Confirmation */}
-        <Modal
+        < Modal
           visible={confirmLogoutVisible}
           transparent
           animationType="fade"
-          onRequestClose={() => setConfirmLogoutVisible(false)}
+          onRequestClose={() => setConfirmLogoutVisible(false)
+          }
         >
           <View style={[styles.confirmModalBackdrop, isDark && { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
             <View style={[styles.confirmModalCard, { backgroundColor: colors.surface }]}>
@@ -1204,7 +1214,7 @@ export default function PatientScreen() {
               </View>
             </View>
           </View>
-        </Modal>
+        </Modal >
       </>
     );
   }
