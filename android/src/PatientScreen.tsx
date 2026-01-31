@@ -424,12 +424,32 @@ export default function PatientScreen() {
     }
   };
 
-  const goToFormType = () => {
+  const goToFormType = async () => {
     if (!selectedPatient) return;
 
     const p = selectedPatient;
 
     closePatientModal();
+
+    // Retrieve userId from storage to pass to FormType
+    let loginUserId = await AsyncStorage.getItem('userId');
+
+    // Fallback: Try checking authStorage USER_INFO
+    if (!loginUserId) {
+      try {
+        const userInfoStr = await AsyncStorage.getItem('USER_INFO');
+        if (userInfoStr) {
+          const userInfo = JSON.parse(userInfoStr);
+          if (userInfo?.userId) {
+            loginUserId = userInfo.userId;
+            // Repair the missing key
+            await AsyncStorage.setItem('userId', loginUserId as string);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to recover userId from auth storage', e);
+      }
+    }
 
     navigation.navigate('FormType', {
       admissionNo: p.id,        // ✅ MDR001
@@ -440,8 +460,9 @@ export default function PatientScreen() {
       room: p.room,             // ✅ Added room
       attendingDoctor: p.doctorName, // ✅ Added attending doctor
       admitDate: p.admitDate,   // ✅ Added admit date
+      loginUserId,              // ✅ Pass userId (fix for missing ID error)
     });
-    console.log('Navigating to FormType with admissionNo:', p.id);
+    console.log('Navigating to FormType with admissionNo:', p.id, 'userId:', loginUserId);
   };
 
   const toggleFilter = (key: FilterKey) => {
@@ -787,8 +808,8 @@ export default function PatientScreen() {
       id: String(apiPatient?.admissionNo ?? ''),
       patientId: String(apiPatient?.patientId ?? ''),
       name: apiPatient?.patientName ?? 'Unknown',
-      age: Number(apiPatient?.age ?? 0),
-      gender: apiPatient?.gender ?? 'Other',
+      age: Number(apiPatient?.age ?? apiPatient?.Age ?? 0),
+      gender: apiPatient?.gender ?? apiPatient?.Gender ?? 'Other',
       room: `${apiPatient?.wardName ?? ''} - ${apiPatient?.bedNo ?? ''}`,
       diagnosis: apiPatient?.admissionStatus ?? 'Admitted',
       doctorName: apiPatient?.currentDoctorName ?? '—',

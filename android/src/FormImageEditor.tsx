@@ -55,6 +55,7 @@ import {
 
 // Import getpagewiseoverlay API
 import { getpagewiseoverlay } from './api/patientDocumentsApi';
+import { getUserInfo } from './storage/authStorage';
 
 // We TRY AsyncStorage, but we don't depend on it.
 let AsyncStorage: any = null;
@@ -1507,8 +1508,8 @@ function DraggableImageSticker({
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
-            // NO SCALE TRANSFORM - handled by width/height
           ],
+          zIndex: 1100, // ✅ Fix: Stickers (1100) > Text (1000)
         },
       ]}
     >
@@ -1718,6 +1719,7 @@ export default function FormImageEditor() {
   // New Params for Stickers
   const patientAge = route.params?.patientAge;
   const patientGender = route.params?.patientGender;
+  const editedPages = route.params?.editedPages || 0;
   const doctorName = route.params?.doctorName;
   const doctorRegNo = route.params?.doctorRegNo;
   const doctorSpeciality = route.params?.doctorSpeciality;
@@ -1727,6 +1729,27 @@ export default function FormImageEditor() {
   const patientRoom = route.params?.patientRoom; // ✅ Added
   const attendingDoctor = route.params?.attendingDoctor; // ✅ Added
   const admitDate = route.params?.admitDate; // ✅ Added
+
+  // ✅ NEW: Fallback doctor details from storage (in case params are missing)
+  const [fetchedDoctorDetails, setFetchedDoctorDetails] = useState<{
+    fullName: string;
+    department: string;
+    userId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // Attempt to fetch doctor details if params are unavailable or just to be safe
+    getUserInfo().then(info => {
+      if (info) {
+        console.log('✅ Loaded fallback doctor info:', info.fullName);
+        setFetchedDoctorDetails({
+          fullName: info.fullName || '',
+          department: info.department || '',
+          userId: info.userId || ''
+        });
+      }
+    }).catch(err => console.warn('Failed to load fallback doctor info', err));
+  }, []);
 
   const [imageStickers, setImageStickers] = useState<ImageSticker[]>(initialImageStickersFromParams);
   const [editingStickerId, setEditingStickerId] = useState<string | null>(null);
@@ -2034,14 +2057,17 @@ export default function FormImageEditor() {
     hasUnsavedChangesRef.current = true;
   };
 
-  const addImageSticker = (stickerType: 'patient' | 'doctor') => {
+  const addImageSticker = (stickerType: 'patient' | 'doctor', overridePos?: { x: number, y: number }) => {
     const pageIndex = getCurrentPageIndex();
     const currentPage = IMAGES[pageIndex];
 
     let x = SCREEN_W * 0.7;
     let y;
 
-    if (stickerType === 'patient') {
+    if (overridePos) {
+      x = overridePos.x;
+      y = overridePos.y;
+    } else if (stickerType === 'patient') {
       y = PAGE_HEIGHT * 0.05 + 20;
     } else {
       y = PAGE_HEIGHT * 0.75 - 20;
@@ -2057,10 +2083,23 @@ export default function FormImageEditor() {
         line5: 'Category: Unavailable'
       };
     } else {
+      // ✅ Use params FIRST, then fallback to fetched storage details
+      const finalDocName = (doctorName && doctorName !== 'Unavailable')
+        ? doctorName
+        : (fetchedDoctorDetails?.fullName || 'Unavailable');
+
+      const finalDocReg = (doctorRegNo && doctorRegNo !== 'Unavailable')
+        ? doctorRegNo
+        : (fetchedDoctorDetails?.userId || 'Unavailable');
+
+      const finalDocSpec = (doctorSpeciality && doctorSpeciality !== 'Unavailable')
+        ? doctorSpeciality
+        : (fetchedDoctorDetails?.department || 'Unavailable');
+
       textData = {
-        line1: doctorName && doctorName !== 'Unavailable' ? `Dr. ${doctorName}` : 'Dr. Unavailable',
-        line2: `Reg: ${doctorRegNo || 'Unavailable'}`,
-        line3: doctorSpeciality || 'Unavailable'
+        line1: finalDocName !== 'Unavailable' ? `Dr. ${finalDocName}` : 'Dr. Unavailable',
+        line2: `Reg: ${finalDocReg}`,
+        line3: finalDocSpec
       };
     }
 
@@ -2087,6 +2126,19 @@ export default function FormImageEditor() {
     unifiedRedoStackRef.current[pageIndex] = [];
     hasUnsavedChangesRef.current = true;
   };
+
+  useEffect(() => {
+    // If it's a new form (editedPages === 0) and we haven't added stickers yet
+    if (editedPages === 0 && imageStickers.length === 0) {
+      // Add default stickers
+      // Patient Sticker: Top-Left
+      addImageSticker('patient', { x: 20, y: 20 });
+
+      // Doctor Sticker: Bottom-Right (Standard default position)
+      // Matches the manual "Doc Sticker" placement (PAGE_HEIGHT * 0.75 - 20)
+      addImageSticker('doctor', { x: SCREEN_W - 180 - 20, y: PAGE_HEIGHT * 0.75 - 20 });
+    }
+  }, []); // Run once on mount
 
   const showEditingOffHint = () => {
     setEditingOffHintVisible(true);

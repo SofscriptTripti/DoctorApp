@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { login } from '../api/authApi';
-import { saveAuth, getAccessToken } from '../storage/authStorage';
+import { saveAuth, getAccessToken, getUserInfo } from '../storage/authStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
@@ -89,6 +89,23 @@ export default function CareScribeLogin({ navigation }: any) {
         const token = await getAccessToken();
         if (token) {
           console.log('🔄 Found existing token, auto-logging in...');
+
+          // ✅ NEW: Restore user context from storage to ensure individual keys exist
+          try {
+            const userInfo = await getUserInfo();
+            if (userInfo && userInfo.userId) {
+              console.log('Restoring user context for:', userInfo.fullName);
+              await saveUserContext(
+                userInfo.userId,
+                userInfo.fullName || 'Unknown Doctor',
+                userInfo.tenantCode || 'HOSP1',
+                userInfo.department || 'Unavailable'
+              );
+            }
+          } catch (restoreErr) {
+            console.warn('Failed to restore user context during auto-login', restoreErr);
+          }
+
           navigation.reset({
             index: 0,
             routes: [{ name: 'PatientScreen' }],

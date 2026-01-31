@@ -106,6 +106,12 @@ const FormImageScreen = () => {
   const [imageStickers, setImageStickers] = useState<any[]>(
     Array.isArray(params.imageStickers) ? params.imageStickers : []
   );
+
+  // ✅ Fix: Sync state with params when they change (prevent stale data on reuse)
+  useEffect(() => {
+    setVoiceNotes(Array.isArray(params.voiceNotes) ? params.voiceNotes : []);
+    setImageStickers(Array.isArray(params.imageStickers) ? params.imageStickers : []);
+  }, [params.voiceNotes, params.imageStickers, params.admissionNo, params.documentId]);
   const [reloadToken, setReloadToken] = useState(0);
   const [shouldReload, setShouldReload] = useState(true);
   const [hasDocumentContext, setHasDocumentContext] = useState(false);
@@ -386,11 +392,16 @@ const FormImageScreen = () => {
 
       const p = route.params || {};
 
-      if (Array.isArray(p.savedStrokes)) {
+      // ✅ ALWAYS reload metadata on focus to ensure we show latest changes from Editor
+      // This fixes the issue where data wouldn't show up until leaving and coming back
+      loadMetadata();
+
+      if (Array.isArray(p.savedStrokes) || Array.isArray(p.voiceNotes) || Array.isArray(p.imageStickers)) {
         console.log('Received updated data from editor');
-        setPageMeta(p.savedStrokes);
+        if (p.savedStrokes) setPageMeta(p.savedStrokes);
         setVoiceNotes(p.voiceNotes || []);
         setImageStickers(p.imageStickers || []);
+
         setReloadToken(t => t + 1);
         setShouldReload(true);
 
@@ -426,6 +437,35 @@ const FormImageScreen = () => {
   );
 
   /* ---------- LOAD PAGES & IMAGES ---------- */
+  // ✅ NEW: Load persisted metadata (voice notes, stickers) from storage
+  // ✅ NEW: Load persisted metadata (voice notes, stickers) from storage
+  const loadMetadata = useCallback(async () => {
+    try {
+      const key = perFormStorageKey; // ✅ Use correct key (same as Editor)
+      console.log('Loading metadata from key:', key);
+      const data = await AsyncStorage.getItem(key);
+      if (data) {
+        const parsed = JSON.parse(data);
+        console.log('Loaded persistence data:', {
+          notes: parsed.voiceNotes?.length,
+          stickers: parsed.imageStickers?.length
+        });
+
+        if (parsed.voiceNotes) setVoiceNotes(parsed.voiceNotes);
+        if (parsed.imageStickers) setImageStickers(parsed.imageStickers);
+      } else {
+        console.log('No persisted data found for key:', key);
+      }
+    } catch (e) {
+      console.warn('Failed to load metadata:', e);
+    }
+  }, [perFormStorageKey]);
+
+  // Call loadMetadata on mount/focus or when key changes
+  useEffect(() => {
+    loadMetadata();
+  }, [loadMetadata]);
+
   const loadAllPages = useCallback(async () => {
     // Use documentId from props if available, otherwise use stored documentId
     const effectiveDocumentId = documentId || storedDocumentId;
@@ -725,34 +765,73 @@ const FormImageScreen = () => {
           )}
 
           {/* Render image stickers */}
+          {/* Render image stickers - Fix: Check index correlation */}
           {page.hasImage && imageStickers
-            .filter(s => s.pageId === page.pageId)
+            .filter(s => s.pageId === page.pageId || s.pageIndex === index)
             .map(s => {
-              const stickerSource =
-                s.stickerType === 'doctor'
-                  ? DOCTOR_STICKER_SOURCE
-                  : NAME_STICKER_IMAGE;
+              // Calculate width/height based on scale if needed, or use stored width/height
+              // Editor defaults: Patient 220x120, Doctor 180x90
+              const width = s.width || (s.stickerType === 'patient' ? 220 : 180);
+              const height = s.height || (s.stickerType === 'patient' ? 120 : 90);
 
               return (
-                <Image
+                <View
                   key={s.id}
-                  source={stickerSource}
                   style={{
                     position: 'absolute',
                     left: s.x,
                     top: s.y,
-                    width: s.width || 140,
-                    height: s.height || 90,
-                    resizeMode: 'contain',
-                    zIndex: 20,
+                    width,
+                    height,
+                    zIndex: 30, // ✅ Fix: Ensure stickers are above text (text is 25)
+                    backgroundColor: '#fff',
+                    borderRadius: 4,
+                    borderWidth: 1.5,
+                    borderColor: '#000',
+                    padding: 6,
+                    justifyContent: 'center',
+                    overflow: 'hidden'
                   }}
-                />
+                  pointerEvents="none" // Non-interactive in preview
+                >
+                  {s.stickerType === 'patient' ? (
+                    <View style={{ flex: 1, justifyContent: 'space-evenly' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                        {s.textData?.line1 || ''}
+                      </Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }} numberOfLines={1}>
+                        {s.textData?.line2 || ''}
+                      </Text>
+                      <Text style={{ fontSize: 10, fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                        {s.textData?.line3 || ''}
+                      </Text>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                        {s.textData?.line4 || ''}
+                      </Text>
+                      <Text style={{ fontSize: 10, fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                        {s.textData?.line5 || ''}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#000', textAlign: 'center' }}>
+                        {s.textData?.line1 || ''}
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 2 }}>
+                        {s.textData?.line2 || ''}
+                      </Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 2, textTransform: 'uppercase' }}>
+                        {s.textData?.line3 || ''}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               );
             })}
 
-          {/* Render voice notes (text) */}
+          {/* Render voice notes (text) - Fix: Check index correlation */}
           {page.hasImage && voiceNotes
-            .filter(n => n.pageId === page.pageId)
+            .filter(n => n.pageId === page.pageId || n.pageIndex === index)
             .map(n => (
               <View
                 key={n.id}
@@ -857,8 +936,9 @@ const FormImageScreen = () => {
       documentId: effectiveDocumentId,
       documentInstanceId, // Pass documentInstanceId to editor
       apiPages: pagesWithOverlays,
+      editedPages: params.editedPages || 0, // ✅ Pass editedPages
     });
-  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages]);
+  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages, params.editedPages]);
 
   // Determine which document ID to display
   const displayDocumentId = documentId || storedDocumentId || 'Not available';

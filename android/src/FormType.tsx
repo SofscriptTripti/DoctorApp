@@ -110,18 +110,42 @@ export default function FormTypeScreen() {
   useEffect(() => {
     const loadContextFromStorage = async () => {
       try {
-        const [[, admNo], [, userId], [, storedPatientName]] = await AsyncStorage.multiGet([
-          STORAGE_KEYS.admissionNo,
-          STORAGE_KEYS.loginUserId,
-          STORAGE_KEYS.patientName,
-        ]);
+        let admNo = route.params?.admissionNo;
+        let userId = route.params?.loginUserId;
+        let storedPatientName = route.params?.patientName;
+
+        // If params are missing, load from storage
+        if (!admNo || !userId) {
+          const [[, sAdmNo], [, sUserId], [, sPatientName]] = await AsyncStorage.multiGet([
+            STORAGE_KEYS.admissionNo,
+            STORAGE_KEYS.loginUserId,
+            STORAGE_KEYS.patientName,
+          ]);
+
+          if (!admNo) admNo = sAdmNo;
+          if (!userId) userId = sUserId;
+          if (!storedPatientName) storedPatientName = sPatientName;
+        }
 
         if (!admNo || !userId) {
-          console.error('❌ Missing admissionNo or loginUserId in AsyncStorage', admNo, userId);
+          console.error('❌ Missing admissionNo or loginUserId', { admNo, userId });
+          // Optional: Navigate to Login if context is completely missing
+          // navigation.reset({ index: 0, routes: [{ name: 'CareScribeLogin' }] });
           setLoading(false);
           return;
         }
 
+        // Save fresh values to storage if they came from params
+        if (route.params?.admissionNo || route.params?.loginUserId) {
+          const pairs: [string, string][] = [
+            [STORAGE_KEYS.admissionNo, admNo!],
+            [STORAGE_KEYS.loginUserId, userId!]
+          ];
+          if (storedPatientName) {
+            pairs.push([STORAGE_KEYS.patientName, storedPatientName]);
+          }
+          await AsyncStorage.multiSet(pairs);
+        }
 
         setAdmissionNo(admNo);
         setLoginUserId(userId);
@@ -129,18 +153,18 @@ export default function FormTypeScreen() {
           setCurrentPatientName(storedPatientName);
         }
 
-        console.log('✅ Loaded context from storage:', {
+        console.log('✅ Loaded context:', {
           admissionNo: admNo,
           loginUserId: userId,
           patientName: storedPatientName
         });
       } catch (e) {
-        console.error('❌ Failed to load context from AsyncStorage', e);
+        console.error('❌ Failed to load context', e);
       }
     };
 
     loadContextFromStorage();
-  }, []);
+  }, [route.params]);
 
   // ✅ Save patientName if provided in params
   useEffect(() => {
