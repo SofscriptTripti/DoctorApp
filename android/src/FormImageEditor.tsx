@@ -71,9 +71,9 @@ const PAGE_SPACING = 16;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
 
-// 👉 Sticker images (local assets)
-import PATIENT_STICKER_SOURCE from './Images/NameStick.jpg';
-import DOCTOR_STICKER_SOURCE from './Images/Doctor_Sticker.jpg';
+// 👉 Sticker images (local assets) - REMOVED
+// import PATIENT_STICKER_SOURCE from './Images/NameStick.jpg';
+// import DOCTOR_STICKER_SOURCE from './Images/Doctor_Sticker.jpg';
 
 type SavedMeta = { bitmapPath?: string | null };
 
@@ -108,6 +108,13 @@ export type ImageSticker = {
   width?: number;
   height?: number;
   stickerType: 'patient' | 'doctor';
+  textData?: {
+    line1?: string;
+    line2?: string;
+    line3?: string;
+    line4?: string;
+    line5?: string;
+  };
 };
 
 const tryParseStrokesJson = (base64?: string): string | null => {
@@ -372,6 +379,11 @@ function DraggableVoiceText({
     }
   }, [measuredFlag, note.id, onBoxSizeChange, measuredContentSizeRef, isEditing]);
 
+  const writingEnabledRef = useRef(writingEnabled);
+  useEffect(() => {
+    writingEnabledRef.current = writingEnabled;
+  }, [writingEnabled]);
+
   /* REMOVED handleContentLayout favor of handleTextLayout */
   const handleTextLayout = (e: any) => {
     const lines = e.nativeEvent.lines;
@@ -402,7 +414,7 @@ function DraggableVoiceText({
   const dragPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: (evt: GestureResponderEvent) => {
-        if (!writingEnabled) return false;
+        if (!writingEnabledRef.current) return false;
         const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
         if (touches.length !== 1) return false;
         if (isResizingRef.current) return false;
@@ -410,7 +422,7 @@ function DraggableVoiceText({
       },
 
       onMoveShouldSetPanResponder: (evt: GestureResponderEvent) => {
-        if (!writingEnabled) return false;
+        if (!writingEnabledRef.current) return false;
         const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
         if (touches.length !== 1) return false;
         if (isResizingRef.current) return false;
@@ -418,7 +430,7 @@ function DraggableVoiceText({
       },
 
       onPanResponderGrant: (evt: GestureResponderEvent) => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
         if (touches.length !== 1) return;
 
@@ -438,7 +450,7 @@ function DraggableVoiceText({
         evt: GestureResponderEvent,
         gestureState: PanResponderGestureState
       ) => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         const touches = (evt.nativeEvent && (evt.nativeEvent as any).touches) || [];
         if (touches.length !== 1) return;
 
@@ -551,7 +563,7 @@ function DraggableVoiceText({
       },
 
       onPanResponderMove: (_evt: GestureResponderEvent, gs) => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
 
         let newWidth = sizeStartRef.current.width;
         let newHeight = sizeStartRef.current.height;
@@ -1331,13 +1343,18 @@ function DraggableImageSticker({
     }
   }, [sticker.x, sticker.y, sticker.scale, sticker.width, sticker.height, pan, widthAnim, heightAnim]);
 
+  const writingEnabledRef = useRef(writingEnabled);
+  useEffect(() => {
+    writingEnabledRef.current = writingEnabled;
+  }, [writingEnabled]);
+
   const dragPan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => writingEnabled && !isResizingRef.current,
-      onMoveShouldSetPanResponder: () => writingEnabled && !isResizingRef.current,
+      onStartShouldSetPanResponder: () => writingEnabledRef.current && !isResizingRef.current,
+      onMoveShouldSetPanResponder: () => writingEnabledRef.current && !isResizingRef.current,
 
       onPanResponderGrant: () => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         try {
           const v = (pan as any).__getValue?.();
           if (v) startPosRef.current = { x: v.x, y: v.y };
@@ -1347,7 +1364,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderMove: (_evt, gestureState) => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         const scale = pageScaleRef.current || 1;
         let nx = startPosRef.current.x + gestureState.dx / scale;
         let ny = startPosRef.current.y + gestureState.dy / scale;
@@ -1363,7 +1380,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderRelease: (_evt, gestureState) => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
 
         const moveDist = Math.sqrt(gestureState.dx * gestureState.dx + gestureState.dy * gestureState.dy);
         const isTap = moveDist < 5 && Math.abs(gestureState.vx) < 0.3 && Math.abs(gestureState.vy) < 0.3;
@@ -1390,11 +1407,11 @@ function DraggableImageSticker({
     signY: -1 | 0 | 1;
   }) => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => writingEnabled,
-      onMoveShouldSetPanResponder: () => writingEnabled,
+      onStartShouldSetPanResponder: () => writingEnabledRef.current,
+      onMoveShouldSetPanResponder: () => writingEnabledRef.current,
 
       onPanResponderGrant: () => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         isResizingRef.current = true;
         startSizeRef.current = {
           width: currentSizeRef.current.width,
@@ -1405,7 +1422,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderMove: (_evt, gestureState) => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         const scale = pageScaleRef.current || 1;
 
         // Calculate raw change based on primary sign
@@ -1463,7 +1480,7 @@ function DraggableImageSticker({
       },
 
       onPanResponderRelease: () => {
-        if (!writingEnabled) return;
+        if (!writingEnabledRef.current) return;
         const { width, height } = currentSizeRef.current;
         const { x, y } = currentPosRef.current;
 
@@ -1482,10 +1499,6 @@ function DraggableImageSticker({
   const blResizePan = useRef(createResizePan({ signX: -1, signY: 1 })).current;
   const brResizePan = useRef(createResizePan({ signX: 1, signY: 1 })).current;
 
-  const stickerImageSource = sticker.stickerType === 'doctor'
-    ? DOCTOR_STICKER_SOURCE
-    : PATIENT_STICKER_SOURCE;
-
   return (
     <Animated.View
       style={[
@@ -1499,7 +1512,7 @@ function DraggableImageSticker({
         },
       ]}
     >
-      {!isEditing && writingEnabled && (
+      {isEditing && writingEnabled && (
         <TouchableOpacity
           style={styles.stickerDeleteButton}
           onPress={() => onDelete(sticker.id)}
@@ -1518,14 +1531,48 @@ function DraggableImageSticker({
           { width: widthAnim, height: heightAnim }
         ]}
       >
-        <Image
-          source={stickerImageSource}
-          style={[
-            styles.stickerImage,
-            { width: '100%', height: '100%' }
-          ]} // Fill the animated wrapper
-          resizeMode="contain"
-        />
+        <View style={{
+          flex: 1,
+          backgroundColor: '#fff',
+          borderRadius: 4,
+          borderWidth: 1.5,
+          borderColor: '#000',
+          padding: 6,
+          justifyContent: 'center',
+          overflow: 'hidden'
+        }}>
+          {sticker.stickerType === 'patient' ? (
+            <View style={{ flex: 1, justifyContent: 'space-evenly' }}>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 220).interpolate({ inputRange: [0, 1], outputRange: [0, 9] }), fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                {sticker.textData?.line1}
+              </Animated.Text>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 220).interpolate({ inputRange: [0, 1], outputRange: [0, 11] }), fontWeight: '800', color: '#000' }} numberOfLines={1}>
+                {sticker.textData?.line2}
+              </Animated.Text>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 220).interpolate({ inputRange: [0, 1], outputRange: [0, 9] }), fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                {sticker.textData?.line3}
+              </Animated.Text>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 220).interpolate({ inputRange: [0, 1], outputRange: [0, 9] }), fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                {sticker.textData?.line4}
+              </Animated.Text>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 220).interpolate({ inputRange: [0, 1], outputRange: [0, 9] }), fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                {sticker.textData?.line5}
+              </Animated.Text>
+            </View>
+          ) : (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 180).interpolate({ inputRange: [0, 1], outputRange: [0, 13] }), fontWeight: '700', color: '#000', textAlign: 'center' }}>
+                {sticker.textData?.line1}
+              </Animated.Text>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 180).interpolate({ inputRange: [0, 1], outputRange: [0, 12] }), fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 2 }}>
+                {sticker.textData?.line2}
+              </Animated.Text>
+              <Animated.Text style={{ fontSize: Animated.divide(widthAnim, 180).interpolate({ inputRange: [0, 1], outputRange: [0, 11] }), fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 2, textTransform: 'uppercase' }}>
+                {sticker.textData?.line3}
+              </Animated.Text>
+            </View>
+          )}
+        </View>
       </Animated.View>
 
       {isEditing && writingEnabled && (
@@ -1667,6 +1714,19 @@ export default function FormImageEditor() {
 
   const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>(initialVoiceNotesFromParams);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+
+  // New Params for Stickers
+  const patientAge = route.params?.patientAge;
+  const patientGender = route.params?.patientGender;
+  const doctorName = route.params?.doctorName;
+  const doctorRegNo = route.params?.doctorRegNo;
+  const doctorSpeciality = route.params?.doctorSpeciality;
+  const admissionNo = route.params?.admissionNo;
+  const patientName = route.params?.patientName;
+  const patientId = route.params?.patientId;
+  const patientRoom = route.params?.patientRoom; // ✅ Added
+  const attendingDoctor = route.params?.attendingDoctor; // ✅ Added
+  const admitDate = route.params?.admitDate; // ✅ Added
 
   const [imageStickers, setImageStickers] = useState<ImageSticker[]>(initialImageStickersFromParams);
   const [editingStickerId, setEditingStickerId] = useState<string | null>(null);
@@ -1987,6 +2047,23 @@ export default function FormImageEditor() {
       y = PAGE_HEIGHT * 0.75 - 20;
     }
 
+    let textData = {};
+    if (stickerType === 'patient') {
+      textData = {
+        line1: `IP NO: ${admissionNo || 'Unavailable'}   UHID: ${patientId || 'Unavailable'}`,
+        line2: patientName || 'Unavailable',
+        line3: `${patientAge ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`,
+        line4: attendingDoctor ? `Dr. ${attendingDoctor}` : 'Dr. Unavailable',
+        line5: 'Category: Unavailable'
+      };
+    } else {
+      textData = {
+        line1: doctorName && doctorName !== 'Unavailable' ? `Dr. ${doctorName}` : 'Dr. Unavailable',
+        line2: `Reg: ${doctorRegNo || 'Unavailable'}`,
+        line3: doctorSpeciality || 'Unavailable'
+      };
+    }
+
     const newSticker: ImageSticker = {
       id: `${Date.now()}-${Math.random()}`,
       pageId: currentPage?.pageId,
@@ -1994,9 +2071,10 @@ export default function FormImageEditor() {
       x,
       y,
       scale: 1,
-      width: 140,
-      height: 90,
+      width: stickerType === 'patient' ? 220 : 180,
+      height: stickerType === 'patient' ? 120 : 90,
       stickerType,
+      textData, // ✅ Attach text data
     };
 
     setImageStickers((prev) => [...prev, newSticker]);
@@ -2021,29 +2099,7 @@ export default function FormImageEditor() {
     }, 2000);
   };
 
-  const handlePatientStickerPress = () => {
-    if (saveStatus === 'saving') return;
 
-    if (!writingEnabled) {
-      showEditingOffHint();
-      return;
-    }
-
-    setSelectedStickerType('patient');
-    setStickerModalVisible(true);
-  };
-
-  const handleDoctorStickerPress = () => {
-    if (saveStatus === 'saving') return;
-
-    if (!writingEnabled) {
-      showEditingOffHint();
-      return;
-    }
-
-    setSelectedStickerType('doctor');
-    setStickerModalVisible(true);
-  };
 
   const handleAddTextIconPress = () => {
     if (saveStatus === 'saving') return;
@@ -3227,9 +3283,7 @@ export default function FormImageEditor() {
     setSaveStatus('idle');
   };
 
-  const getStickerImageSource = (stickerType: 'patient' | 'doctor') => {
-    return stickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE;
-  };
+  // Removed getStickerImageSource as we use native views now
 
   // Intercept Navigation Back
   useEffect(() => {
@@ -3368,6 +3422,8 @@ export default function FormImageEditor() {
               <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Text</Text>
             </TouchableOpacity>
 
+            {/* Duplicates removed */}
+
             {/* Undo / Redo / Clear group */}
             <View style={styles.toolGroup}>
               <TouchableOpacity
@@ -3430,11 +3486,11 @@ export default function FormImageEditor() {
             {/* Patient Sticker */}
             <TouchableOpacity
               onPress={() => {
-                handlePatientStickerPress();
+                addImageSticker('patient');
                 setThicknessTool(null);
                 setColorPanelOpen(false);
               }}
-              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled, { marginHorizontal: 8 }]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
               <Ionicons
@@ -3448,11 +3504,11 @@ export default function FormImageEditor() {
             {/* Doctor Sticker */}
             <TouchableOpacity
               onPress={() => {
-                handleDoctorStickerPress();
+                addImageSticker('doctor');
                 setThicknessTool(null);
                 setColorPanelOpen(false);
               }}
-              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled]}
+              style={[styles.toolButton, !writingEnabled && styles.toolsDisabled, { marginHorizontal: 8 }]}
               disabled={saveStatus === 'saving' || !writingEnabled}
             >
               <FontAwesome6
@@ -3965,7 +4021,52 @@ export default function FormImageEditor() {
         <View style={styles.stickerModalBackdrop}>
           <View style={[styles.stickerModalContent, isDark && { backgroundColor: colors.surface }]}>
             <Text style={[styles.stickerModalTitle, isDark && { color: colors.textPrimary }]}>Add {selectedStickerType === 'doctor' ? 'Doctor' : 'Patient'} sticker</Text>
-            <Image source={selectedStickerType === 'doctor' ? DOCTOR_STICKER_SOURCE : PATIENT_STICKER_SOURCE} style={styles.stickerModalImage} resizeMode="contain" />
+            {/* Sticker Preview */}
+            <View style={{
+              alignSelf: 'center',
+              width: selectedStickerType === 'patient' ? 240 : 200,
+              height: selectedStickerType === 'patient' ? 140 : 110,
+              backgroundColor: '#fff',
+              borderRadius: 4,
+              borderWidth: 1.5,
+              borderColor: '#000',
+              padding: 8,
+              marginVertical: 16,
+              justifyContent: 'center',
+              overflow: 'hidden'
+            }}>
+              {selectedStickerType === 'patient' ? (
+                <View style={{ flex: 1, justifyContent: 'space-evenly' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                    {`IP NO: ${admissionNo || 'Unavailable'}   UHID: ${patientId || 'Unavailable'}`}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }} numberOfLines={1}>
+                    {patientName || 'Unavailable'}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                    {`${patientAge ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                    {attendingDoctor ? `Dr. ${attendingDoctor}` : 'Dr. Unavailable'}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                    Category: Unavailable
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#000', textAlign: 'center' }}>
+                    {doctorName && doctorName !== 'Unavailable' ? `Dr. ${doctorName}` : 'Dr. Unavailable'}
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 4 }}>
+                    {`Reg: ${doctorRegNo || 'Unavailable'}`}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 4, textTransform: 'uppercase' }}>
+                    {doctorSpeciality || 'Unavailable'}
+                  </Text>
+                </View>
+              )}
+            </View>
             <View style={styles.stickerModalButtonsRow}>
               <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: isDark ? colors.surfaceHighlight : '#e5e7eb' }]} onPress={() => setStickerModalVisible(false)}>
                 <Text style={[styles.stickerModalButtonText, { color: isDark ? colors.textSecondary : '#111827' }]}>Cancel</Text>
@@ -4566,12 +4667,13 @@ const styles = StyleSheet.create({
   },
   stickerDeleteButton: {
     position: 'absolute',
-    top: -10,
-    right: -10,
+    top: -15,
+    left: '50%',
+    marginLeft: -12, // Centers the ~24px button
     zIndex: 5,
     backgroundColor: '#ffffffee',
-    borderRadius: 10,
-    padding: 1,
+    borderRadius: 12,
+    padding: 2,
   },
   stickerModalBackdrop: {
     flex: 1,

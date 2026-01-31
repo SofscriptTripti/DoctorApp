@@ -29,25 +29,29 @@ const USER_STORAGE_KEYS = {
   userId: 'userId',
   fullName: 'fullName',
   tenantCode: 'tenantCode',
+  department: 'department', // ✅ Added
 };
 
 // ... (saveUserContext function remains same)
 const saveUserContext = async (
   userId: string,
   fullName: string,
-  tenantCode: string
+  tenantCode: string,
+  department: string // ✅ Added
 ) => {
   try {
     await AsyncStorage.multiSet([
       [USER_STORAGE_KEYS.userId, userId],
       [USER_STORAGE_KEYS.fullName, fullName],
       [USER_STORAGE_KEYS.tenantCode, tenantCode],
+      [USER_STORAGE_KEYS.department, department], // ✅ Added
     ]);
 
     console.log('✅ User context saved', {
       userId,
       fullName,
       tenantCode,
+      department,
     });
   } catch (e) {
     console.error('❌ Failed to save user context', e);
@@ -148,8 +152,8 @@ export default function CareScribeLogin({ navigation }: any) {
 
       await saveUserContext(
         response.userInfo.userId,
-        response.userInfo.fullName,
-        response.userInfo.tenantCode
+        response.userInfo.tenantCode,
+        response.userInfo.department || 'Unavailable' // Save department
       );
 
       navigation.reset({

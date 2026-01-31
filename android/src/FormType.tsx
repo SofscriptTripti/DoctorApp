@@ -94,6 +94,11 @@ export default function FormTypeScreen() {
   );
   const patientId: string | undefined = route.params?.patientId;
   const patientIP: number | undefined = route.params?.patientIP;
+  const patientAge: number | undefined = route.params?.age;
+  const patientGender: string | undefined = route.params?.gender;
+  const patientRoom: string | undefined = route.params?.room; // ✅ Added
+  const attendingDoctor: string | undefined = route.params?.attendingDoctor; // ✅ Added
+  const admitDate: string | undefined = route.params?.admitDate; // ✅ Added
   const [admissionNo, setAdmissionNo] = useState<string | null>(null);
   const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
@@ -377,6 +382,11 @@ export default function FormTypeScreen() {
         documentId: form.documentId,
         patientId,
         patientIP,
+        patientAge, // ✅ Added
+        patientGender, // ✅ Added
+        patientRoom, // ✅ Added
+        attendingDoctor, // ✅ Added
+        admitDate, // ✅ Added
         admissionNo,
         loginUserId, // Pass loginUserId forward
         formName: form.title,

@@ -435,6 +435,11 @@ export default function PatientScreen() {
       admissionNo: p.id,        // ✅ MDR001
       patientId: p.patientId,   // ✅ UH001
       patientName: p.name,
+      age: p.age,               // ✅ Added age
+      gender: p.gender,         // ✅ Added gender
+      room: p.room,             // ✅ Added room
+      attendingDoctor: p.doctorName, // ✅ Added attending doctor
+      admitDate: p.admitDate,   // ✅ Added admit date
     });
     console.log('Navigating to FormType with admissionNo:', p.id);
   };

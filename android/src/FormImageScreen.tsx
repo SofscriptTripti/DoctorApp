@@ -599,6 +599,28 @@ const FormImageScreen = () => {
     setLoadingOverlays(false);
   }, []);
 
+  /* ---------- NEW: HANDLER FOR CREATE NEW INSTANCE ---------- */
+  const handleCreateNewPress = useCallback(() => {
+    Alert.alert(
+      "Create New Form",
+      "Do you want to start a fresh copy of this form?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Create New",
+          style: 'default',
+          onPress: async () => {
+            const newId = await createNewDocumentInstance();
+            if (newId) {
+              setDocumentInstanceId(newId);
+              setShouldReload(true);
+            }
+          }
+        }
+      ]
+    );
+  }, [createNewDocumentInstance]);
+
   /* ---------- PAGE CARD ---------- */
   const PageCard = React.useCallback(({ page, index }: { page: PageItem; index: number }) => {
     const savedPath = pageMeta.find(p => p.pageId === page.pageId)?.bitmapPath;
@@ -778,7 +800,7 @@ const FormImageScreen = () => {
   }, [PageCard]);
 
   /* ---------- OPEN EDITOR ---------- */
-  const openFullEditor = useCallback(() => {
+  const openFullEditor = useCallback(async () => {
     if (!documentInstanceId) {
       console.error('Cannot open editor: documentInstanceId is undefined');
       Alert.alert('Error', 'Document Instance ID is missing. Please try again.');
@@ -822,6 +844,16 @@ const FormImageScreen = () => {
       patientName,
       patientId,
       patientIP,
+      // ✅ Pass new details
+      patientAge: params.patientAge,
+      patientGender: params.patientGender,
+      patientRoom: params.patientRoom, // ✅ Added
+      attendingDoctor: params.attendingDoctor, // ✅ Added
+      admitDate: params.admitDate, // ✅ Added
+      doctorName: await AsyncStorage.getItem('fullName') || 'Unavailable',
+      doctorRegNo: params.loginUserId || await AsyncStorage.getItem('userId') || 'Unavailable',
+      doctorSpeciality: await AsyncStorage.getItem('department') || 'Unavailable', // ✅ Updated fallback
+
       documentId: effectiveDocumentId,
       documentInstanceId, // Pass documentInstanceId to editor
       apiPages: pagesWithOverlays,
@@ -932,6 +964,16 @@ const FormImageScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Create New FAB Button (Above History) */}
+      <TouchableOpacity
+        style={[styles.createFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
+        // onPress={handleCreateNewPress} // Disabled for now
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }]}>New</Text>
+        <Ionicons name="add-circle-outline" size={28} color="#0EA5A4" />
+      </TouchableOpacity>
 
       {/* History FAB Button */}
       <TouchableOpacity
@@ -1169,15 +1211,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  createFab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 195, // Above history
+    width: 64, // Fixed width to match
+    height: 64, // Fixed height for square-ish/icon look or let padding handle it? User said same height/width.
+    // Actually existing styles use paddingVertical 8. content is Icon(28) + text.
+    // Let's use standard dimensions.
+    backgroundColor: '#fff',
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    zIndex: 10,
+  },
   historyFab: {
     position: 'absolute',
     right: 16,
     bottom: 120,
+    width: 64, // Fixed width
     backgroundColor: '#fff',
     paddingVertical: 8,
-    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
