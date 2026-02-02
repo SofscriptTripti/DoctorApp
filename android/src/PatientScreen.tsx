@@ -620,7 +620,11 @@ export default function PatientScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
               <TextInput
                 placeholder="Enter value"
-                style={[styles.vitalInput, { flex: 1 }]}
+                style={[
+                  styles.vitalInput,
+                  { flex: 1 },
+                  isDark && { color: '#FFFFFF', borderColor: '#475569' } // ✅ White text in Input
+                ]}
                 value={editingNumber}
                 onChangeText={setEditingNumber}
                 keyboardType={
@@ -635,11 +639,12 @@ export default function PatientScreen() {
                 }
                 autoFocus
                 onSubmitEditing={handleSave}
+                placeholderTextColor={isDark ? '#94A3B8' : '#C7C7CC'}
               />
               {unit && <Text style={styles.vitalUnit}>{unit}</Text>}
             </View>
           ) : (
-            <Text style={styles.vitalValue}>
+            <Text style={[styles.vitalValue, isDark && { color: '#FFFFFF' }]}>
               {displayNumber || '--'}
               {unit && <Text style={styles.vitalUnit}> {unit}</Text>}
             </Text>
@@ -804,17 +809,68 @@ export default function PatientScreen() {
 
 
   const mapApiPatientToUiPatient = (apiPatient: any): Patient => {
+    // Check various common keys for UHID/IP
+    const pId = String(
+      apiPatient?.patientId ??
+      apiPatient?.PatientId ??
+      apiPatient?.uhid ??
+      apiPatient?.UHID ??
+      apiPatient?.mrNo ??
+      ''
+    );
+
+    const admNo = String(
+      apiPatient?.admissionNo ??
+      apiPatient?.AdmissionNo ??
+      apiPatient?.ipNo ??
+      apiPatient?.IPNo ??
+      apiPatient?.visitNo ??
+      ''
+    );
+
+    const docName =
+      apiPatient?.currentDoctorName ??
+      apiPatient?.CurrentDoctorName ??
+      apiPatient?.doctorName ??
+      apiPatient?.consultantName ??
+      '—';
+
+    const docCode =
+      apiPatient?.currentDoctorCode ??
+      apiPatient?.CurrentDoctorCode ??
+      apiPatient?.doctorCode ??
+      '';
+
+    const ward =
+      apiPatient?.wardName ??
+      apiPatient?.WardName ??
+      apiPatient?.ward ??
+      '';
+
+    const bed =
+      apiPatient?.bedNo ??
+      apiPatient?.BedNo ??
+      apiPatient?.bed ??
+      '';
+
+    const ageVal = Number(
+      apiPatient?.age ??
+      apiPatient?.Age ??
+      apiPatient?.years ??
+      0
+    );
+
     return {
-      id: String(apiPatient?.admissionNo ?? ''),
-      patientId: String(apiPatient?.patientId ?? ''),
-      name: apiPatient?.patientName ?? 'Unknown',
-      age: Number(apiPatient?.age ?? apiPatient?.Age ?? 0),
+      id: admNo,
+      patientId: pId,
+      name: apiPatient?.patientName ?? apiPatient?.PatientName ?? 'Unknown',
+      age: ageVal,
       gender: apiPatient?.gender ?? apiPatient?.Gender ?? 'Other',
-      room: `${apiPatient?.wardName ?? ''} - ${apiPatient?.bedNo ?? ''}`,
-      diagnosis: apiPatient?.admissionStatus ?? 'Admitted',
-      doctorName: apiPatient?.currentDoctorName ?? '—',
-      doctorCode: apiPatient?.currentDoctorCode ?? '', // ✅ ADD THIS
-      admitDate: apiPatient?.admissionDtTm ?? new Date().toISOString(),
+      room: (ward || bed) ? `${ward} - ${bed}` : '',
+      diagnosis: apiPatient?.admissionStatus ?? apiPatient?.diagnosis ?? 'Admitted',
+      doctorName: docName,
+      doctorCode: docCode, // ✅ ADD THIS
+      admitDate: apiPatient?.admissionDtTm ?? apiPatient?.AdmissionDtTm ?? new Date().toISOString(),
     };
   };
 

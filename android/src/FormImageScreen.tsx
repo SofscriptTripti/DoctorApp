@@ -764,9 +764,12 @@ const FormImageScreen = () => {
             </View>
           )}
 
-          {/* Render image stickers */}
           {/* Render image stickers - Fix: Check index correlation */}
-          {page.hasImage && imageStickers
+          {/* ✅ FIX: Hide stickers on FormImageScreen if form is new (editedPages == 0) and we haven't locally edited yet. 
+              The user wants to see them ONLY in the editor initially to keep the view clean. 
+              We assume if reloadToken > 0, it means we returned from Editor with changes.
+          */}
+          {page.hasImage && (params.editedPages > 0 || reloadToken > 0) && imageStickers
             .filter(s => s.pageId === page.pageId || s.pageIndex === index)
             .map(s => {
               // Calculate width/height based on scale if needed, or use stored width/height

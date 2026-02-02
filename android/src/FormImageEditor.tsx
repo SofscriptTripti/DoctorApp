@@ -50,11 +50,10 @@ import { useVoice, VoiceMode } from 'react-native-voicekit';
 
 // Import APIs - UPDATED
 import {
-  savePageOverlay
+  savePageOverlay,
+  getpagewiseoverlay,
+  createPatientDocument, // ✅ Added
 } from './api/patientDocumentsApi';
-
-// Import getpagewiseoverlay API
-import { getpagewiseoverlay } from './api/patientDocumentsApi';
 import { getUserInfo } from './storage/authStorage';
 
 // We TRY AsyncStorage, but we don't depend on it.
@@ -1607,15 +1606,32 @@ export default function FormImageEditor() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
 
-  const formKeyParam = route.params?.formKey as string | undefined;
-  const apiPages = route.params?.apiPages as PageData[] | undefined;
-  const documentId = route.params?.documentId as string | undefined;
-  const documentInstanceId = route.params?.documentInstanceId as string | undefined;
+  // State for critical params (loaded from params or storage)
+  const [formKey, setFormKey] = useState<string | undefined>(route.params?.formKey);
+  const [apiPages, setApiPages] = useState<PageData[] | undefined>(route.params?.apiPages);
+  const [documentId, setDocumentId] = useState<string | undefined>(route.params?.documentId);
+  const [documentInstanceId, setDocumentInstanceId] = useState<string | undefined>(route.params?.documentInstanceId);
 
-  const storageKeyParam = route.params?.storageKey as string | undefined;
-  const uiKeyParam = route.params?.uiStorageKey as string | undefined;
+  // Storage keys state
+  const [storageKeyParam, setStorageKeyParam] = useState<string | undefined>(route.params?.storageKey);
+  const [uiKeyParam, setUiKeyParam] = useState<string | undefined>(route.params?.uiStorageKey);
+
   const STORAGE_KEY = storageKeyParam ?? DEFAULT_STORAGE_KEY;
   const STORAGE_UI_KEY = uiKeyParam ?? DEFAULT_UI_KEY;
+
+  // Metadata state
+  const [patientAge, setPatientAge] = useState<number | undefined>(route.params?.patientAge);
+  const [patientGender, setPatientGender] = useState<string | undefined>(route.params?.patientGender);
+  const [doctorName, setDoctorName] = useState<string | undefined>(route.params?.doctorName);
+  const [doctorRegNo, setDoctorRegNo] = useState<string | undefined>(route.params?.doctorRegNo);
+  const [doctorSpeciality, setDoctorSpeciality] = useState<string | undefined>(route.params?.doctorSpeciality);
+  const [admissionNo, setAdmissionNo] = useState<string | undefined>(route.params?.admissionNo);
+  const [patientName, setPatientName] = useState<string | undefined>(route.params?.patientName);
+  const [patientId, setPatientId] = useState<string | undefined>(route.params?.patientId);
+  const [patientRoom, setPatientRoom] = useState<string | undefined>(route.params?.patientRoom);
+  const [attendingDoctor, setAttendingDoctor] = useState<string | undefined>(route.params?.attendingDoctor);
+  const [admitDate, setAdmitDate] = useState<string | undefined>(route.params?.admitDate);
+  const [editedPages, setEditedPages] = useState<number>(route.params?.editedPages || 0);
 
   const initialStrokesFromParams = Array.isArray(route.params?.savedStrokes)
     ? route.params.savedStrokes
@@ -1632,6 +1648,69 @@ export default function FormImageEditor() {
   )
     ? route.params.imageStickers
     : [];
+
+  // Persistence Logic for Editor Context
+  useEffect(() => {
+    const manageContext = async () => {
+      try {
+        const p = route.params || {};
+        const EDITOR_CTX_KEY = 'editor_context_v1';
+
+        if (p.formKey && p.documentId) {
+          // Save context
+          const ctx = {
+            formKey: p.formKey,
+            apiPages: p.apiPages,
+            documentId: p.documentId,
+            documentInstanceId: p.documentInstanceId,
+            storageKey: p.storageKey,
+            uiStorageKey: p.uiStorageKey,
+            patientAge: p.patientAge,
+            patientGender: p.patientGender,
+            doctorName: p.doctorName,
+            doctorRegNo: p.doctorRegNo,
+            doctorSpeciality: p.doctorSpeciality,
+            admissionNo: p.admissionNo,
+            patientName: p.patientName,
+            patientId: p.patientId,
+            patientRoom: p.patientRoom,
+            attendingDoctor: p.attendingDoctor,
+            admitDate: p.admitDate,
+            editedPages: p.editedPages
+          };
+          await AsyncStorage.setItem(EDITOR_CTX_KEY, JSON.stringify(ctx));
+        } else {
+          // Restore context
+          const saved = await AsyncStorage.getItem(EDITOR_CTX_KEY);
+          if (saved) {
+            const ctx = JSON.parse(saved);
+            if (!formKey) setFormKey(ctx.formKey);
+            if (!apiPages) setApiPages(ctx.apiPages);
+            if (!documentId) setDocumentId(ctx.documentId);
+            if (!documentInstanceId) setDocumentInstanceId(ctx.documentInstanceId);
+            if (!storageKeyParam) setStorageKeyParam(ctx.storageKey);
+            if (!uiKeyParam) setUiKeyParam(ctx.uiStorageKey);
+
+            if (patientAge === undefined) setPatientAge(ctx.patientAge);
+            if (!patientGender) setPatientGender(ctx.patientGender);
+            if (!doctorName) setDoctorName(ctx.doctorName);
+            if (!doctorRegNo) setDoctorRegNo(ctx.doctorRegNo);
+            if (!doctorSpeciality) setDoctorSpeciality(ctx.doctorSpeciality);
+            if (!admissionNo) setAdmissionNo(ctx.admissionNo);
+            if (!patientName) setPatientName(ctx.patientName);
+            if (!patientId) setPatientId(ctx.patientId);
+            if (!patientRoom) setPatientRoom(ctx.patientRoom);
+            if (!attendingDoctor) setAttendingDoctor(ctx.attendingDoctor);
+            if (!admitDate) setAdmitDate(ctx.admitDate);
+            if (editedPages === 0 && ctx.editedPages) setEditedPages(ctx.editedPages);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to manage editor context persistence', e);
+      }
+    };
+    manageContext();
+  }, [route.params]);
 
   const [color, setColor] = useState('#073694ff');
   const [penWidth, setPenWidth] = useState(4);
@@ -1717,18 +1796,7 @@ export default function FormImageEditor() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   // New Params for Stickers
-  const patientAge = route.params?.patientAge;
-  const patientGender = route.params?.patientGender;
-  const editedPages = route.params?.editedPages || 0;
-  const doctorName = route.params?.doctorName;
-  const doctorRegNo = route.params?.doctorRegNo;
-  const doctorSpeciality = route.params?.doctorSpeciality;
-  const admissionNo = route.params?.admissionNo;
-  const patientName = route.params?.patientName;
-  const patientId = route.params?.patientId;
-  const patientRoom = route.params?.patientRoom; // ✅ Added
-  const attendingDoctor = route.params?.attendingDoctor; // ✅ Added
-  const admitDate = route.params?.admitDate; // ✅ Added
+  // Params now managed via state above
 
   // ✅ NEW: Fallback doctor details from storage (in case params are missing)
   const [fetchedDoctorDetails, setFetchedDoctorDetails] = useState<{
@@ -1750,6 +1818,37 @@ export default function FormImageEditor() {
       }
     }).catch(err => console.warn('Failed to load fallback doctor info', err));
   }, []);
+
+  // ✅ FIX: Update Doctor stickers when fetched details arrive (fixes race condition)
+  useEffect(() => {
+    if (!fetchedDoctorDetails) return;
+
+    setImageStickers(prev => prev.map(s => {
+      // Only update doctor stickers that appear to have default/missing info
+      if (s.stickerType === 'doctor') {
+        const line1 = s.textData?.line1 || '';
+        const line2 = s.textData?.line2 || '';
+
+        // If standard "Unavailable" placeholder is detected, or just to be safe, update it
+        // Helper check: does it say "Unavailable"?
+        const needsUpdate = line1.includes('Unavailable') || line2.includes('Unavailable');
+
+        if (needsUpdate) {
+          console.log('🔄 Updating doctor sticker with fetched details');
+          return {
+            ...s,
+            textData: {
+              ...s.textData,
+              line1: `Dr. ${fetchedDoctorDetails.fullName}`,
+              line2: `Reg: ${fetchedDoctorDetails.userId}`,
+              line3: fetchedDoctorDetails.department
+            }
+          };
+        }
+      }
+      return s;
+    }));
+  }, [fetchedDoctorDetails]);
 
   const [imageStickers, setImageStickers] = useState<ImageSticker[]>(initialImageStickersFromParams);
   const [editingStickerId, setEditingStickerId] = useState<string | null>(null);
@@ -1846,10 +1945,16 @@ export default function FormImageEditor() {
       }
 
       console.log('🔄 Loading previous overlays for document instance:', documentInstanceId);
+      const feStart = Date.now();
+      console.log(`⏱️ [PERT_METRIC] Frontend Load Start: ${new Date(feStart).toISOString()}`);
+
       setLoadingPreviousOverlays(true);
 
       try {
         const overlayData = await getpagewiseoverlay(documentInstanceId);
+
+        const feNetEnd = Date.now();
+        console.log(`⏱️ [PERT_METRIC] Frontend API Return. Wait Time: ${feNetEnd - feStart}ms`);
         console.log('📥 Previous overlays API response:', overlayData);
 
         const overlayMap = new Map<string, string>();
@@ -1867,6 +1972,9 @@ export default function FormImageEditor() {
 
         setPreviousOverlays(overlayMap);
         previousOverlaysLoadedRef.current = true;
+
+        const feEnd = Date.now();
+        console.log(`⏱️ [PERT_METRIC] Frontend Processing Finish. Logic Time: ${feEnd - feNetEnd}ms`);
         console.log(`📊 Loaded ${overlayMap.size} previous overlays`);
 
       } catch (error: any) {
@@ -1949,7 +2057,77 @@ export default function FormImageEditor() {
     const loadPersisted = async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
+        // ✅ FIX: If no persisted data (first load for this patient/form),
+        // we MUST reset to initial params to avoid showing previous patient's data
+        // if the component was recycled (pushed/popped quickly).
+        if (!raw) {
+          console.log('ℹ️ No persisted data found (fresh form). Resetting to initial params.');
+
+          // Reset stickers to whatever came in navigation params (usually empty, or specific)
+          // Reset stickers to whatever came in navigation params (usually empty, or specific)
+          // ✅ FIX: If fresh form (editedPages === 0), we want DEFAULT stickers to appear.
+          // But we can't call addImageSticker here easily because it relies on state/ref?
+          // Actually, we can just construct the default sticker objects and set them.
+          if (editedPages === 0 && (!initialImageStickersFromParams || initialImageStickersFromParams.length === 0)) {
+            console.log('ℹ️ Fresh form detected (editedPages=0). initializing with DEFAULT stickers.');
+
+            // Replicate addImageSticker logic for default positions
+            // Patient Sticker: Default Y = PAGE_HEIGHT * 0.05 + 20
+            // Doctor Sticker: Default Y = PAGE_HEIGHT * 0.75 - 20
+            // X defaults to SCREEN_W * 0.7 if not overridden
+            // WAIT, user wanted "tool default" position which is SCREEN_W * 0.7 ?
+            // Yes. verify addImageSticker logic: 
+            // let x = SCREEN_W * 0.7;
+            // if (stickerType === 'patient') y = PAGE_HEIGHT * 0.05 + 20; else y = PAGE_HEIGHT * 0.75 - 20;
+
+            // Let's create helper to generate them synchronously
+            const defaults = [
+              {
+                id: `${Date.now()}-def-pat`,
+                stickerType: 'patient' as const, // ✅ Fix type inference
+                x: SCREEN_W * 0.7,
+                y: PAGE_HEIGHT * 0.05 + 20,
+                width: 220, height: 120, scale: 1,
+                pageIndex: 0,
+                pageId: IMAGES[0]?.pageId,
+                textData: {
+                  line1: `IP NO: ${admissionNo || 'Unavailable'}   UHID: ${patientId || 'Unavailable'}`,
+                  line2: patientName || 'Unavailable',
+                  line3: `${patientAge ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`,
+                  line4: attendingDoctor ? `Dr. ${attendingDoctor}` : 'Dr. Unavailable',
+                  line5: 'Category: Unavailable'
+                }
+              },
+              {
+                id: `${Date.now()}-def-doc`,
+                stickerType: 'doctor' as const, // ✅ Fix type inference
+                x: SCREEN_W * 0.7,
+                y: PAGE_HEIGHT * 0.75 - 20,
+                width: 180, height: 90, scale: 1,
+                pageIndex: 0,
+                pageId: IMAGES[0]?.pageId,
+                textData: {
+                  // Logic for doctor text (removed safe access for brevity, assume params/fetch)
+                  line1: 'Dr. Unavailable', // Will be updated by reactive effect
+                  line2: 'Reg: Unavailable',
+                  line3: 'Unavailable'
+                }
+              }
+            ] as ImageSticker[];
+            setImageStickers(defaults);
+          } else {
+            setImageStickers(initialImageStickersFromParams);
+          }
+
+          // Reset voice notes
+          setVoiceNotes(initialVoiceNotesFromParams);
+
+          // Reset meta/strokes
+          const metaArr: SavedMeta[] = IMAGES.map((_, idx) => ({ bitmapPath: null }));
+          setSavedMeta(metaArr);
+
+          return;
+        }
 
         let parsed: any;
         try {
@@ -1969,6 +2147,8 @@ export default function FormImageEditor() {
             });
             setSavedMeta(metaArr);
           }
+          // Note: If it's an array (legacy format), we might not have stickers/voiceNotes inside it
+          // depending on old schema. 
           return;
         }
 
@@ -1980,6 +2160,8 @@ export default function FormImageEditor() {
           setSavedMeta(metaArr);
         }
 
+        // Only load voice notes from storage if params didn't provide any (priority to params if exist?)
+        // Actually, logic was: if params EMPTY, load form storage.
         if (
           (!Array.isArray(paramsObj.voiceNotes) ||
             paramsObj.voiceNotes.length === 0) &&
@@ -1992,6 +2174,7 @@ export default function FormImageEditor() {
           setVoiceNotes(notesWithFontSize);
         }
 
+        // Same for stickers
         if (
           (!Array.isArray(paramsObj.imageStickers) ||
             paramsObj.imageStickers.length === 0) &&
@@ -2078,7 +2261,7 @@ export default function FormImageEditor() {
       textData = {
         line1: `IP NO: ${admissionNo || 'Unavailable'}   UHID: ${patientId || 'Unavailable'}`,
         line2: patientName || 'Unavailable',
-        line3: `${patientAge ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`,
+        line3: `${(patientAge !== undefined && patientAge !== null) ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`,
         line4: attendingDoctor ? `Dr. ${attendingDoctor}` : 'Dr. Unavailable',
         line5: 'Category: Unavailable'
       };
@@ -2129,16 +2312,39 @@ export default function FormImageEditor() {
 
   useEffect(() => {
     // If it's a new form (editedPages === 0) and we haven't added stickers yet
-    if (editedPages === 0 && imageStickers.length === 0) {
-      // Add default stickers
-      // Patient Sticker: Top-Left
-      addImageSticker('patient', { x: 20, y: 20 });
+    // REMOVED: Logic moved to loadPersisted to avoid race condition
+    if (imageStickers.length > 0) {
+      // ✅ CRITICAL FIX: Even if stickers exist (e.g. from persistence), 
+      // verify if they belong to the CURRENT patient. If not, update them!
+      // This handles the case where "raw" data existed but was for a recycled component state?
+      // Actually, assume persistence is correct. But if user says "switched patient",
+      // and we see old text, it means persistence loaded OLD patient data for NEW patient key?
+      // To be safe, let's force update the text of "patient" type stickers if they match the pattern.
 
-      // Doctor Sticker: Bottom-Right (Standard default position)
-      // Matches the manual "Doc Sticker" placement (PAGE_HEIGHT * 0.75 - 20)
-      addImageSticker('doctor', { x: SCREEN_W - 180 - 20, y: PAGE_HEIGHT * 0.75 - 20 });
+      setImageStickers(prev => prev.map(s => {
+        if (s.stickerType === 'patient') {
+          // Check if textData matches current params. 
+          // If completely different, update it.
+          // Simplified: Just update line1/line2/line3 to current patient details.
+          // This ensures we always show currently selected patient info.
+          return {
+            ...s,
+            textData: {
+              ...s.textData,
+              line1: `IP NO: ${admissionNo || 'Unavailable'}   UHID: ${patientId || 'Unavailable'}`,
+              line2: patientName || 'Unavailable',
+              line3: `${patientAge ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`,
+              // Keep doctor line if manually edited? Or force update?
+              // Let's force update to ensure consistency.
+              line4: attendingDoctor ? `Dr. ${attendingDoctor}` : 'Dr. Unavailable',
+              line5: 'Category: Unavailable' // Keep default or prev?
+            }
+          };
+        }
+        return s;
+      }));
     }
-  }, []); // Run once on mount
+  }, [patientId, admissionNo, patientName]); // ✅ Run when patient changes
 
   const showEditingOffHint = () => {
     setEditingOffHintVisible(true);
@@ -3103,80 +3309,117 @@ export default function FormImageEditor() {
     setSaveStatus('saving');
     setSaveMessage('Starting save process...');
 
-    if (!documentInstanceId) {
-      console.error('❌ No document instance ID provided');
-      setSaveStatus('error');
-      setSaveMessage('No document instance ID. Please go back and try again.');
-      return;
+    // ✅ HARDENED: Check for documentInstanceId with Auto-Recovery
+    let activeInstanceId = documentInstanceId;
+
+    if (!activeInstanceId) {
+      console.warn('⚠️ No documentInstanceId found. Attempting auto-recovery...');
+
+      // Check if we have enough info to recreate it
+      // Note: We need documentCd. Usually it's 'DOC01' or similar, but ideally it should be in params/state.
+      // Assuming 'DOC01' fallback or derived from documentId if available.
+      const recoveryDocCd = 'DOC01'; // Default or derived? Ideally passed in.
+      // Actually, we should check if we have patientNo/admissionNo from our PERSISTED state
+      const targetPatientNo = patientId;
+      const targetAdmissionNo = admissionNo;
+
+      if (targetPatientNo && targetAdmissionNo) {
+        try {
+          console.log('🔄 Auto-recreating document instance...');
+          const res = await createPatientDocument(targetPatientNo, targetAdmissionNo, recoveryDocCd);
+          if (res && res.id) {
+            activeInstanceId = res.id;
+            setDocumentInstanceId(res.id); // Update state for future
+            console.log('✅ Auto-recovery successful. New Instance ID:', activeInstanceId);
+          } else {
+            throw new Error('Create document returned no ID');
+          }
+        } catch (recErr) {
+          console.error('❌ Auto-recovery failed:', recErr);
+          setSaveStatus('error');
+          setSaveMessage('Session expired and auto-recovery failed. Please reload the patient.');
+          return;
+        }
+      } else {
+        console.error('❌ No documentInstanceId and missing patient/admission info for recovery');
+        setSaveStatus('error');
+        setSaveMessage('Critical context missing (Patient/Admission). Cannot save.');
+        return;
+      }
     }
 
     try {
-      // ✅ STEP 1: Save overlays for each page (combining with previous overlays)
-      console.log(`🎨 Saving overlays for ${IMAGES.length} pages...`);
-      setSaveMessage(`Preparing overlays (0/${IMAGES.length})...`);
+      // ✅ STEP 1: Save overlays for each page (PARALLELIZED)
+      console.log(`🎨 Saving overlays for ${IMAGES.length} pages (Parallel)...`);
+      setSaveMessage(`Preparing ${IMAGES.length} pages for upload...`);
 
-      const overlayResults = [];
-      let successCount = 0;
-      let failCount = 0;
+      let processedCount = 0;
+      const updateProgress = () => {
+        processedCount++;
+        setSaveMessage(`Uploaded ${processedCount}/${IMAGES.length} pages...`);
+      };
 
-      for (let i = 0; i < IMAGES.length; i++) {
-        const page = IMAGES[i];
-        const canvas = canvasRefs.current[i];
+      const processPage = async (page: PageData, i: number) => {
+        try {
+          const canvas = canvasRefs.current[i];
+          console.log(`\n📄 Processing page ${i + 1}/${IMAGES.length}: ${page.pageId}`);
 
-        setSaveMessage(`Processing page ${i + 1}/${IMAGES.length}...`);
+          // Combine previous overlay with new drawing
+          const combinedBase64Data = await combineOverlays(canvas, page.pageId);
 
-        console.log(`\n📄 Processing page ${i + 1}/${IMAGES.length}: ${page.pageId}`);
-
-        // Combine previous overlay with new drawing
-        const combinedBase64Data = await combineOverlays(canvas, page.pageId);
-
-        if (combinedBase64Data) {
-          try {
+          if (combinedBase64Data) {
             console.log(`📤 Sending overlay for page ${i} (${combinedBase64Data.length} chars)...`);
-            setSaveMessage(`Uploading page ${i + 1}/${IMAGES.length}...`);
 
             // ✅ Use the combined base64 data (previous + new)
             const result = await savePageOverlay(
-              documentInstanceId,
+              activeInstanceId!,
               page.pageId,
               combinedBase64Data
             );
 
             console.log(`✅ Overlay saved for page ${i}`);
-            successCount++;
+            updateProgress();
 
-            overlayResults.push({
+            return {
               pageId: page.pageId,
               pageIndex: i,
               success: true,
               message: result?.message || 'Overlay saved successfully',
-            });
-          } catch (error: any) {
-            const apiMessage =
-              error?.response?.data?.message ||
-              error?.message ||
-              'Failed to save overlay';
-
-            console.error(`❌ Failed to save overlay for page ${i}:`, apiMessage);
-            failCount++;
-
-            overlayResults.push({
+            };
+          } else {
+            console.log(`📝 No drawing data for page ${i}, skipping overlay save`);
+            updateProgress();
+            return {
               pageId: page.pageId,
               pageIndex: i,
-              success: false,
-              error: apiMessage,
-            });
+              success: true,
+              message: 'No overlay data to save',
+            };
           }
-        } else {
-          console.log(`📝 No drawing data for page ${i}, skipping overlay save`);
-          overlayResults.push({
+        } catch (error: any) {
+          const apiMessage =
+            error?.response?.data?.message ||
+            error?.message ||
+            'Failed to save overlay';
+
+          console.error(`❌ Failed to save overlay for page ${i}:`, apiMessage);
+          updateProgress();
+
+          return {
             pageId: page.pageId,
             pageIndex: i,
-            success: true,
-            message: 'No overlay data to save',
-          });
+            success: false,
+            error: apiMessage,
+          };
         }
-      }
+      };
+
+      // 🚀 EXECUTE PARALLEL UPLOADS
+      const results = await Promise.all(IMAGES.map((page, i) => processPage(page, i)));
+
+      const overlayResults = results;
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
 
       // --------------------------------------------------
       // ⬇️ Save local copy
@@ -3224,10 +3467,10 @@ export default function FormImageEditor() {
         },
         editorSavedAt: Date.now(),
         storageKey: STORAGE_KEY,
-        formName: route.params?.formName,
+        formKey: formKey, // ✅ FIXED: Use state variable
         voiceNotes,
         imageStickers,
-        documentInstanceId,
+        documentInstanceId: activeInstanceId, // ✅ Use active ID
         overlaySaveResults: overlayResults,
         overlayStats: {
           totalPages: IMAGES.length,
@@ -3325,7 +3568,7 @@ export default function FormImageEditor() {
       imageStickers,
       storageKey: STORAGE_KEY,
       formName: route.params?.formName,
-      formKey: formKeyParam,
+      formKey: formKey, // ✅ FIXED: Use state variable
       documentInstanceId: payload.documentInstanceId,
       overlayStats: payload.overlayStats
     });

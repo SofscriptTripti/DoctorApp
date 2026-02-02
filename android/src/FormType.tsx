@@ -25,15 +25,23 @@ const DOCUMENT_STORAGE_KEY = 'documentId';
 const STORAGE_KEYS = {
   admissionNo: 'admissionNo',
   loginUserId: 'userId',
-  patientName: 'patientName', // ✅ Added
+  patientName: 'patientName',
+  patientId: 'patientId', // ✅ Added
+  patientAge: 'patientAge', // ✅ Added
+  patientGender: 'patientGender', // ✅ Added
+  patientRoom: 'patientRoom', // ✅ Added
+  attendingDoctor: 'attendingDoctor', // ✅ Added
+  admitDate: 'admitDate', // ✅ Added
 };
 
 /* ================= UTILS ================= */
 
-function makeStorageKey(patientName: string, formName: string) {
+function makeStorageKey(patientName: string, formName: string, uniqueId?: string) {
   const safePatient = patientName.replace(/\s+/g, '_');
   const safeForm = formName.replace(/\s+/g, '_');
-  return `DoctorApp:${safePatient}:${safeForm}:pagesBitmaps:v1`;
+  // ✅ FIX: Include uniqueId (admissionNo) in key for strict isolation
+  const suffix = uniqueId ? `:${uniqueId}` : '';
+  return `DoctorApp:${safePatient}:${safeForm}${suffix}:pagesBitmaps:v1`;
 }
 
 const saveDocumentContext = async (documentId: string, pageData?: any[]) => {
@@ -92,13 +100,14 @@ export default function FormTypeScreen() {
   const [currentPatientName, setCurrentPatientName] = useState<string>(
     route.params?.patientName ?? 'Unknown Patient'
   );
-  const patientId: string | undefined = route.params?.patientId;
-  const patientIP: number | undefined = route.params?.patientIP;
-  const patientAge: number | undefined = route.params?.age;
-  const patientGender: string | undefined = route.params?.gender;
-  const patientRoom: string | undefined = route.params?.room; // ✅ Added
-  const attendingDoctor: string | undefined = route.params?.attendingDoctor; // ✅ Added
-  const admitDate: string | undefined = route.params?.admitDate; // ✅ Added
+  // ✅ Convert to state to support restoration from storage
+  const [patientId, setPatientId] = useState<string | undefined>(route.params?.patientId);
+  const [patientIP, setPatientIP] = useState<number | undefined>(route.params?.patientIP);
+  const [patientAge, setPatientAge] = useState<number | undefined>(route.params?.age);
+  const [patientGender, setPatientGender] = useState<string | undefined>(route.params?.gender);
+  const [patientRoom, setPatientRoom] = useState<string | undefined>(route.params?.room);
+  const [attendingDoctor, setAttendingDoctor] = useState<string | undefined>(route.params?.attendingDoctor);
+  const [admitDate, setAdmitDate] = useState<string | undefined>(route.params?.admitDate);
   const [admissionNo, setAdmissionNo] = useState<string | null>(null);
   const [loginUserId, setLoginUserId] = useState<string | null>(null);
 
@@ -116,21 +125,39 @@ export default function FormTypeScreen() {
 
         // If params are missing, load from storage
         if (!admNo || !userId) {
-          const [[, sAdmNo], [, sUserId], [, sPatientName]] = await AsyncStorage.multiGet([
+          const values = await AsyncStorage.multiGet([
             STORAGE_KEYS.admissionNo,
             STORAGE_KEYS.loginUserId,
             STORAGE_KEYS.patientName,
+            STORAGE_KEYS.patientId,
+            STORAGE_KEYS.patientAge,
+            STORAGE_KEYS.patientGender,
+            STORAGE_KEYS.patientRoom,
+            STORAGE_KEYS.attendingDoctor,
+            STORAGE_KEYS.admitDate,
           ]);
 
-          if (!admNo) admNo = sAdmNo;
-          if (!userId) userId = sUserId;
-          if (!storedPatientName) storedPatientName = sPatientName;
+          const getVal = (key: string) => values.find(([k]) => k === key)?.[1];
+
+          if (!admNo) admNo = getVal(STORAGE_KEYS.admissionNo);
+          if (!userId) userId = getVal(STORAGE_KEYS.loginUserId);
+          if (!storedPatientName) storedPatientName = getVal(STORAGE_KEYS.patientName);
+
+          // Load other context if not in params (and strictly if we are restoring session)
+          if (!route.params?.patientId) setPatientId(getVal(STORAGE_KEYS.patientId) || undefined);
+          if (!route.params?.age) {
+            const ageStr = getVal(STORAGE_KEYS.patientAge);
+            if (ageStr) setPatientAge(Number(ageStr));
+          }
+          if (!route.params?.gender) setPatientGender(getVal(STORAGE_KEYS.patientGender) || undefined);
+          if (!route.params?.room) setPatientRoom(getVal(STORAGE_KEYS.patientRoom) || undefined);
+          if (!route.params?.attendingDoctor) setAttendingDoctor(getVal(STORAGE_KEYS.attendingDoctor) || undefined);
+          if (!route.params?.admitDate) setAdmitDate(getVal(STORAGE_KEYS.admitDate) || undefined);
         }
 
         if (!admNo || !userId) {
-          console.error('❌ Missing admissionNo or loginUserId', { admNo, userId });
-          // Optional: Navigate to Login if context is completely missing
-          // navigation.reset({ index: 0, routes: [{ name: 'CareScribeLogin' }] });
+          // Silent return during initialization - context will load triggered by the other effect
+          console.log('Waiting for admissionNo/loginUserId...');
           setLoading(false);
           return;
         }
@@ -141,9 +168,16 @@ export default function FormTypeScreen() {
             [STORAGE_KEYS.admissionNo, admNo!],
             [STORAGE_KEYS.loginUserId, userId!]
           ];
-          if (storedPatientName) {
-            pairs.push([STORAGE_KEYS.patientName, storedPatientName]);
-          }
+          if (storedPatientName) pairs.push([STORAGE_KEYS.patientName, storedPatientName]);
+
+          // Persist extended context
+          if (route.params?.patientId) pairs.push([STORAGE_KEYS.patientId, route.params.patientId]);
+          if (route.params?.age !== undefined) pairs.push([STORAGE_KEYS.patientAge, String(route.params.age)]);
+          if (route.params?.gender) pairs.push([STORAGE_KEYS.patientGender, route.params.gender]);
+          if (route.params?.room) pairs.push([STORAGE_KEYS.patientRoom, route.params.room]);
+          if (route.params?.attendingDoctor) pairs.push([STORAGE_KEYS.attendingDoctor, route.params.attendingDoctor]);
+          if (route.params?.admitDate) pairs.push([STORAGE_KEYS.admitDate, route.params.admitDate]);
+
           await AsyncStorage.multiSet(pairs);
         }
 
@@ -180,7 +214,8 @@ export default function FormTypeScreen() {
       try {
         setLoading(true);
         if (!admissionNo || !loginUserId) {
-          console.error('Missing admissionNo or loginUserId');
+          // Silent return during initialization - context will load triggered by the other effect
+          console.log('Waiting for admissionNo/loginUserId...');
           setForms([]);
           return;
         }
@@ -289,7 +324,8 @@ export default function FormTypeScreen() {
       const result: Record<string, number> = {};
 
       for (const f of forms) {
-        const storageKey = makeStorageKey(currentPatientName, f.title);
+        const uniqueId = admissionNo || patientId; // Use scope variables from component
+        const storageKey = makeStorageKey(currentPatientName, f.title, uniqueId);
         const saved = await AsyncStorage.getItem(storageKey);
 
         if (!saved) {
@@ -392,7 +428,11 @@ export default function FormTypeScreen() {
         await saveDocumentContext(form.documentId, []);
       }
 
-      const storageKey = makeStorageKey(currentPatientName, form.title);
+      // ✅ FIX: Use route.params.patientName directly if available to avoid stale state issues
+      const finalPatientName = route.params?.patientName || currentPatientName;
+      // Pass admissionNo (or patientId) as unique identifier
+      const uniqueId = admissionNo || patientId;
+      const storageKey = makeStorageKey(finalPatientName, form.title, uniqueId);
 
       console.log('🚀 Navigating to FormImageScreen with:', {
         documentId: form.documentId,
@@ -425,7 +465,9 @@ export default function FormTypeScreen() {
     } catch (err) {
       console.error('❌ Error navigating to form:', err);
 
-      const storageKey = makeStorageKey(currentPatientName, form.title);
+      const finalPatientName = route.params?.patientName || currentPatientName;
+      const uniqueId = admissionNo || patientId;
+      const storageKey = makeStorageKey(finalPatientName, form.title, uniqueId);
 
       navigation.navigate('FormImageScreen', {
         patientName: currentPatientName,

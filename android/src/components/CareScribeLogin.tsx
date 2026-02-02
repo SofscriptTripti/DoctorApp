@@ -41,10 +41,10 @@ const saveUserContext = async (
 ) => {
   try {
     await AsyncStorage.multiSet([
-      [USER_STORAGE_KEYS.userId, userId],
-      [USER_STORAGE_KEYS.fullName, fullName],
-      [USER_STORAGE_KEYS.tenantCode, tenantCode],
-      [USER_STORAGE_KEYS.department, department], // ✅ Added
+      [USER_STORAGE_KEYS.userId, userId || ''],
+      [USER_STORAGE_KEYS.fullName, fullName || ''],
+      [USER_STORAGE_KEYS.tenantCode, tenantCode || ''],
+      [USER_STORAGE_KEYS.department, department || ''], // ✅ Added
     ]);
 
     console.log('✅ User context saved', {

@@ -13,7 +13,9 @@ import {
   AppState,
   Modal,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -216,9 +218,65 @@ export default function RxNotes() {
   const route = useRoute<any>();
   const { colors, isDark } = useTheme();
 
-  const { patient, vitals: incomingVitals } = route.params as {
-    patient: Patient;
-    vitals: Vitals;
+  // State for patient and vitals (loaded from params or storage)
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [initialVitals, setInitialVitals] = useState<Vitals | null>(null);
+  const [isLoadingContext, setIsLoadingContext] = useState(true);
+
+  // Load context from params or storage
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const params = route.params as { patient?: Patient; vitals?: Vitals } || {};
+
+        if (params.patient && params.vitals) {
+          // If we have params, use them and save to storage
+          setPatient(params.patient);
+          setInitialVitals(params.vitals);
+
+          await AsyncStorage.multiSet([
+            ['rx_patient_ctx', JSON.stringify(params.patient)],
+            ['rx_vitals_ctx', JSON.stringify(params.vitals)]
+          ]);
+        } else {
+          // Fallback to storage
+          const [[, savedPatient], [, savedVitals]] = await AsyncStorage.multiGet([
+            'rx_patient_ctx',
+            'rx_vitals_ctx'
+          ]);
+
+          if (savedPatient) setPatient(JSON.parse(savedPatient));
+          if (savedVitals) setInitialVitals(JSON.parse(savedVitals));
+        }
+      } catch (e) {
+        console.error('Failed to load RxNotes context', e);
+      } finally {
+        setIsLoadingContext(false);
+      }
+    };
+
+    loadContext();
+  }, [route.params]);
+
+  if (isLoadingContext || !patient) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? colors.background : '#fff' }}>
+        <ActivityIndicator size="large" color="#0EA5A4" />
+        <Text style={{ marginTop: 20, color: isDark ? colors.textPrimary : '#333' }}>Loading Patient Data...</Text>
+      </View>
+    );
+  }
+
+  // Use initialVitals if available, otherwise fallback to empty/defaults
+  const incomingVitals = initialVitals || {
+    temperature: '',
+    spo2: '',
+    bp: '',
+    respiration: '',
+    heartRate: '',
+    weight: '',
+    height: '',
+    bmi: '',
   };
 
   const [expandedSections, setExpandedSections] = useState({
@@ -788,6 +846,11 @@ export default function RxNotes() {
   // Save draft to storage
   const saveDraft = useCallback(async () => {
     try {
+      if (!patient?.id) {
+        console.error("❌ Cannot save draft: Missing patient ID");
+        return false;
+      }
+
       const draftData = {
         ...formData,
         lastSaved: new Date().toISOString(),
@@ -1633,7 +1696,7 @@ export default function RxNotes() {
                   <View style={[styles.sinceContainer, styles.addSympColSince, { backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}>
                     <TextInput
                       placeholder="0"
-                      placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
+                      placeholderTextColor={isDark ? "white" : '#94A3B8'}
                       value={newSymptom.since}
                       onChangeText={text => setNewSymptom(prev => ({ ...prev, since: text }))}
                       keyboardType="number-pad"
@@ -1706,7 +1769,7 @@ export default function RxNotes() {
 
                   <TextInput
                     placeholder="Remark"
-                    placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
+                    placeholderTextColor={isDark ? "white" : '#94A3B8'}
                     value={newSymptom.notes}
                     onChangeText={text => setNewSymptom(prev => ({ ...prev, notes: text }))}
                     style={[styles.symptomInput, styles.addSympColNotes, { color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderColor: isDark ? colors.border : '#CBD5F5' }]}
@@ -2528,7 +2591,7 @@ export default function RxNotes() {
                   <Text style={[styles.investigationHeaderText, styles.invColCategory, { color: isDark ? colors.textSecondary : '#64748B' }]}>Category</Text>
                   <Text style={[styles.investigationHeaderText, styles.invColService, { color: isDark ? colors.textSecondary : '#64748B' }]}>Service name</Text>
                   <Text style={[styles.investigationHeaderText, styles.invColDate, { color: isDark ? colors.textSecondary : '#64748B' }]}>Date</Text>
-                  <Text style={[styles.investigationHeaderText, styles.invColTime, { color: isDark ? colors.textSecondary : '#64748B' }]}>Time</Text>
+                  {/* <Text style={[styles.investigationHeaderText, styles.invColTime, { color: isDark ? colors.textSecondary : '#64748B' }]}>Time</Text> */}
                   <Text style={[styles.investigationHeaderText, styles.invColQty, { color: isDark ? colors.textSecondary : '#64748B' }]}>Qty</Text>
                   <Text style={[styles.investigationHeaderText, styles.invColSource, { color: isDark ? colors.textSecondary : '#64748B' }]}>Source</Text>
                   <Text style={[styles.investigationHeaderText, styles.invColRemarks, { color: isDark ? colors.textSecondary : '#64748B' }]}>Remarks</Text>
@@ -3917,7 +3980,7 @@ const styles = StyleSheet.create({
   invColSelect: { width: '4%' },
   invColCategory: { width: '12%' },
   invColService: { width: '20%' },
-  invColDate: { width: '8%' },
+  invColDate: { width: '10%' },
   invColTime: { width: '8%' },
   invColQty: { width: '6%' },
   invColSource: { width: '10%' },

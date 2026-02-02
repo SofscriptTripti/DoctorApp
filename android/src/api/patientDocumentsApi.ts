@@ -10,6 +10,12 @@ export const createPatientDocument = async (
   admissionNo: string,
   documentCd: string
 ) => {
+  if (!patientNo || !admissionNo || !documentCd) {
+    const errorMsg = `[createPatientDocument] Missing required params: patientNo=${patientNo}, admissionNo=${admissionNo}, documentCd=${documentCd}`;
+    console.error(`❌ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+
   console.log('🚀 [createPatientDocument] API called with:', {
     patientNo,
     admissionNo,
@@ -60,9 +66,16 @@ export const getPatientDocumentPages = async (id: string) => {
    Get page-wise overlay data
 --------------------------------------------- */
 export const getpagewiseoverlay = async (id: string) => {
-  console.log('🚀 [getpagewiseoverlay] API called with:', {
+  if (!id) {
+    const errorMsg = `[getpagewiseoverlay] Missing required param: documentInstanceId (id) is null/undefined`;
+    console.error(`❌ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+
+  const perfStart = Date.now();
+  console.log('🚀 [getpagewiseoverlay] API START:', {
     documentInstanceId: id,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(perfStart).toISOString(),
   });
 
   try {
@@ -76,11 +89,17 @@ export const getpagewiseoverlay = async (id: string) => {
       },
     });
 
+    const perfEnd = Date.now();
+    const duration = perfEnd - perfStart;
+
+    console.log(`⏱️ [PERT_METRIC] API Call Duration: ${duration}ms`);
+
     console.log('✅ [getpagewiseoverlay] API response:', {
       status: res.status,
       contentType: res.headers['content-type'],
       dataSize: res.data ? Object.keys(res.data).length : 0,
       hasData: !!res.data,
+      duration: `${duration}ms`
     });
 
     // If 404, return empty object
@@ -102,18 +121,18 @@ export const getpagewiseoverlay = async (id: string) => {
       status: error?.response?.status,
       responseData: error?.response?.data,
     });
-    
+
     // Check for network errors
     if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout - server took too long to respond');
     }
-    
+
     // Check for 404 specifically
     if (error.response?.status === 404) {
       console.log(`ℹ️ No pages with overlay found (404) for document ${id}`);
       return {};
     }
-    
+
     // Re-throw with more context
     throw new Error(`Failed to fetch page-wise overlay: ${error.message || 'Unknown error'}`);
   }
@@ -177,15 +196,15 @@ export const getPageOverlayImage = async (
 
     if (!isImage) {
       console.warn(`⚠️ Response is not an image: ${contentType}`);
-      
+
       // Try to decode as text to check for error messages
       try {
         const text = Buffer.from(res.data).toString('utf8');
         console.log('Response as text:', text.substring(0, 200));
-        
-        if (text.toLowerCase().includes('error') || 
-            text.toLowerCase().includes('not found') ||
-            text.toLowerCase().includes('no overlay')) {
+
+        if (text.toLowerCase().includes('error') ||
+          text.toLowerCase().includes('not found') ||
+          text.toLowerCase().includes('no overlay')) {
           console.log('API returned error message, treating as no overlay');
           return new ArrayBuffer(0);
         }
@@ -206,21 +225,21 @@ export const getPageOverlayImage = async (
     console.error('❌ [getPageOverlayImage] API error:', {
       message: error?.message,
       status: error?.response?.status,
-      responseData: error?.response?.data ? 
+      responseData: error?.response?.data ?
         Buffer.from(error.response.data).toString('utf8').substring(0, 200) : 'No data',
     });
-    
+
     // Check for network errors
     if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout - server took too long to respond');
     }
-    
+
     // Check for 404 specifically
     if (error.response?.status === 404) {
       console.log(`ℹ️ Overlay not found (404) for page ${pageId}`);
       return new ArrayBuffer(0);
     }
-    
+
     // Re-throw with more context
     throw new Error(`Failed to fetch overlay: ${error.message || 'Unknown error'}`);
   }
