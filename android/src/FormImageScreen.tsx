@@ -769,68 +769,74 @@ const FormImageScreen = () => {
               The user wants to see them ONLY in the editor initially to keep the view clean. 
               We assume if reloadToken > 0, it means we returned from Editor with changes.
           */}
-          {page.hasImage && (params.editedPages > 0 || reloadToken > 0) && imageStickers
-            .filter(s => s.pageId === page.pageId || s.pageIndex === index)
-            .map(s => {
-              // Calculate width/height based on scale if needed, or use stored width/height
-              // Editor defaults: Patient 220x120, Doctor 180x90
-              const width = s.width || (s.stickerType === 'patient' ? 220 : 180);
-              const height = s.height || (s.stickerType === 'patient' ? 120 : 90);
+          {/* Render Stickers with DYNAMIC FONT SCALING */}
+          {page.hasImage && imageStickers.map((s, i) => {
+            if (s.pageId !== page.pageId && s.pageIndex !== index) return null;
 
-              return (
-                <View
-                  key={s.id}
-                  style={{
-                    position: 'absolute',
-                    left: s.x,
-                    top: s.y,
-                    width,
-                    height,
-                    zIndex: 30, // ✅ Fix: Ensure stickers are above text (text is 25)
-                    backgroundColor: '#fff',
-                    borderRadius: 4,
-                    borderWidth: 1.5,
-                    borderColor: '#000',
-                    padding: 6,
-                    justifyContent: 'center',
-                    overflow: 'hidden'
-                  }}
-                  pointerEvents="none" // Non-interactive in preview
-                >
-                  {s.stickerType === 'patient' ? (
-                    <View style={{ flex: 1, justifyContent: 'space-evenly' }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }} numberOfLines={1}>
-                        {s.textData?.line1 || ''}
-                      </Text>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }} numberOfLines={1}>
-                        {s.textData?.line2 || ''}
-                      </Text>
-                      <Text style={{ fontSize: 10, fontWeight: '500', color: '#000' }} numberOfLines={1}>
-                        {s.textData?.line3 || ''}
-                      </Text>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }} numberOfLines={1}>
-                        {s.textData?.line4 || ''}
-                      </Text>
-                      <Text style={{ fontSize: 10, fontWeight: '500', color: '#000' }} numberOfLines={1}>
-                        {s.textData?.line5 || ''}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#000', textAlign: 'center' }}>
-                        {s.textData?.line1 || ''}
-                      </Text>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 2 }}>
-                        {s.textData?.line2 || ''}
-                      </Text>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 2, textTransform: 'uppercase' }}>
-                        {s.textData?.line3 || ''}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
+            // Calculate scale based on current width vs initial width
+            const isPatient = s.stickerType === 'patient';
+            const initialWidth = isPatient ? 220 : 180;
+            // If width is undefined (legacy), assume initial width (scale 1)
+            const currentWidth = s.width || initialWidth;
+            const scale = currentWidth / initialWidth;
+
+            // Helper to scale font size
+            const sf = (size: number) => Math.max(4, size * scale);
+
+            return (
+              <View
+                key={s.id}
+                style={{
+                  position: 'absolute',
+                  left: s.x,
+                  top: s.y,
+                  width: s.width || initialWidth,
+                  height: s.height || (isPatient ? 120 : 90),
+                  backgroundColor: '#fff',
+                  borderRadius: 4 * scale,
+                  borderWidth: 1.5 * scale,
+                  borderColor: '#000',
+                  padding: 6 * scale,
+                  zIndex: 20,
+                  justifyContent: 'center',
+                  overflow: 'hidden'
+                }}
+                pointerEvents="none"
+              >
+                {isPatient ? (
+                  <View style={{ flex: 1, justifyContent: 'space-evenly' }}>
+                    <Text style={{ fontSize: sf(9), fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                      {s.textData?.line1 || ''}
+                    </Text>
+                    <Text style={{ fontSize: sf(11), fontWeight: '800', color: '#000' }} numberOfLines={1}>
+                      {s.textData?.line2 || ''}
+                    </Text>
+                    <Text style={{ fontSize: sf(9), fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                      {s.textData?.line3 || ''}
+                    </Text>
+                    <Text style={{ fontSize: sf(9), fontWeight: '700', color: '#000' }} numberOfLines={1}>
+                      {s.textData?.line4 || ''}
+                    </Text>
+                    <Text style={{ fontSize: sf(9), fontWeight: '500', color: '#000' }} numberOfLines={1}>
+                      {s.textData?.line5 || ''}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ fontSize: sf(13), fontWeight: '700', color: '#000', textAlign: 'center' }}>
+                      {s.textData?.line1 || ''}
+                    </Text>
+                    <Text style={{ fontSize: sf(12), fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 2 * scale }}>
+                      {s.textData?.line2 || ''}
+                    </Text>
+                    <Text style={{ fontSize: sf(11), fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 2 * scale, textTransform: 'uppercase' }}>
+                      {s.textData?.line3 || ''}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
 
           {/* Render voice notes (text) - Fix: Check index correlation */}
           {page.hasImage && voiceNotes

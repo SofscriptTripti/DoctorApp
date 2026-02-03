@@ -1850,6 +1850,46 @@ export default function FormImageEditor() {
     }));
   }, [fetchedDoctorDetails]);
 
+  // ✅ FIX: Update Patient stickers when patient details arrive (Validation/Recovery)
+  useEffect(() => {
+    // If we don't have core data yet, don't try to update
+    if (!patientId && !patientName && !admissionNo) return;
+
+    setImageStickers(prev => prev.map(s => {
+      if (s.stickerType === 'patient') {
+        const line1 = s.textData?.line1 || '';
+        const line2 = s.textData?.line2 || '';
+        const line3 = s.textData?.line3 || '';
+        const line4 = s.textData?.line4 || '';
+
+        // Check if sticker currently has "Unavailable" placeholders
+        const hasUnavailable =
+          line1.includes('Unavailable') ||
+          line2.includes('Unavailable') ||
+          line3.includes('Unavailable') ||
+          line4.includes('Unavailable');
+
+        // Only update if we have better data to replace it with
+        const hasBetterData = patientName || patientId || admissionNo;
+
+        if (hasUnavailable && hasBetterData) {
+          console.log('🔄 Updating patient sticker with loaded context');
+          return {
+            ...s,
+            textData: {
+              line1: `IP NO: ${admissionNo || 'Unavailable'}   UHID: ${patientId || 'Unavailable'}`,
+              line2: patientName || 'Unavailable',
+              line3: `${patientAge ? patientAge + 'Y' : 'Unavailable'} / ${patientGender ? patientGender.charAt(0) : 'Unavailable'} / ${patientRoom || 'Unavailable'} / ${admitDate ? new Date(admitDate).toLocaleDateString() : 'Unavailable'}`,
+              line4: attendingDoctor ? `Dr. ${attendingDoctor}` : 'Dr. Unavailable',
+              line5: s.textData?.line5 || 'Category: Unavailable' // Preserve or update if data available
+            }
+          };
+        }
+      }
+      return s;
+    }));
+  }, [patientName, patientId, admissionNo, patientAge, patientGender, patientRoom, admitDate, attendingDoctor]);
+
   const [imageStickers, setImageStickers] = useState<ImageSticker[]>(initialImageStickersFromParams);
   const [editingStickerId, setEditingStickerId] = useState<string | null>(null);
 
@@ -1886,6 +1926,11 @@ export default function FormImageEditor() {
   // Unified Undo/Redo Stack
   // Tracks the order of operations for each page: "stroke" | "voice" | "sticker"
   const actionStackRef = useRef<{ [pageIndex: number]: { type: 'voice' | 'stroke' | 'sticker'; id?: string }[] }>({});
+
+  // ✅ FIX: Track dirty pages and snapshots to handle virtualized views (off-screen detach)
+  const dirtyPagesRef = useRef<Set<number>>(new Set());
+  const pageSnapshotsRef = useRef<Map<number, string>>(new Map());
+  const previousPageIndexRef = useRef(0);
 
   // Track unsaved changes
   const hasUnsavedChangesRef = useRef(false);
@@ -2003,7 +2048,17 @@ export default function FormImageEditor() {
     const previousOverlayBase64 = previousOverlays.get(pageId);
 
     // Get new drawing as base64
-    const newDrawingBase64 = await getDrawingAsBase64(canvas);
+    let newDrawingBase64: string | null = null;
+
+    // ✅ FIX: Check Cache First (for off-screen pages)
+    const pageIndex = IMAGES.findIndex(p => p.pageId === pageId);
+    if (pageIndex !== -1 && pageSnapshotsRef.current.has(pageIndex)) {
+      console.log(`📸 Recovering snapshot for page ${pageId} (Index ${pageIndex})`);
+      newDrawingBase64 = pageSnapshotsRef.current.get(pageIndex) || null;
+    } else {
+      // Fallback to live capture
+      newDrawingBase64 = await getDrawingAsBase64(canvas);
+    }
 
     if (!previousOverlayBase64 && !newDrawingBase64) {
       console.log(`📭 No overlays to combine for page ${pageId}`);
@@ -2529,6 +2584,10 @@ export default function FormImageEditor() {
     if (!actionStackRef.current[pageIndex]) actionStackRef.current[pageIndex] = [];
     actionStackRef.current[pageIndex].push({ type: 'stroke' });
     hasUnsavedChangesRef.current = true; // Mark as dirty
+
+    // ✅ FIX: Mark page as dirty for snapshotting
+    dirtyPagesRef.current.add(pageIndex);
+    pageSnapshotsRef.current.delete(pageIndex);
 
     // Clear Redo stack on new action
     unifiedRedoStackRef.current[pageIndex] = [];
@@ -3543,6 +3602,29 @@ export default function FormImageEditor() {
     }
   };
 
+  // ✅ FIX: Auto-snapshot helper to capture pages before they scroll off-screen
+  const savePageSnapshot = async (index: number) => {
+    // Only snapshot if page is marked dirty (has unsaved edits)
+    if (dirtyPagesRef.current.has(index)) {
+      const canvas = canvasRefs.current[index];
+      if (canvas) {
+        console.log(`📸 Auto-Snapshotting Page ${index + 1} (Preventing Data Loss)`);
+        try {
+          // Use our existing extraction logic
+          const base64 = await getDrawingAsBase64(canvas);
+          if (base64) {
+            pageSnapshotsRef.current.set(index, base64);
+            // We can now treat this index as "clean" for snapshot purposes
+            // (Note: hasUnsavedChangesRef still true globally for the "Save" button)
+            dirtyPagesRef.current.delete(index);
+          }
+        } catch (e) {
+          console.warn(`Snapshot failed for page ${index + 1}`, e);
+        }
+      }
+    }
+  };
+
   const handleSaveOk = () => {
     hasUnsavedChangesRef.current = false;
     const payload =
@@ -3568,9 +3650,20 @@ export default function FormImageEditor() {
       imageStickers,
       storageKey: STORAGE_KEY,
       formName: route.params?.formName,
-      formKey: formKey, // ✅ FIXED: Use state variable
+      formKey: formKey,
       documentInstanceId: payload.documentInstanceId,
-      overlayStats: payload.overlayStats
+      overlayStats: payload.overlayStats,
+
+      // ✅ FIX: Pass back context to ensure re-entry works
+      patientName,
+      patientId,
+      admissionNo,
+      patientAge,
+      patientGender,
+      patientRoom,
+      attendingDoctor,
+      admitDate,
+      editedPages
     });
   };
 
@@ -3982,6 +4075,15 @@ export default function FormImageEditor() {
             const x = e.nativeEvent.contentOffset.x;
             scrollX.current = x;
             const newIndex = Math.round(x / SCREEN_W);
+
+            // ✅ FIX: Capture snapshot of the PREVIOUS page before it potentially unmounts/detaches
+            if (newIndex !== previousPageIndexRef.current) {
+              const prev = previousPageIndexRef.current;
+              // Fire and forget (it updates the ref async)
+              savePageSnapshot(prev);
+              previousPageIndexRef.current = newIndex;
+            }
+
             if (newIndex !== currentPageIndex) {
               setCurrentPageIndex(newIndex);
             }
@@ -4033,7 +4135,7 @@ export default function FormImageEditor() {
                       ) : (
                         <View style={styles.loadingContainer}>
                           <ActivityIndicator size="large" color="#0EA5A4" />
-                          <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading image...</Text>
+                          <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading Page {pageIndex + 1}...</Text>
                         </View>
                       )}
 

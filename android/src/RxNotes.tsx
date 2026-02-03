@@ -258,14 +258,7 @@ export default function RxNotes() {
     loadContext();
   }, [route.params]);
 
-  if (isLoadingContext || !patient) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? colors.background : '#fff' }}>
-        <ActivityIndicator size="large" color="#0EA5A4" />
-        <Text style={{ marginTop: 20, color: isDark ? colors.textPrimary : '#333' }}>Loading Patient Data...</Text>
-      </View>
-    );
-  }
+
 
   // Use initialVitals if available, otherwise fallback to empty/defaults
   const incomingVitals = initialVitals || {
@@ -442,6 +435,7 @@ export default function RxNotes() {
         type: '',
         date: '01-07-2025',
       },
+
       {
         id: '2',
         code: 'R50.9',
@@ -519,6 +513,15 @@ export default function RxNotes() {
     ],
     lastSaved: '',
   });
+
+
+
+  // Sync vitals when loaded
+  useEffect(() => {
+    if (initialVitals) {
+      setFormData(prev => ({ ...prev, vitals: initialVitals }));
+    }
+  }, [initialVitals]);
 
   // UI state
   const [editingVital, setEditingVital] = useState<keyof Vitals | null>(null);
@@ -841,7 +844,7 @@ export default function RxNotes() {
   }, [updateFormData]);
 
   // Get draft storage key
-  const getDraftKey = () => `${DRAFT_STORAGE_KEY}${patient.id}`;
+  const getDraftKey = () => `${DRAFT_STORAGE_KEY}${patient?.id}`;
 
   // Save draft to storage
   const saveDraft = useCallback(async () => {
@@ -869,6 +872,7 @@ export default function RxNotes() {
 
   // Load draft from storage
   const loadDraft = useCallback(async () => {
+    if (!patient?.id) return false;
     try {
       console.log('Loading draft for patient:', patient.id);
       return true;
@@ -876,7 +880,7 @@ export default function RxNotes() {
       console.error('Error loading draft:', error);
       return false;
     }
-  }, [patient.id]);
+  }, [patient?.id]);
 
   // Auto-save when changes are made (debounced)
   useEffect(() => {
@@ -1528,6 +1532,15 @@ export default function RxNotes() {
     </>
   );
 
+  if (isLoadingContext || !patient) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? colors.background : '#fff' }}>
+        <ActivityIndicator size="large" color="#0EA5A4" />
+        <Text style={{ marginTop: 20, color: isDark ? colors.textPrimary : '#333' }}>Loading Patient Data...</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
       <StatusBar
@@ -1651,14 +1664,14 @@ export default function RxNotes() {
                 <View style={styles.vitalHeader}>
                   {/* <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Doctors Note</Text> */}
                 </View>
-                <TextInput
+                {/* <TextInput
                   placeholder="Enter note here..."
                   placeholderTextColor={isDark ? "white" : '#94A3B8'}
                   value={formData.doctorNote}
                   onChangeText={text => updateField('doctorNote', text)}
                   multiline
                   style={[styles.prescriptionInput, { height: 80, textAlignVertical: 'top', color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderRadius: 8, borderWidth: 1, borderColor: isDark ? colors.border : '#CBD5F5', padding: 10, marginBottom: 16 }]}
-                />
+                /> */}
               </View>
             )}
           </View>

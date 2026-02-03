@@ -779,7 +779,7 @@ export default function PatientScreen() {
     setTimeout(() => {
       navigation.navigate('RxNotes', {
         patient,
-        vitals: vitalsData,
+        vitals: getVitalsForPatient(patient),
       });
     }, 200);
   };
