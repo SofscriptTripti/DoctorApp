@@ -95,6 +95,7 @@ export type VoiceNote = {
   boxWidth?: number;
   boxHeight?: number;
   fontSize?: number;
+  textAlign?: 'left' | 'center' | 'right';
 };
 
 // Image sticker type
@@ -185,6 +186,7 @@ function DraggableVoiceText({
   onDelete,
   onChangeText,
   onChangeFontSize,
+  onChangeTextAlign,
   pageScale = 1,
   writingEnabled = true,
   onResizeStart,
@@ -198,6 +200,7 @@ function DraggableVoiceText({
   onDelete: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onChangeFontSize: (id: string, fontSize: number) => void;
+  onChangeTextAlign: (id: string, align: 'left' | 'center' | 'right') => void;
   pageScale?: number;
   writingEnabled?: boolean;
   onResizeStart?: () => void;
@@ -1085,7 +1088,7 @@ function DraggableVoiceText({
                 flex: 1,
                 padding: 0,
                 margin: 0,
-                textAlign: 'left',
+                textAlign: note.textAlign || 'left',
                 includeFontPadding: true,
                 paddingTop: 2,
                 overflow: 'visible',
@@ -1105,7 +1108,7 @@ function DraggableVoiceText({
             autoFocus={false}
             onTouchStart={(e) => e.stopPropagation()}
             editable={writingEnabled}
-            textAlign="left"
+            textAlign={note.textAlign || 'left'}
             textAlignVertical="top"
             autoCorrect={true}
             spellCheck={true}
@@ -1125,6 +1128,7 @@ function DraggableVoiceText({
                   fontSize: currentFontSize,
                   flexWrap: 'wrap',
                   width: '100%',
+                  textAlign: note.textAlign || 'left',
                   includeFontPadding: false,
                 }
               ]}
@@ -1176,40 +1180,11 @@ function DraggableVoiceText({
                   width: 2,
                   height: 24,
                   backgroundColor: note.color,
-                  transform: [
-                    { translateX: -9 },
-                    { translateY: 9 }, // Move down 
-                    { rotate: '45deg' }
-                  ],
-                  // Instead of transform translate, let's use left/bottom
-                  left: -1, // Center X anchor? No, left edge. 
-                  bottom: -12, // Center Y anchor?
-                  // This is getting guessy.
-                  // Safe bet: Place it using simple offsets that I can calculate.
-                  // Line center at (-8.5, -8.5).
-                  // Element width=2. left = -8.5 - 1 = -9.5.
-                  // Element height=24. bottom = -8.5 - 12 = -20.5.
-                }}
-              />
-              {/* Revised Line approach: explicit geometry */}
-              <View
-                style={{
-                  position: 'absolute',
-                  width: 2,
-                  height: 24,
-                  backgroundColor: note.color,
                   left: -9,
-                  bottom: -21, // -8.5 center - 12 half-height = -20.5
+                  bottom: -21,
                   transform: [{ rotate: '45deg' }],
                 }}
               />
-
-              {/* The Dot */}
-              {/* Tip of line is at (-17, -17). Dot radius 7.
-                  Dot Center at (-17, -17).
-                  Left = -17 - 7 = -24.
-                  Bottom = -17 - 7 = -24.
-              */}
               <View
                 style={{
                   width: 24,
@@ -1245,7 +1220,7 @@ function DraggableVoiceText({
               maxWidth: note.boxWidth ? undefined : Math.min(SCREEN_W - 40, 1000),
               includeFontPadding: false,
               fontSize: currentFontSize,
-              textAlign: 'left',
+              textAlign: note.textAlign || 'left',
               flexWrap: 'wrap',
             },
           ]}
@@ -1794,6 +1769,7 @@ export default function FormImageEditor() {
 
   const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>(initialVoiceNotesFromParams);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [lastTouchPos, setLastTouchPos] = useState<{ x: number, y: number } | null>(null);
 
   // New Params for Stickers
   // Params now managed via state above
@@ -1908,6 +1884,7 @@ export default function FormImageEditor() {
   const [selectedStickerType, setSelectedStickerType] = useState<'patient' | 'doctor' | null>(null);
   const [textModalVisible, setTextModalVisible] = useState(false);
   const [typedText, setTypedText] = useState('');
+  const [typedTextAlign, setTypedTextAlign] = useState<'left' | 'center' | 'right'>('left');
 
   // State for previous overlays
   const [previousOverlays, setPreviousOverlays] = useState<Map<string, string>>(new Map());
@@ -2266,12 +2243,16 @@ export default function FormImageEditor() {
     );
   }
 
-  const addVoiceNote = (text: string) => {
+  const addVoiceNote = (text: string, align?: 'left' | 'center' | 'right') => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
     const pageIndex = getCurrentPageIndex();
     const currentPage = IMAGES[pageIndex];
+
+    // Standard width to match the "Add text" modal width (SCREEN_W * 0.8 - padding)
+    // To preserve the line wrapping seen in the modal:
+    const initialWidth = Math.min(SCREEN_W - 40, SCREEN_W * 0.8 - 36);
 
     const newNote: VoiceNote = {
       id: `${Date.now()}-${Math.random()}`,
@@ -2279,9 +2260,13 @@ export default function FormImageEditor() {
       pageIndex,
       text: trimmed,
       color: color,
-      x: SCREEN_W * 0.15,
-      y: PAGE_HEIGHT * 0.15,
+      // Centering the box on the last touch position using the standardized width
+      x: lastTouchPos ? clamp(lastTouchPos.x - (initialWidth / 2), 5, SCREEN_W - initialWidth - 5) : SCREEN_W * 0.15,
+      y: lastTouchPos ? clamp(lastTouchPos.y - 30, 5, PAGE_HEIGHT - 65) : PAGE_HEIGHT * 0.15,
+      boxWidth: initialWidth,
+      boxHeight: 60,
       fontSize: 14,
+      textAlign: align || (route.params?.defaultTextAlign as any) || 'left',
     };
 
     // Push to unified undo stack
@@ -2345,8 +2330,10 @@ export default function FormImageEditor() {
       id: `${Date.now()}-${Math.random()}`,
       pageId: currentPage?.pageId,
       pageIndex,
-      x,
-      y,
+      // If we have a fresh touch, use it. Stickers are large (180-220px), 
+      // so centering them on touch point (T.x - width/2) feels most natural.
+      x: overridePos ? overridePos.x : (lastTouchPos ? lastTouchPos.x - (stickerType === 'patient' ? 110 : 90) : x),
+      y: overridePos ? overridePos.y : (lastTouchPos ? lastTouchPos.y - (stickerType === 'patient' ? 60 : 45) : y),
       scale: 1,
       width: stickerType === 'patient' ? 220 : 180,
       height: stickerType === 'patient' ? 120 : 90,
@@ -2423,16 +2410,18 @@ export default function FormImageEditor() {
     }
 
     setTypedText('');
+    setTypedTextAlign('left');
     setTextModalVisible(true);
   };
 
   const handleTextModalAdd = () => {
     const trimmed = typedText.trim();
     if (trimmed) {
-      addVoiceNote(trimmed);
+      addVoiceNote(trimmed, typedTextAlign);
     }
     setTextModalVisible(false);
     setTypedText('');
+    setTypedTextAlign('left');
   };
 
   const handleVoiceNotePositionChange = (id: string, x: number, y: number) => {
@@ -2464,6 +2453,13 @@ export default function FormImageEditor() {
     setVoiceNotes((prev) =>
       prev.map((n) => (n.id === id ? { ...n, fontSize } : n))
     );
+  };
+
+  const handleVoiceNoteTextAlignChange = (id: string, textAlign: 'left' | 'center' | 'right') => {
+    setVoiceNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, textAlign } : n))
+    );
+    hasUnsavedChangesRef.current = true;
   };
 
   const handleVoiceNoteDelete = (id: string) => {
@@ -4153,8 +4149,13 @@ export default function FormImageEditor() {
                       <View
                         style={styles.canvasContainer}
                         onTouchStart={(e) => {
+                          const { locationX, locationY } = e.nativeEvent;
+                          // If it's a single touch (not zoom), track pos for Add Text
+                          if (!multiTouchActive) {
+                            setLastTouchPos({ x: locationX, y: locationY });
+                          }
+
                           if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
-                            const { locationX, locationY } = e.nativeEvent;
                             cursorRef.current?.setNativeProps({
                               style: {
                                 top: locationY - eraserWidth / 2,
@@ -4253,6 +4254,7 @@ export default function FormImageEditor() {
                           onDelete={handleVoiceNoteDelete}
                           onChangeText={handleVoiceNoteTextChange}
                           onChangeFontSize={handleVoiceNoteFontSizeChange}
+                          onChangeTextAlign={handleVoiceNoteTextAlignChange}
                           pageScale={lastScalePerPageRef[pageIndex]}
                           writingEnabled={writingEnabled}
                           onResizeStart={() => disableDrawingImmediately(true)}
@@ -4490,7 +4492,41 @@ export default function FormImageEditor() {
         <View style={styles.stickerModalBackdrop}>
           <View style={[styles.stickerModalContent, isDark && { backgroundColor: colors.surface }]}>
             <Text style={[styles.stickerModalTitle, isDark && { color: colors.textPrimary }]}>Add text</Text>
-            <TextInput style={[styles.textModalInput, isDark && { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Type text to add on image" placeholderTextColor={isDark ? colors.textMuted : "#9ca3af"} multiline value={typedText} onChangeText={setTypedText} autoFocus />
+
+            <View style={styles.alignmentRow}>
+              <TouchableOpacity
+                style={[styles.alignmentButton, typedTextAlign === 'left' && styles.alignmentButtonActive]}
+                onPress={() => setTypedTextAlign('left')}
+              >
+                <MaterialCommunityIcons name="format-align-left" size={24} color={typedTextAlign === 'left' ? '#fff' : '#4b5563'} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.alignmentButton, typedTextAlign === 'center' && styles.alignmentButtonActive]}
+                onPress={() => setTypedTextAlign('center')}
+              >
+                <MaterialCommunityIcons name="format-align-center" size={24} color={typedTextAlign === 'center' ? '#fff' : '#4b5563'} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.alignmentButton, typedTextAlign === 'right' && styles.alignmentButtonActive]}
+                onPress={() => setTypedTextAlign('right')}
+              >
+                <MaterialCommunityIcons name="format-align-right" size={24} color={typedTextAlign === 'right' ? '#fff' : '#4b5563'} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[
+                styles.textModalInput,
+                isDark && { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border },
+                { textAlign: typedTextAlign }
+              ]}
+              placeholder="Type text to add on image"
+              placeholderTextColor={isDark ? colors.textMuted : "#9ca3af"}
+              multiline
+              value={typedText}
+              onChangeText={setTypedText}
+              autoFocus
+            />
             <View style={styles.stickerModalButtonsRow}>
               <TouchableOpacity style={[styles.stickerModalButton, { backgroundColor: '#e5e7eb' }]} onPress={() => { setTextModalVisible(false); setTypedText(''); }}>
                 <Text style={[styles.stickerModalButtonText, { color: '#111827' }]}>Cancel</Text>
@@ -5334,5 +5370,27 @@ const styles = StyleSheet.create({
   },
   confirmModalConfirmText: {
     color: '#ffffff',
+  },
+  alignmentRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 4,
+  },
+  alignmentButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  alignmentButtonActive: {
+    backgroundColor: '#0EA5A4',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
   },
 });

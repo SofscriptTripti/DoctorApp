@@ -1055,25 +1055,17 @@ const FormImageScreen = () => {
       )}
 
       {/* Create New FAB Button (Above History) */}
-      <TouchableOpacity
+      {/* <TouchableOpacity
         style={[styles.createFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
         // onPress={handleCreateNewPress} // Disabled for now
         activeOpacity={0.8}
       >
         <Text style={[styles.historyText, isDark && { color: colors.textPrimary }]}>New</Text>
         <Ionicons name="add-circle-outline" size={28} color="#0EA5A4" />
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {/* History FAB Button */}
-      <TouchableOpacity
-        style={[styles.historyFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
-        onPress={() => {
-          navigation.navigate('EditorHistory');
-        }}
-      >
-        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }]}>History</Text>
-        <AntDesign name="folderopen" size={28} color="#0EA5A4" />
-      </TouchableOpacity>
+
 
       {/* Open Full Editor Button */}
       {pages.length > 0 && documentInstanceId && displayDocumentId && hasValidImages && (
