@@ -1055,16 +1055,24 @@ const FormImageScreen = () => {
       )}
 
       {/* Create New FAB Button (Above History) */}
-      {/* <TouchableOpacity
+      <TouchableOpacity
         style={[styles.createFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
         // onPress={handleCreateNewPress} // Disabled for now
         activeOpacity={0.8}
       >
-        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }]}>New</Text>
-        <Ionicons name="add-circle-outline" size={28} color="#0EA5A4" />
-      </TouchableOpacity> */}
+        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }, { color: '#fff' }]}>New</Text>
+        <Ionicons name="add-circle-outline" size={28} color="#fff" />
+      </TouchableOpacity>
 
       {/* History FAB Button */}
+      <TouchableOpacity
+        style={[styles.historyFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
+        onPress={() => navigation.navigate('EditorHistory', { documentInstanceId })}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }, { color: '#fff' }]}>History</Text>
+        <Ionicons name="time-outline" size={28} color="#fff" />
+      </TouchableOpacity>
 
 
       {/* Open Full Editor Button */}
@@ -1300,7 +1308,7 @@ const styles = StyleSheet.create({
     height: 64, // Fixed height for square-ish/icon look or let padding handle it? User said same height/width.
     // Actually existing styles use paddingVertical 8. content is Icon(28) + text.
     // Let's use standard dimensions.
-    backgroundColor: '#fff',
+    backgroundColor: '#0EA5A4',
     paddingVertical: 8,
     borderRadius: 12,
     alignItems: 'center',
@@ -1317,7 +1325,7 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 120,
     width: 64, // Fixed width
-    backgroundColor: '#fff',
+    backgroundColor: '#0EA5A4',
     paddingVertical: 8,
     borderRadius: 12,
     alignItems: 'center',
