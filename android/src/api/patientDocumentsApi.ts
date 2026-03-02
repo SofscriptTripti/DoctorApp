@@ -24,10 +24,13 @@ export const createPatientDocument = async (
   });
 
   try {
-    const res = await api.post('/PatientDocuments', {
+
+    const res = await api.post('/PatientDocuments/open', {
       patientNo,
       admissionNo,
       documentCd,
+      action: 'ContinueEditing',
+      versionNo: null,
     });
 
     console.log('✅ [createPatientDocument] API response:', {
@@ -44,6 +47,72 @@ export const createPatientDocument = async (
     });
     throw error;
   }
+};
+
+/* ---------------------------------------------
+   Create new version of document instance
+--------------------------------------------- */
+export const NewVersion = async (
+  patientNo: string,
+  admissionNo: string,
+  documentCd: string
+) => {
+  if (!patientNo || !admissionNo || !documentCd) {
+    const errorMsg = `[NewVersion] Missing required params: patientNo=${patientNo}, admissionNo=${admissionNo}, documentCd=${documentCd}`;
+    console.error(`❌ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+
+  console.log('🚀 [NewVersion] API called with:', {
+    patientNo,
+    admissionNo,
+    documentCd,
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    const res = await api.post('/PatientDocuments/new-version', {
+      patientNo,
+      admissionNo,
+      documentCd,
+    });
+
+    console.log('✅ [NewVersion] API response:', {
+      status: res.status,
+      data: res.data,
+    });
+
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [NewVersion] API error:', {
+      message: error?.message,
+      status: error?.response?.status,
+      data: error?.response?.data,
+    });
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   Get document versions (history)
+--------------------------------------------- */
+export const getPatientDocumentVersions = async (
+  patientNo: string,
+  admissionNo: string,
+  documentCd: string
+) => {
+  if (!patientNo || !admissionNo || !documentCd) {
+    throw new Error('Missing required params for getting document versions');
+  }
+
+  const res = await api.get('/PatientDocuments/versions', {
+    params: {
+      patientNo,
+      admissionNo,
+      documentCd,
+    },
+  });
+  return res.data;
 };
 
 /* ---------------------------------------------

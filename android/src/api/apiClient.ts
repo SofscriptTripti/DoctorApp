@@ -4,7 +4,7 @@ import { refreshTokenAPI } from './authApi';
 // import { Alert } from 'react-native'; // Optional: Use a navigation service or event emitter for global alerts if needed
 
 const api = axios.create({
-  baseURL: 'http://123.108.45.16:8650/CareScribeApi/api/v1',
+  baseURL: 'http://123.108.45.16:8650/CareScribeApiTest/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

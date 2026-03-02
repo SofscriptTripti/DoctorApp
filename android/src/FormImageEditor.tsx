@@ -120,12 +120,20 @@ export type ImageSticker = {
 
 const tryParseStrokesJson = (base64?: string): string | null => {
   if (!base64) return null;
+
+  const trimmedInput = base64.trim();
+  // 🟢 NEW: If input already looks like JSON (starts with [ or {), return as-is
+  if (trimmedInput.startsWith('[') || trimmedInput.startsWith('{')) {
+    return trimmedInput;
+  }
+
   try {
     // Attempt decoding
     const decoded = Buffer.from(base64, 'base64').toString('utf8');
-    // Simple heuristic: if it starts with '[', assuming it's our JSON array
-    if (decoded.trim().startsWith('[')) {
-      return decoded;
+    const trimmed = decoded.trim();
+    // Heuristic: starts with '[' (array of strokes) or '{' (v2 bundle object)
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      return trimmed;
     }
   } catch (e) {
     // If it fails, likely a binary PNG that doesn't decode to text nicely
@@ -1591,7 +1599,19 @@ export default function FormImageEditor() {
   const [storageKeyParam, setStorageKeyParam] = useState<string | undefined>(route.params?.storageKey);
   const [uiKeyParam, setUiKeyParam] = useState<string | undefined>(route.params?.uiStorageKey);
 
-  const STORAGE_KEY = storageKeyParam ?? DEFAULT_STORAGE_KEY;
+  // ✅ FIX: Better derivation of STORAGE_KEY if not provided directly
+  const getDynamicStorageKey = () => {
+    if (storageKeyParam) return storageKeyParam;
+
+    // Fallback derivation similar to FormType.tsx
+    const safePatient = (patientName || 'Unknown').replace(/\s+/g, '_');
+    const safeForm = (route.params?.formName || 'Document').replace(/\s+/g, '_');
+    const suffix = (admissionNo || patientId) ? `:${admissionNo || patientId}` : '';
+    const instSuffix = documentInstanceId ? `:${documentInstanceId}` : '';
+    return `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
+  };
+
+  const STORAGE_KEY = getDynamicStorageKey();
   const STORAGE_UI_KEY = uiKeyParam ?? DEFAULT_UI_KEY;
 
   // Metadata state
@@ -1624,68 +1644,6 @@ export default function FormImageEditor() {
     ? route.params.imageStickers
     : [];
 
-  // Persistence Logic for Editor Context
-  useEffect(() => {
-    const manageContext = async () => {
-      try {
-        const p = route.params || {};
-        const EDITOR_CTX_KEY = 'editor_context_v1';
-
-        if (p.formKey && p.documentId) {
-          // Save context
-          const ctx = {
-            formKey: p.formKey,
-            apiPages: p.apiPages,
-            documentId: p.documentId,
-            documentInstanceId: p.documentInstanceId,
-            storageKey: p.storageKey,
-            uiStorageKey: p.uiStorageKey,
-            patientAge: p.patientAge,
-            patientGender: p.patientGender,
-            doctorName: p.doctorName,
-            doctorRegNo: p.doctorRegNo,
-            doctorSpeciality: p.doctorSpeciality,
-            admissionNo: p.admissionNo,
-            patientName: p.patientName,
-            patientId: p.patientId,
-            patientRoom: p.patientRoom,
-            attendingDoctor: p.attendingDoctor,
-            admitDate: p.admitDate,
-            editedPages: p.editedPages
-          };
-          await AsyncStorage.setItem(EDITOR_CTX_KEY, JSON.stringify(ctx));
-        } else {
-          // Restore context
-          const saved = await AsyncStorage.getItem(EDITOR_CTX_KEY);
-          if (saved) {
-            const ctx = JSON.parse(saved);
-            if (!formKey) setFormKey(ctx.formKey);
-            if (!apiPages) setApiPages(ctx.apiPages);
-            if (!documentId) setDocumentId(ctx.documentId);
-            if (!documentInstanceId) setDocumentInstanceId(ctx.documentInstanceId);
-            if (!storageKeyParam) setStorageKeyParam(ctx.storageKey);
-            if (!uiKeyParam) setUiKeyParam(ctx.uiStorageKey);
-
-            if (patientAge === undefined) setPatientAge(ctx.patientAge);
-            if (!patientGender) setPatientGender(ctx.patientGender);
-            if (!doctorName) setDoctorName(ctx.doctorName);
-            if (!doctorRegNo) setDoctorRegNo(ctx.doctorRegNo);
-            if (!doctorSpeciality) setDoctorSpeciality(ctx.doctorSpeciality);
-            if (!admissionNo) setAdmissionNo(ctx.admissionNo);
-            if (!patientName) setPatientName(ctx.patientName);
-            if (!patientId) setPatientId(ctx.patientId);
-            if (!patientRoom) setPatientRoom(ctx.patientRoom);
-            if (!attendingDoctor) setAttendingDoctor(ctx.attendingDoctor);
-            if (!admitDate) setAdmitDate(ctx.admitDate);
-            if (editedPages === 0 && ctx.editedPages) setEditedPages(ctx.editedPages);
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to manage editor context persistence', e);
-      }
-    };
-    manageContext();
-  }, [route.params]);
 
   const [color, setColor] = useState('#073694ff');
   const [penWidth, setPenWidth] = useState(4);
@@ -1891,6 +1849,14 @@ export default function FormImageEditor() {
   const [loadingPreviousOverlays, setLoadingPreviousOverlays] = useState(false);
   const previousOverlaysLoadedRef = useRef(false);
 
+  // Loading synchronization
+  const [pagesLoaded, setPagesLoaded] = useState<boolean[]>([]);
+  useEffect(() => {
+    if (IMAGES.length > 0 && pagesLoaded.length === 0) {
+      setPagesLoaded(new Array(IMAGES.length).fill(false));
+    }
+  }, [IMAGES]);
+
   const refSetters = useRef<Array<(r: DrawingRef | null) => void>>(
     IMAGES.map((_img, i) => (r: DrawingRef | null) => {
       canvasRefs.current[i] = r;
@@ -1980,15 +1946,53 @@ export default function FormImageEditor() {
         console.log('📥 Previous overlays API response:', overlayData);
 
         const overlayMap = new Map<string, string>();
+        const fetchedVoiceNotes: VoiceNote[] = [];
+        const fetchedStickers: ImageSticker[] = [];
 
         if (Array.isArray(overlayData)) {
           overlayData.forEach((item: any) => {
             if (item.pageId && item.overlayDataBase64 && item.hasOverlay) {
-              console.log(`✅ Found previous overlay for page ${item.pageId} (${item.overlayDataBase64.length} chars)`);
-              overlayMap.set(item.pageId, item.overlayDataBase64);
+              const raw = item.overlayDataBase64;
+              const strokesJson = tryParseStrokesJson(raw);
+
+              if (strokesJson) {
+                try {
+                  const parsed = JSON.parse(strokesJson);
+                  if (parsed.version === 'v2') {
+                    console.log(`📦 Page ${item.pageId} has v2 bundle`);
+                    overlayMap.set(item.pageId, parsed.strokes);
+                    if (Array.isArray(parsed.voiceNotes)) fetchedVoiceNotes.push(...parsed.voiceNotes);
+                    if (Array.isArray(parsed.imageStickers)) fetchedStickers.push(...parsed.imageStickers);
+                  } else {
+                    // Legacy strokes-only JSON
+                    overlayMap.set(item.pageId, raw);
+                  }
+                } catch (e) {
+                  overlayMap.set(item.pageId, raw);
+                }
+              } else {
+                // Must be a PNG image
+                overlayMap.set(item.pageId, raw);
+              }
             } else if (item.pageId) {
               console.log(`📭 No overlay for page ${item.pageId} (hasOverlay: ${item.hasOverlay})`);
             }
+          });
+        }
+
+        // Merge fetched data into state, avoiding duplicates
+        if (fetchedVoiceNotes.length > 0) {
+          setVoiceNotes(prev => {
+            const existingIds = new Set(prev.map(n => n.id));
+            const newNotes = fetchedVoiceNotes.filter(n => !existingIds.has(n.id));
+            return [...prev, ...newNotes];
+          });
+        }
+        if (fetchedStickers.length > 0) {
+          setImageStickers(prev => {
+            const existingIds = new Set(prev.map(s => s.id));
+            const newStickers = fetchedStickers.filter(s => !existingIds.has(s.id));
+            return [...prev, ...newStickers];
           });
         }
 
@@ -2021,50 +2025,41 @@ export default function FormImageEditor() {
   ): Promise<string | null> => {
     console.log(`🔄 Combining overlays for page ${pageId}`);
 
-    // Get previous overlay base64
+    // 1. Get previous overlay base64 (drawing only)
     const previousOverlayBase64 = previousOverlays.get(pageId);
 
-    // Get new drawing as base64
+    // 2. Get new drawing as base64
     let newDrawingBase64: string | null = null;
-
-    // ✅ FIX: Check Cache First (for off-screen pages)
     const pageIndex = IMAGES.findIndex(p => p.pageId === pageId);
     if (pageIndex !== -1 && pageSnapshotsRef.current.has(pageIndex)) {
-      console.log(`📸 Recovering snapshot for page ${pageId} (Index ${pageIndex})`);
       newDrawingBase64 = pageSnapshotsRef.current.get(pageIndex) || null;
     } else {
-      // Fallback to live capture
       newDrawingBase64 = await getDrawingAsBase64(canvas);
     }
 
-    if (!previousOverlayBase64 && !newDrawingBase64) {
+    // 3. Filter voiceNotes and imageStickers for this page
+    const pageVoiceNotes = voiceNotes.filter(n => n.pageId === pageId);
+    const pageStickers = imageStickers.filter(s => s.pageId === pageId);
+
+    // If EVERYTHING is empty, return null
+    if (!newDrawingBase64 && !previousOverlayBase64 && pageVoiceNotes.length === 0 && pageStickers.length === 0) {
       console.log(`📭 No overlays to combine for page ${pageId}`);
       return null;
     }
 
-    if (previousOverlayBase64 && !newDrawingBase64) {
-      // Only previous overlay exists - keep it as is
-      console.log(`📋 Only previous overlay exists for page ${pageId}`);
-      return previousOverlayBase64;
-    }
+    // 4. BUNDLE EVERYTHING INTO V2
+    console.log(`📦 Creating v2 bundle for page ${pageId}`);
+    const bundle = {
+      version: 'v2',
+      strokes: newDrawingBase64 || previousOverlayBase64 || null,
+      voiceNotes: pageVoiceNotes,
+      imageStickers: pageStickers,
+      bundledAt: Date.now()
+    };
 
-    if (!previousOverlayBase64 && newDrawingBase64) {
-      // Only new drawing exists
-      console.log(`🆕 Only new drawing exists for page ${pageId}`);
-      return newDrawingBase64;
-    }
-
-    // Both exist - we need to combine them
-    console.log(`🔗 Combining previous overlay + new drawing for page ${pageId}`);
-
-    // Note: In this implementation, we're just returning the new drawing
-    // because the API should handle combining. If you need to combine locally,
-    // you would need an image processing library.
-
-    // For now, return new drawing (or you could return previous + new if your API expects both)
-    return newDrawingBase64;
-
-  }, [previousOverlays]);
+    const bundleJson = JSON.stringify(bundle);
+    return Buffer.from(bundleJson).toString('base64');
+  }, [voiceNotes, imageStickers, previousOverlays, IMAGES]);
 
   const ensureMicPermission = async () => {
     if (Platform.OS !== 'android') return true;
@@ -3477,44 +3472,14 @@ export default function FormImageEditor() {
       const failCount = results.filter(r => !r.success).length;
 
       // --------------------------------------------------
-      // ⬇️ Save local copy
+      // ⬇️ Prepare payload for navigation back (removed local copy saving)
       // --------------------------------------------------
-      console.log('\n💾 Saving local copy...');
-      setSaveMessage('Saving local copy...');
-      const bitmapsToSave = [];
-
-      for (let i = 0; i < IMAGES.length; i++) {
-        const canvas = canvasRefs.current[i];
-        if (canvas) {
-          try {
-            // Save current page drawing to file
-            const filePath = makePageFilePath(i);
-            console.log(`💾 Saving local copy for page ${i}: ${filePath}`);
-
-            const saved = await canvas.saveToFile(filePath);
-
-            if (saved) {
-              bitmapsToSave.push({
-                pageIndex: i,
-                bitmapPath: filePath,
-              });
-              // Update savedMeta state
-              setSavedMeta(prev => {
-                const newMeta = [...prev];
-                newMeta[i] = { ...newMeta[i], bitmapPath: filePath };
-                return newMeta;
-              });
-              console.log(`📁 Local copy saved for page ${i}`);
-            }
-          } catch (err) {
-            console.warn(`Failed to save local copy for page ${i}:`, err);
-          }
-        }
-      }
+      console.log('\n✅ Uploads complete. Preparing return navigation...');
+      setSaveMessage('Finalizing...');
 
       // Prepare payload
       const payload = {
-        savedStrokes: savedMeta,
+        savedStrokes: [], // Local bitmap paths no longer used
         editorUI: {
           color,
           penWidth,
@@ -3522,10 +3487,10 @@ export default function FormImageEditor() {
         },
         editorSavedAt: Date.now(),
         storageKey: STORAGE_KEY,
-        formKey: formKey, // ✅ FIXED: Use state variable
+        formKey: formKey,
         voiceNotes,
         imageStickers,
-        documentInstanceId: activeInstanceId, // ✅ Use active ID
+        documentInstanceId: activeInstanceId,
         overlaySaveResults: overlayResults,
         overlayStats: {
           totalPages: IMAGES.length,
@@ -3535,18 +3500,6 @@ export default function FormImageEditor() {
       };
 
       lastPayloadRef.current = payload;
-
-      // Save to AsyncStorage
-      if (AsyncStorage) {
-        try {
-          console.log('💾 Saving to AsyncStorage...');
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-          await AsyncStorage.setItem(STORAGE_UI_KEY, JSON.stringify(payload.editorUI));
-          console.log('✅ Local data saved to AsyncStorage');
-        } catch (storageErr) {
-          console.warn('Failed to save to AsyncStorage:', storageErr);
-        }
-      }
 
       // Show success
       console.log('\n🎉 Save completed successfully!');
@@ -3803,7 +3756,7 @@ export default function FormImageEditor() {
                 size={20}
                 color={isDark ? '#0EA5A4' : (writingEnabled ? '#ffffff' : 'rgba(255,255,255,0.6)')}
               />
-              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Text</Text>
+              <Text style={[styles.toolButtonText, isDark && { color: '#0EA5A4' }]}>Add Text</Text>
             </TouchableOpacity>
 
             {/* Duplicates removed */}
@@ -4127,6 +4080,13 @@ export default function FormImageEditor() {
                           source={{ uri: page.imageData }}
                           style={styles.pageImage}
                           resizeMode="contain"
+                          onLoad={() => {
+                            setPagesLoaded(prev => {
+                              const next = [...prev];
+                              next[pageIndex] = true;
+                              return next;
+                            });
+                          }}
                         />
                       ) : (
                         <View style={styles.loadingContainer}>
@@ -4137,17 +4097,19 @@ export default function FormImageEditor() {
 
                       {/* Previous Overlay (Legacy Only) */}
                       {isLegacyOverlay && previousOverlayBase64 && (
-                        <Image
-                          source={{ uri: `data:image/png;base64,${previousOverlayBase64}` }}
-                          style={styles.previousOverlayImage}
-                          resizeMode="contain"
-                        />
+                        <View style={{ opacity: pagesLoaded[pageIndex] ? 1 : 0 }}>
+                          <Image
+                            source={{ uri: `data:image/png;base64,${previousOverlayBase64}` }}
+                            style={styles.previousOverlayImage}
+                            resizeMode="contain"
+                          />
+                        </View>
                       )}
 
 
 
                       <View
-                        style={styles.canvasContainer}
+                        style={[styles.canvasContainer, { opacity: pagesLoaded[pageIndex] ? 1 : 0 }]}
                         onTouchStart={(e) => {
                           const { locationX, locationY } = e.nativeEvent;
                           // If it's a single touch (not zoom), track pos for Add Text
@@ -4193,7 +4155,7 @@ export default function FormImageEditor() {
                           }
                         }}
                         pointerEvents={
-                          editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
+                          !pagesLoaded[pageIndex] || editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
                             ? 'none'
                             : 'box-none'
                         }
@@ -4203,7 +4165,7 @@ export default function FormImageEditor() {
                           savedPath={savedPath}
                           strokesJson={strokesJson}
                           ref={(r) => refSetters.current[pageIndex](r)}
-                          drawingEnabled={!(editingNoteId || editingStickerId) && !multiTouchActive}
+                          drawingEnabled={pagesLoaded[pageIndex] && !(editingNoteId || editingStickerId) && !multiTouchActive}
                         />
 
                         {/* Eraser Cursor */}
@@ -4238,48 +4200,51 @@ export default function FormImageEditor() {
                         />
                       )}
 
-                      {/* Voice notes */}
-                      {notesForPage.map((note) => (
-                        <DraggableVoiceText
-                          key={note.id}
-                          note={note}
-                          isEditing={editingNoteId === note.id}
-                          onToggleEdit={(id) => {
-                            if (!writingEnabled) return;
-                            setEditingNoteId((prev) => (prev === id ? null : id));
-                            setEditingStickerId(null);
-                          }}
-                          onPositionChange={handleVoiceNotePositionChange}
-                          onBoxSizeChange={handleVoiceNoteBoxChange}
-                          onDelete={handleVoiceNoteDelete}
-                          onChangeText={handleVoiceNoteTextChange}
-                          onChangeFontSize={handleVoiceNoteFontSizeChange}
-                          onChangeTextAlign={handleVoiceNoteTextAlignChange}
-                          pageScale={lastScalePerPageRef[pageIndex]}
-                          writingEnabled={writingEnabled}
-                          onResizeStart={() => disableDrawingImmediately(true)}
-                          onResizeEnd={() => disableDrawingImmediately(false)}
-                        />
-                      ))}
+                      {/* Overlays synchronized with background image load */}
+                      <View style={{ opacity: pagesLoaded[pageIndex] ? 1 : 0 }} pointerEvents="box-none">
+                        {/* Voice notes */}
+                        {notesForPage.map((note) => (
+                          <DraggableVoiceText
+                            key={note.id}
+                            note={note}
+                            isEditing={editingNoteId === note.id}
+                            onToggleEdit={(id) => {
+                              if (!writingEnabled) return;
+                              setEditingNoteId((prev) => (prev === id ? null : id));
+                              setEditingStickerId(null);
+                            }}
+                            onPositionChange={handleVoiceNotePositionChange}
+                            onBoxSizeChange={handleVoiceNoteBoxChange}
+                            onDelete={handleVoiceNoteDelete}
+                            onChangeText={handleVoiceNoteTextChange}
+                            onChangeFontSize={handleVoiceNoteFontSizeChange}
+                            onChangeTextAlign={handleVoiceNoteTextAlignChange}
+                            pageScale={lastScalePerPageRef[pageIndex]}
+                            writingEnabled={writingEnabled}
+                            onResizeStart={() => disableDrawingImmediately(true)}
+                            onResizeEnd={() => disableDrawingImmediately(false)}
+                          />
+                        ))}
 
-                      {/* Image stickers */}
-                      {stickersForPage.map((sticker) => (
-                        <DraggableImageSticker
-                          key={sticker.id}
-                          sticker={sticker}
-                          isEditing={editingStickerId === sticker.id}
-                          onToggleEdit={(id) => {
-                            if (!writingEnabled) return;
-                            setEditingStickerId((prev) => (prev === id ? null : id));
-                            setEditingNoteId(null);
-                          }}
-                          onPositionChange={handleStickerPositionChange}
-                          onSizeChange={handleStickerSizeChange}
-                          onDelete={handleStickerDelete}
-                          pageScale={lastScalePerPageRef[pageIndex]}
-                          writingEnabled={writingEnabled}
-                        />
-                      ))}
+                        {/* Image stickers */}
+                        {stickersForPage.map((sticker) => (
+                          <DraggableImageSticker
+                            key={sticker.id}
+                            sticker={sticker}
+                            isEditing={editingStickerId === sticker.id}
+                            onToggleEdit={(id) => {
+                              if (!writingEnabled) return;
+                              setEditingStickerId((prev) => (prev === id ? null : id));
+                              setEditingNoteId(null);
+                            }}
+                            onPositionChange={handleStickerPositionChange}
+                            onSizeChange={handleStickerSizeChange}
+                            onDelete={handleStickerDelete}
+                            pageScale={lastScalePerPageRef[pageIndex]}
+                            writingEnabled={writingEnabled}
+                          />
+                        ))}
+                      </View>
                     </Animated.View>
                   </View>
 

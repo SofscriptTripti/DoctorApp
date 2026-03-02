@@ -36,12 +36,13 @@ const STORAGE_KEYS = {
 
 /* ================= UTILS ================= */
 
-function makeStorageKey(patientName: string, formName: string, uniqueId?: string) {
+function makeStorageKey(patientName: string, formName: string, uniqueId?: string, instanceId?: string) {
   const safePatient = patientName.replace(/\s+/g, '_');
   const safeForm = formName.replace(/\s+/g, '_');
-  // ✅ FIX: Include uniqueId (admissionNo) in key for strict isolation
+  // ✅ FIX: Include uniqueId (admissionNo) AND instanceId (version) in key for strict isolation
   const suffix = uniqueId ? `:${uniqueId}` : '';
-  return `DoctorApp:${safePatient}:${safeForm}${suffix}:pagesBitmaps:v1`;
+  const instSuffix = instanceId ? `:${instanceId}` : '';
+  return `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
 }
 
 const saveDocumentContext = async (documentId: string, pageData?: any[]) => {
@@ -98,7 +99,7 @@ export default function FormTypeScreen() {
   const [tempSelectedColors, setTempSelectedColors] = useState<string[]>([]); // NEW: Temp state for modal
 
   const [currentPatientName, setCurrentPatientName] = useState<string>(
-    route.params?.patientName ?? 'Unknown Patient'
+    route.params?.patientName ?? 'Unknown'
   );
   // ✅ Convert to state to support restoration from storage
   const [patientId, setPatientId] = useState<string | undefined>(route.params?.patientId);
@@ -183,7 +184,7 @@ export default function FormTypeScreen() {
 
         setAdmissionNo(admNo);
         setLoginUserId(userId);
-        if (storedPatientName && currentPatientName === 'Unknown Patient') {
+        if (storedPatientName && currentPatientName === 'Unknown') {
           setCurrentPatientName(storedPatientName);
         }
 
@@ -202,7 +203,7 @@ export default function FormTypeScreen() {
 
   // ✅ Save patientName if provided in params
   useEffect(() => {
-    if (route.params?.patientName && route.params.patientName !== 'Unknown Patient') {
+    if (route.params?.patientName && route.params.patientName !== 'Unknown') {
       setCurrentPatientName(route.params.patientName);
       AsyncStorage.setItem(STORAGE_KEYS.patientName, route.params.patientName);
     }
@@ -432,10 +433,12 @@ export default function FormTypeScreen() {
       const finalPatientName = route.params?.patientName || currentPatientName;
       // Pass admissionNo (or patientId) as unique identifier
       const uniqueId = admissionNo || patientId;
-      const storageKey = makeStorageKey(finalPatientName, form.title, uniqueId);
+      // ✅ FIX: Incorporate documentInstanceId to isolate overlays per version
+      const storageKey = makeStorageKey(finalPatientName, form.title, uniqueId, form.documentInstanceId);
 
       console.log('🚀 Navigating to FormImageScreen with:', {
         documentId: form.documentId,
+        documentInstanceId: form.documentInstanceId,
         totalPages,
         editedPages: form.editedPages,
         pageProgress: form.pageProgress
@@ -467,7 +470,7 @@ export default function FormTypeScreen() {
 
       const finalPatientName = route.params?.patientName || currentPatientName;
       const uniqueId = admissionNo || patientId;
-      const storageKey = makeStorageKey(finalPatientName, form.title, uniqueId);
+      const storageKey = makeStorageKey(finalPatientName, form.title, uniqueId, form.documentInstanceId);
 
       navigation.navigate('FormImageScreen', {
         patientName: currentPatientName,

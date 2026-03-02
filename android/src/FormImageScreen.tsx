@@ -1,5 +1,5 @@
 // src/FormImageScreen.tsx
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getpagewiseoverlay,
-  createPatientDocument
+  createPatientDocument,
+  NewVersion
 } from './api/patientDocumentsApi';
 import { Buffer } from 'buffer';
 import NativeDrawingView from './components/NativeDrawingView';
@@ -67,12 +68,20 @@ type PageMeta = {
 
 const tryParseStrokesJson = (base64?: string): string | null => {
   if (!base64) return null;
+
+  const trimmedInput = base64.trim();
+  // 🟢 NEW: If input already looks like JSON (starts with [ or {), return as-is
+  if (trimmedInput.startsWith('[') || trimmedInput.startsWith('{')) {
+    return trimmedInput;
+  }
+
   try {
     // Attempt decoding
     const decoded = Buffer.from(base64, 'base64').toString('utf8');
-    // Simple heuristic: if it starts with '[', assuming it's our JSON array
-    if (decoded.trim().startsWith('[')) {
-      return decoded;
+    const trimmed = decoded.trim();
+    // Heuristic: starts with '[' (array of strokes) or '{' (v2 bundle object)
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      return trimmed;
     }
   } catch (e) {
     // If it fails, likely a binary PNG that doesn't decode to text nicely
@@ -92,10 +101,31 @@ const FormImageScreen = () => {
   const [storedDocumentId, setStoredDocumentId] = useState<string>('');
   const formName = params.formName ?? 'Document';
   const formKey = params.formKey;
-  const patientName = params.patientName ?? 'Unknown Patient';
-  const patientId = params.patientId;
+  const patientName = params.patientName ?? 'Unknown';
+  const patientId = params.patientId || params.patientNo;
   const patientIP = params.patientIP;
-  const perFormStorageKey = params.storageKey ?? 'DoctorApp:pagesBitmaps:v1';
+
+  // ✅ FIX: Use a memoized storage key that is unique per instance
+  const perFormStorageKey = useMemo(() => {
+    // ✅ CRITICAL FIX: Prioritize dynamic construction IF we have a documentInstanceId (state)
+    // This ensures that clicking "New" (which updates documentInstanceId) correctly changes the key
+    // even if params.storageKey holds the old one.
+    if (documentInstanceId) {
+      const safePatient = (patientName || 'Unknown').replace(/\s+/g, '_');
+      const safeForm = (formName || 'Document').replace(/\s+/g, '_');
+      const suffix = (params.admissionNo || patientId) ? `:${params.admissionNo || patientId}` : '';
+      const instSuffix = `:${documentInstanceId}`;
+      return `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
+    }
+
+    // If navigation provided a specific key (e.g. from History) and we don't have an instance yet, use it
+    if (params.storageKey && params.storageKey !== 'DoctorApp:pagesBitmaps:v1') {
+      return params.storageKey;
+    }
+
+    // No instance context yet - return null to prevent loading stale global data
+    return null;
+  }, [params.storageKey, documentInstanceId, patientName, formName, params.admissionNo, patientId]);
 
   const [pages, setPages] = useState<PageItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,13 +139,14 @@ const FormImageScreen = () => {
 
   // ✅ Fix: Sync state with params when they change (prevent stale data on reuse)
   useEffect(() => {
-    setVoiceNotes(Array.isArray(params.voiceNotes) ? params.voiceNotes : []);
-    setImageStickers(Array.isArray(params.imageStickers) ? params.imageStickers : []);
+    if (Array.isArray(params.voiceNotes)) setVoiceNotes(params.voiceNotes);
+    if (Array.isArray(params.imageStickers)) setImageStickers(params.imageStickers);
   }, [params.voiceNotes, params.imageStickers, params.admissionNo, params.documentId]);
   const [reloadToken, setReloadToken] = useState(0);
   const [shouldReload, setShouldReload] = useState(true);
   const [hasDocumentContext, setHasDocumentContext] = useState(false);
   const [hasValidImages, setHasValidImages] = useState(false);
+  const [editedPages, setEditedPages] = useState<number>(params.editedPages || 0);
   const [loadingOverlays, setLoadingOverlays] = useState(false);
   const [isCreatingDocument, setIsCreatingDocument] = useState(false);
   const overlayLoadedRef = useRef(false);
@@ -315,20 +346,72 @@ const FormImageScreen = () => {
 
       // Create a map for quick lookup
       const overlayMap = new Map();
+      const allFetchedNotes: any[] = [];
+      const allFetchedStickers: any[] = [];
+
       if (Array.isArray(pageWiseOverlayData)) {
-        console.log(`[OVERLAY] Found ${pageWiseOverlayData.length} overlays in response`);
+        console.log(`[OVERLAY] Found ${pageWiseOverlayData.length} entries in API response`);
         pageWiseOverlayData.forEach((item: any) => {
-          if (item.pageId && item.overlayDataBase64) {
-            console.log(`[OVERLAY] Overlay found for page ${item.pageId}, hasOverlay: ${item.hasOverlay}`);
-            overlayMap.set(item.pageId, {
-              base64: item.overlayDataBase64,
-              contentType: item.contentType || 'image/png',
-              hasOverlay: item.hasOverlay
-            });
+          if (item.pageId && item.overlayDataBase64 && item.hasOverlay) {
+            const raw = item.overlayDataBase64;
+            const strokesJson = tryParseStrokesJson(raw);
+
+            if (strokesJson) {
+              try {
+                const parsed = JSON.parse(strokesJson);
+                if (parsed.version === 'v2') {
+                  console.log(`[OVERLAY] Page ${item.pageId} has v2 bundle`);
+                  overlayMap.set(item.pageId, {
+                    base64: parsed.strokes, // Only the strokes part for rendering
+                    contentType: item.contentType || 'image/png',
+                    hasOverlay: !!parsed.strokes
+                  });
+                  if (Array.isArray(parsed.voiceNotes)) allFetchedNotes.push(...parsed.voiceNotes);
+                  if (Array.isArray(parsed.imageStickers)) allFetchedStickers.push(...parsed.imageStickers);
+                } else {
+                  // Legacy JSON strokes
+                  overlayMap.set(item.pageId, {
+                    base64: raw,
+                    contentType: item.contentType || 'image/png',
+                    hasOverlay: true
+                  });
+                }
+              } catch (e) {
+                overlayMap.set(item.pageId, {
+                  base64: raw,
+                  contentType: item.contentType || 'image/png',
+                  hasOverlay: true
+                });
+              }
+            } else {
+              // Binary PNG or un-parseable
+              overlayMap.set(item.pageId, {
+                base64: raw,
+                contentType: item.contentType || 'image/png',
+                hasOverlay: true
+              });
+            }
           }
         });
-      } else {
-        console.log('[OVERLAY] Response is not an array or is empty');
+      }
+
+      // Update global states for Notes/Stickers from API (Merge by pageId)
+      console.log(`[OVERLAY] Merging API data: ${allFetchedNotes.length} notes, ${allFetchedStickers.length} stickers`);
+
+      if (allFetchedNotes.length > 0) {
+        setVoiceNotes(prev => {
+          const fetchedPageIds = new Set(allFetchedNotes.map(n => n.pageId).filter(id => !!id));
+          const otherNotes = prev.filter(n => !fetchedPageIds.has(n.pageId));
+          return [...otherNotes, ...allFetchedNotes];
+        });
+      }
+
+      if (allFetchedStickers.length > 0) {
+        setImageStickers(prev => {
+          const fetchedPageIds = new Set(allFetchedStickers.map(s => s.pageId).filter(id => !!id));
+          const otherStickers = prev.filter(s => !fetchedPageIds.has(s.pageId));
+          return [...otherStickers, ...allFetchedStickers];
+        });
       }
 
       // Update all pages with overlay data
@@ -392,16 +475,13 @@ const FormImageScreen = () => {
 
       const p = route.params || {};
 
-      // ✅ ALWAYS reload metadata on focus to ensure we show latest changes from Editor
-      // This fixes the issue where data wouldn't show up until leaving and coming back
-      loadMetadata();
-
       if (Array.isArray(p.savedStrokes) || Array.isArray(p.voiceNotes) || Array.isArray(p.imageStickers)) {
         console.log('Received updated data from editor');
         if (p.savedStrokes) setPageMeta(p.savedStrokes);
-        setVoiceNotes(p.voiceNotes || []);
-        setImageStickers(p.imageStickers || []);
+        if (p.voiceNotes) setVoiceNotes(p.voiceNotes);
+        if (p.imageStickers) setImageStickers(p.imageStickers);
 
+        overlayLoadedRef.current = false; // ✅ FORCE RELOAD from API to be sure
         setReloadToken(t => t + 1);
         setShouldReload(true);
 
@@ -435,36 +515,6 @@ const FormImageScreen = () => {
       };
     }, [route.params, documentInstanceId, navigation, loadDocumentContext, loadDocumentIdFromStorage])
   );
-
-  /* ---------- LOAD PAGES & IMAGES ---------- */
-  // ✅ NEW: Load persisted metadata (voice notes, stickers) from storage
-  // ✅ NEW: Load persisted metadata (voice notes, stickers) from storage
-  const loadMetadata = useCallback(async () => {
-    try {
-      const key = perFormStorageKey; // ✅ Use correct key (same as Editor)
-      console.log('Loading metadata from key:', key);
-      const data = await AsyncStorage.getItem(key);
-      if (data) {
-        const parsed = JSON.parse(data);
-        console.log('Loaded persistence data:', {
-          notes: parsed.voiceNotes?.length,
-          stickers: parsed.imageStickers?.length
-        });
-
-        if (parsed.voiceNotes) setVoiceNotes(parsed.voiceNotes);
-        if (parsed.imageStickers) setImageStickers(parsed.imageStickers);
-      } else {
-        console.log('No persisted data found for key:', key);
-      }
-    } catch (e) {
-      console.warn('Failed to load metadata:', e);
-    }
-  }, [perFormStorageKey]);
-
-  // Call loadMetadata on mount/focus or when key changes
-  useEffect(() => {
-    loadMetadata();
-  }, [loadMetadata]);
 
   const loadAllPages = useCallback(async () => {
     // Use documentId from props if available, otherwise use stored documentId
@@ -650,16 +700,76 @@ const FormImageScreen = () => {
           text: "Create New",
           style: 'default',
           onPress: async () => {
-            const newId = await createNewDocumentInstance();
-            if (newId) {
-              setDocumentInstanceId(newId);
-              setShouldReload(true);
+            const [[, patientNo], [, admissionNo], [, documentCd]] =
+              await AsyncStorage.multiGet([
+                STORAGE_KEYS.patientId,
+                STORAGE_KEYS.admissionNo,
+                STORAGE_KEYS.documentCd,
+              ]);
+
+            if (!patientNo || !admissionNo || !documentCd) {
+              Alert.alert('Error', 'Missing required patient info.');
+              return;
+            }
+            try {
+              const response = await NewVersion(patientNo, admissionNo, documentCd);
+              console.log('✅ NEW API Response:', response);
+
+              if (response?.documentInstanceId) {
+                const uniqueKey = getInstanceStorageKey();
+                await AsyncStorage.setItem(uniqueKey, response.documentInstanceId);
+
+                // 🟢 CLEAR OVERLAYS FOR NEW FORM
+                setVoiceNotes([]);
+                setImageStickers([]);
+                setPageMeta([]);
+                setEditedPages(0); // 🟢 RESET EDITED PAGES
+                overlayLoadedRef.current = false;
+
+                setDocumentInstanceId(response.documentInstanceId);
+                setShouldReload(true);
+              }
+            } catch (error) {
+              console.error('Failed to create new version:', error);
+              Alert.alert('Error', 'Failed to create new form version.');
             }
           }
         }
       ]
     );
-  }, [createNewDocumentInstance]);
+  }, [getInstanceStorageKey]);
+
+  /* ---------- HANDLER FOR HISTORY ---------- */
+  const handleHistoryPress = useCallback(async () => {
+    const [[, patientNo], [, admissionNo], [, documentCd]] =
+      await AsyncStorage.multiGet([
+        STORAGE_KEYS.patientId,
+        STORAGE_KEYS.admissionNo,
+        STORAGE_KEYS.documentCd,
+      ]);
+
+    if (!patientNo || !admissionNo || !documentCd) {
+      Alert.alert('Error', 'Missing required patient info for history.');
+      return;
+    }
+
+    navigation.navigate('EditorHistory', {
+      ...params,
+      patientNo,
+      patientId,
+      admissionNo,
+      documentCd,
+      formName,
+      patientName,
+      patientIP,
+      documentInstanceId,
+      patientAge: params.patientAge,
+      patientGender: params.patientGender,
+      patientRoom: params.patientRoom,
+      attendingDoctor: params.attendingDoctor,
+      admitDate: params.admitDate,
+    });
+  }, [navigation, formName, documentInstanceId]);
 
   /* ---------- PAGE CARD ---------- */
   const PageCard = React.useCallback(({ page, index }: { page: PageItem; index: number }) => {
@@ -770,7 +880,7 @@ const FormImageScreen = () => {
               We assume if reloadToken > 0, it means we returned from Editor with changes.
           */}
           {/* Render Stickers with DYNAMIC FONT SCALING */}
-          {page.hasImage && imageStickers.map((s, i) => {
+          {imageStickers.map((s, i) => {
             if (s.pageId !== page.pageId && s.pageIndex !== index) return null;
 
             // Calculate scale based on current width vs initial width
@@ -839,8 +949,14 @@ const FormImageScreen = () => {
           })}
 
           {/* Render voice notes (text) - Fix: Check index correlation */}
-          {page.hasImage && voiceNotes
-            .filter(n => n.pageId === page.pageId || n.pageIndex === index)
+          {voiceNotes
+            .filter(n => {
+              const match = n.pageId === page.pageId || n.pageIndex === index;
+              if (match) {
+                // console.log(`[RENDER] Rendering Note ${n.id} for Page ${page.pageId} (Index ${index})`);
+              }
+              return match;
+            })
             .map(n => (
               <View
                 key={n.id}
@@ -849,25 +965,30 @@ const FormImageScreen = () => {
                   left: n.x,
                   top: n.y,
                   width: n.boxWidth ?? 180,
-                  height: n.boxHeight ?? 60, // Match Editor's default height/saved height
+                  height: n.boxHeight ?? 60,
                   zIndex: 25,
                   paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  justifyContent: 'center', // Match Editor's textTouchArea vertical center
+                  paddingVertical: 12,
+                  justifyContent: 'center',
                 }}
                 pointerEvents="none"
               >
-                <Text
-                  style={{
-                    color: n.color,
-                    fontSize: n.fontSize ?? 14,
-                    fontWeight: '500', // Match Editor's voiceTextDrag weight
-                    includeFontPadding: false,
-                    textAlign: 'left',
-                  }}
-                >
-                  {n.text}
-                </Text>
+                <View style={{ width: '100%', height: '100%', justifyContent: 'center', flex: 1 }}>
+                  <Text
+                    style={{
+                      color: n.color,
+                      fontSize: n.fontSize ?? 14,
+                      fontWeight: '500',
+                      includeFontPadding: false,
+                      textAlign: n.textAlign || 'left',
+                      flexWrap: 'wrap',
+                      width: '100%',
+                    }}
+                    allowFontScaling={false}
+                  >
+                    {n.text}
+                  </Text>
+                </View>
               </View>
             ))}
         </View>
@@ -945,7 +1066,7 @@ const FormImageScreen = () => {
       documentId: effectiveDocumentId,
       documentInstanceId, // Pass documentInstanceId to editor
       apiPages: pagesWithOverlays,
-      editedPages: params.editedPages || 0, // ✅ Pass editedPages
+      editedPages, // ✅ Pass state instead of params
     });
   }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages, params.editedPages]);
 
@@ -1057,7 +1178,7 @@ const FormImageScreen = () => {
       {/* Create New FAB Button (Above History) */}
       <TouchableOpacity
         style={[styles.createFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
-        // onPress={handleCreateNewPress} // Disabled for now
+        onPress={handleCreateNewPress}
         activeOpacity={0.8}
       >
         <Text style={[styles.historyText, isDark && { color: colors.textPrimary }, { color: '#fff' }]}>New</Text>
@@ -1067,7 +1188,7 @@ const FormImageScreen = () => {
       {/* History FAB Button */}
       <TouchableOpacity
         style={[styles.historyFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
-        onPress={() => navigation.navigate('EditorHistory', { documentInstanceId })}
+        onPress={handleHistoryPress}
         activeOpacity={0.8}
       >
         <Text style={[styles.historyText, isDark && { color: colors.textPrimary }, { color: '#fff' }]}>History</Text>
