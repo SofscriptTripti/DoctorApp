@@ -500,7 +500,7 @@ const FormImageScreen = () => {
       }
 
       const onBackPress = () => {
-        navigation.navigate('FormType');
+        navigation.goBack();
         return true;
       };
 
@@ -1088,7 +1088,7 @@ const FormImageScreen = () => {
         ]}>
           <TouchableOpacity
             style={[styles.navButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
-            onPress={() => navigation.navigate('FormType')}
+            onPress={() => navigation.goBack()}
           >
             <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>

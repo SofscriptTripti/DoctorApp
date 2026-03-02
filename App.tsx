@@ -18,6 +18,7 @@ import FormType from './android/src/FormType';
 import FormImageScreen from './android/src/FormImageScreen';
 import FormImageEditor from './android/src/FormImageEditor';
 import CareScribeLogin from './android/src/components/CareScribeLogin';
+import ArchivedHistory from './android/src/ArchivedHistory';
 import HMISFormType from './android/src/HMISFromType';
 import NoOFReport from './android/src/NoOFReport';
 import PdfViewerScreen from './android/src/PdfViewerScreen';
@@ -110,6 +111,10 @@ function App() {
                 <Stack.Screen
                   name="ImagePdfViewer"
                   component={ImagePdfViewerScreen}
+                />
+                <Stack.Screen
+                  name="ArchivedHistory"
+                  component={ArchivedHistory}
                 />
               </Stack.Navigator>
             </NavigationContainer>
