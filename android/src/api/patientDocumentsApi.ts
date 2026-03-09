@@ -387,3 +387,169 @@ export const signDocument = async (
   });
   return res.data;
 };
+
+/* ---------------------------------------------
+   Favourite/Unfavourite document version
+--------------------------------------------- */
+export const favouritePatientDocument = async (
+  documentInstanceId: string,
+  isFavourite: boolean
+) => {
+  if (!documentInstanceId) {
+    throw new Error('Missing documentInstanceId for favouriting');
+  }
+
+  console.log(`🚀 [favouritePatientDocument] API called for ${documentInstanceId}, isFavourite: ${isFavourite}`);
+
+  try {
+    const res = await api.post(`/PatientDocuments/${documentInstanceId}/favourite`, {
+      isFavourite
+    });
+
+    console.log('✅ [favouritePatientDocument] API response:', res.data);
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [favouritePatientDocument] API error:', {
+      message: error?.message,
+      status: error?.response?.status,
+      data: error?.response?.data,
+    });
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   Archive document version
+--------------------------------------------- */
+export const archivePatientDocument = async (
+  documentInstanceId: string,
+  note?: string
+) => {
+  if (!documentInstanceId) {
+    throw new Error('Missing documentInstanceId for archiving');
+  }
+
+  try {
+    const res = await api.post(`/PatientDocuments/${documentInstanceId}/archive`, {
+      note
+    });
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [archivePatientDocument] API error:', error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   Unarchive document version
+--------------------------------------------- */
+export const unarchivePatientDocument = async (
+  documentInstanceId: string,
+  note?: string
+) => {
+  if (!documentInstanceId) {
+    throw new Error('Missing documentInstanceId for unarchiving');
+  }
+
+  try {
+    const res = await api.post(`/PatientDocuments/${documentInstanceId}/unarchive`, {
+      note
+    });
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [unarchivePatientDocument] API error:', error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   List archived document versions
+--------------------------------------------- */
+export const getArchivedPatientDocuments = async (
+  patientNo: string,
+  admissionNo: string,
+  documentCd?: string
+) => {
+  if (!patientNo || !admissionNo) {
+    throw new Error('Missing required params for listing archived documents');
+  }
+
+  try {
+    const res = await api.get('/PatientDocuments/archived', {
+      params: {
+        patientNo,
+        admissionNo,
+        documentCd
+      }
+    });
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [getArchivedPatientDocuments] API error:', error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   Permanent Delete document version
+--------------------------------------------- */
+export const deletePatientDocument = async (
+  documentInstanceId: string,
+  reason: string
+) => {
+  if (!documentInstanceId) {
+    throw new Error('Missing documentInstanceId for deletion');
+  }
+  if (!reason) {
+    throw new Error('Reason is required for permanent deletion');
+  }
+
+  try {
+    const res = await api.delete(`/PatientDocuments/${documentInstanceId}`, {
+      data: { reason }
+    });
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [deletePatientDocument] API error:', error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   Get Archive/Action Logs
+--------------------------------------------- */
+export const getPatientDocumentArchiveLog = async (documentInstanceId: string) => {
+  if (!documentInstanceId) {
+    throw new Error('Missing documentInstanceId for fetching archive logs');
+  }
+
+  try {
+    const res = await api.get(`/PatientDocuments/${documentInstanceId}/archive-log`);
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [getPatientDocumentArchiveLog] API error:', error);
+    throw error;
+  }
+};
+
+/* ---------------------------------------------
+   Get Deleted Document Versions
+--------------------------------------------- */
+export const getDeletedPatientDocuments = async (
+  patientNo: string,
+  admissionNo: string,
+  documentCd?: string
+) => {
+  if (!patientNo || !admissionNo) {
+    throw new Error('Missing required params patientNo/admissionNo for deleted info');
+  }
+
+  try {
+    const res = await api.get('/PatientDocuments/deleted', {
+      params: { patientNo, admissionNo, documentCd }
+    });
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [getDeletedPatientDocuments] API error:', error);
+    throw error;
+  }
+};

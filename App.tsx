@@ -25,6 +25,7 @@ import PdfViewerScreen from './android/src/PdfViewerScreen';
 import EditorHistory from './android/src/EditHistory';
 import ImagePdfViewerScreen from './android/src/ImagePdfViewerScreen';
 import RxNotes from './android/src/RxNotes';
+import ConsolidatedHistoryScreen from './android/src/ConsolidatedHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -115,6 +116,10 @@ function App() {
                 <Stack.Screen
                   name="ArchivedHistory"
                   component={ArchivedHistory}
+                />
+                <Stack.Screen
+                  name="ConsolidatedHistory"
+                  component={ConsolidatedHistoryScreen}
                 />
               </Stack.Navigator>
             </NavigationContainer>

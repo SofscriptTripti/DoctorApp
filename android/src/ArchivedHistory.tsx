@@ -1,4 +1,5 @@
 // android/src/ArchivedHistory.tsx
+
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
     View,
@@ -12,6 +13,7 @@ import {
     Modal,
     Platform,
     ScrollView,
+    TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -20,7 +22,7 @@ import { Buffer } from 'buffer';
 import moment from 'moment';
 import { useTheme } from './theme/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getPatientDocumentVersions, getpagewiseoverlay } from './api/patientDocumentsApi';
+import { getArchivedPatientDocuments, unarchivePatientDocument, getpagewiseoverlay, deletePatientDocument, getPatientDocumentArchiveLog } from './api/patientDocumentsApi';
 import { getDocumentPages, getDocumentPageImage } from './api/documentsApi';
 import NativeDrawingView from './components/NativeDrawingView';
 
@@ -36,6 +38,8 @@ interface ApiVersionItem {
     versionNo: number;
     createdDt: string;
     createdBy: string;
+    lastUpdatedBy: string | null;
+    lastUpdatedDt: string | null;
 }
 
 interface GroupedHistory {
@@ -277,6 +281,9 @@ export default function ArchivedHistory() {
     const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [selectedVersion, setSelectedVersion] = useState<ApiVersionItem | null>(null);
+    const [deleteReason, setDeleteReason] = useState('');
+    const [showReasonError, setShowReasonError] = useState(false);
+
     const [toastVisible, setToastVisible] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
     const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -300,21 +307,31 @@ export default function ArchivedHistory() {
     }, []);
 
     const loadHistory = useCallback(async () => {
-        if (!patientNo || !admissionNo || !documentCd) {
+        if (!patientNo || !admissionNo) {
             setLoading(false);
             return;
         }
         try {
             setLoading(true);
-            const res = await getPatientDocumentVersions(patientNo, admissionNo, documentCd);
-            setHistory(Array.isArray(res) ? res : []);
-            loadCoverImage(documentCd);
+            // Fetch archived versions from API
+            const res = await getArchivedPatientDocuments(patientNo, admissionNo, documentCd);
+            const archivedItems = Array.isArray(res) ? res : [];
+            setHistory(archivedItems);
+
+            // Sync archivedIds with API results
+            const apiArchivedIds = new Set(archivedItems.map((it: any) => it.documentInstanceId));
+            setArchivedIds(apiArchivedIds);
+
+            if (documentCd) {
+                loadCoverImage(documentCd);
+            }
         } catch (e) {
             console.warn('Failed to load archived history', e);
+            showToast('Failed to load archived versions');
         } finally {
             setLoading(false);
         }
-    }, [patientNo, admissionNo, documentCd]);
+    }, [patientNo, admissionNo, documentCd, loadCoverImage]);
 
     const loadStorage = useCallback(async () => {
         try {
@@ -347,15 +364,24 @@ export default function ArchivedHistory() {
 
     const handleUnarchive = async (version: ApiVersionItem) => {
         const id = version.documentInstanceId;
-        const newArchived = new Set(archivedIds);
-        newArchived.delete(id);
-        setArchivedIds(newArchived);
-        showToast(`Version ${version.versionNo} restored to history`);
 
         try {
+            // Call API
+            await unarchivePatientDocument(id, `Restored Version ${version.versionNo}`);
+
+            const newArchived = new Set(archivedIds);
+            newArchived.delete(id);
+            setArchivedIds(newArchived);
+            showToast(`Version ${version.versionNo} restored to history`);
+
+            // Update local storage for backup
             await AsyncStorage.setItem(ARCHIVED_KEY, JSON.stringify(Array.from(newArchived)));
+
+            // Refresh list
+            loadHistory();
         } catch (e) {
-            console.warn('Failed to save archived status', e);
+            console.warn('Failed to unarchive version', e);
+            showToast('Failed to unarchive version');
         }
     };
 
@@ -364,24 +390,50 @@ export default function ArchivedHistory() {
         setShowDeleteModal(true);
     };
 
+    const handleShowConsolidatedHistory = () => {
+        const { patientNo, admissionNo, documentCd } = route.params || {};
+        navigation.navigate('ConsolidatedHistory', {
+            patientNo,
+            admissionNo,
+            documentCd,
+            archivedVersions: history
+        });
+    };
+
     const onConfirmDelete = async () => {
         if (!selectedVersion) return;
-        const id = selectedVersion.documentInstanceId;
-        const newArchived = new Set(archivedIds);
-        const newDeleted = new Set(deletedIds);
-        newArchived.delete(id);
-        newDeleted.add(id);
+        if (!deleteReason.trim()) {
+            setShowReasonError(true);
+            showToast('Please provide a reason for deletion');
+            return;
+        }
 
-        setArchivedIds(newArchived);
-        setDeletedIds(newDeleted);
-        setShowDeleteModal(false);
-        showToast(`Version ${selectedVersion.versionNo} permanently deleted`);
+        const id = selectedVersion.documentInstanceId;
 
         try {
+            // Call API
+            await deletePatientDocument(id, deleteReason);
+
+            const newArchived = new Set(archivedIds);
+            const newDeleted = new Set(deletedIds);
+            newArchived.delete(id);
+            newDeleted.add(id);
+
+            setArchivedIds(newArchived);
+            setDeletedIds(newDeleted);
+            setShowDeleteModal(false);
+            setDeleteReason(''); // Reset
+            showToast(`Version ${selectedVersion.versionNo} permanently deleted`);
+
+            // Update local storage for backup
             await AsyncStorage.setItem(ARCHIVED_KEY, JSON.stringify(Array.from(newArchived)));
             await AsyncStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(newDeleted)));
+
+            // Refresh list
+            loadHistory();
         } catch (e) {
             console.warn('Failed to delete version', e);
+            showToast('Failed to delete version');
         }
     };
 
@@ -397,8 +449,11 @@ export default function ArchivedHistory() {
     const groupedData = useMemo(() => {
         const groups: { [key: string]: ApiVersionItem[] } = {};
         history.forEach(item => {
-            if (archivedIds.has(item.documentInstanceId) && !deletedIds.has(item.documentInstanceId)) {
-                const dateStr = item.createdDt ? item.createdDt.split('T')[0] : 'Unknown';
+            if (!deletedIds.has(item.documentInstanceId)) {
+                const effectiveDt = (item as any).archivedDt || item.lastUpdatedDt || item.createdDt;
+                console.log(`Archived Version ${item.versionNo}: Using archivedDt or fallback (${effectiveDt})`);
+
+                const dateStr = effectiveDt ? effectiveDt.split('T')[0] : 'Unknown';
                 if (!groups[dateStr]) groups[dateStr] = [];
                 groups[dateStr].push(item);
             }
@@ -416,7 +471,12 @@ export default function ArchivedHistory() {
             return {
                 dateLabel: label,
                 dateObj: dateStr === 'Unknown' ? new Date(0) : new Date(dateStr),
-                items: groups[dateStr].sort((a, b) => b.versionNo - a.versionNo),
+                items: groups[dateStr].sort((a, b) => {
+                    const dateA = new Date(a.lastUpdatedDt || a.createdDt).getTime();
+                    const dateB = new Date(b.lastUpdatedDt || b.createdDt).getTime();
+                    if (dateB !== dateA) return dateB - dateA;
+                    return b.versionNo - a.versionNo;
+                }),
             };
         });
 
@@ -436,6 +496,12 @@ export default function ArchivedHistory() {
                 <View style={{ flexDirection: 'row' }}>
                     <TouchableOpacity
                         style={[styles.backButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
+                        onPress={() => handleShowConsolidatedHistory()}
+                    >
+                        <Ionicons name="information-circle-outline" size={24} color={isDark ? '#0EA5A4' : '#fff'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.backButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }, { marginLeft: 10 }]}
                         onPress={() => navigation.navigate('PatientScreen')}
                     >
                         <Ionicons name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
@@ -505,36 +571,59 @@ export default function ArchivedHistory() {
                 </Animated.View>
             )}
 
+            {/* Permanent Delete Modal */}
             <Modal
                 visible={showDeleteModal}
                 transparent
                 animationType="fade"
             >
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, isDark && { backgroundColor: colors.surface }]}>
-                        {/* <Ionicons name="help-circle" size={48} color="#0EA5A4" style={{ marginBottom: 16 }} /> */}
-                        <Text style={[styles.modalTitle, isDark && { color: colors.textPrimary }]}>
-                            Are you sure you want to delete?
-                        </Text>
-                        <Text style={[styles.modalSub, isDark && { color: colors.textMuted }]}>
-                            This will permanently remove Version {selectedVersion?.versionNo}.
-                        </Text>
-
-                        <View style={styles.modalRow}>
+                    <View style={[styles.smallModalContent, isDark && { backgroundColor: colors.surface }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, isDark && { color: colors.textPrimary }]}>
+                                Delete Version {selectedVersion?.versionNo}
+                            </Text>
                             <TouchableOpacity
-                                style={[styles.modalBtn, { backgroundColor: '#0EA5A4' }]}
-                                onPress={onConfirmDelete}
+                                onPress={() => {
+                                    setShowDeleteModal(false);
+                                    setDeleteReason('');
+                                    setShowReasonError(false);
+                                }}
                             >
-                                <Text style={styles.modalBtnText}>Yes</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[styles.modalBtn, { backgroundColor: isDark ? colors.border : '#E5E7EB' }]}
-                                onPress={() => setShowDeleteModal(false)}
-                            >
-                                <Text style={[styles.modalBtnText, { color: isDark ? colors.textPrimary : '#374151' }]}>No</Text>
+                                <Ionicons name="close" size={24} color={isDark ? colors.textMuted : '#6b7280'} />
                             </TouchableOpacity>
                         </View>
+
+                        <View style={styles.reasonContainer}>
+                            <Text style={[styles.reasonLabel, isDark && { color: colors.textPrimary }]}>Reason for deletion:</Text>
+                            <TextInput
+                                style={[
+                                    styles.reasonInput,
+                                    isDark && { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border },
+                                    showReasonError && { borderColor: '#ef4444', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2' }
+                                ]}
+                                placeholder="Enter reason..."
+                                placeholderTextColor={isDark ? colors.textMuted : '#94a3b8'}
+                                value={deleteReason}
+                                onChangeText={(text) => {
+                                    setDeleteReason(text);
+                                    if (showReasonError && text.trim()) {
+                                        setShowReasonError(false);
+                                    }
+                                }}
+                                multiline
+                            />
+                            {showReasonError && (
+                                <Text style={styles.errorText}>Entering reason is mandatory</Text>
+                            )}
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.submitBtn}
+                            onPress={onConfirmDelete}
+                        >
+                            <Text style={styles.submitBtnText}>Submit</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
@@ -636,17 +725,30 @@ const styles = StyleSheet.create({
     },
     modalContent: {
         backgroundColor: '#fff',
-        borderRadius: 24,
+        borderRadius: 16,
         padding: 24,
         alignItems: 'center',
         elevation: 10,
+    },
+    smallModalContent: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        padding: 20,
+        width: '90%',
+        alignSelf: 'center',
+        elevation: 10,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+        width: '100%',
     },
     modalTitle: {
         fontSize: 18,
         fontWeight: '700',
         color: '#1f2937',
-        marginBottom: 8,
-        textAlign: 'center',
     },
     modalSub: {
         fontSize: 14,
@@ -656,14 +758,14 @@ const styles = StyleSheet.create({
     },
     modalRow: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         width: '100%',
+        marginBottom: 16,
     },
     modalBtn: {
         flex: 1,
-        flexDirection: 'row',
         height: 48,
-        borderRadius: 14,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         marginHorizontal: 6,
@@ -671,6 +773,116 @@ const styles = StyleSheet.create({
     modalBtnText: {
         color: '#fff',
         fontSize: 14,
+        fontWeight: '700',
+    },
+    reasonContainer: {
+        width: '100%',
+        marginBottom: 20,
+    },
+    reasonLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#374151',
+        marginBottom: 8,
+    },
+    reasonInput: {
+        width: '100%',
+        borderWidth: 1.5,
+        borderColor: '#E5E7EB',
+        borderRadius: 12,
+        padding: 12,
+        height: 80,
+        textAlignVertical: 'top',
+        fontSize: 14,
+        backgroundColor: '#F9FAFB',
+    },
+    submitBtn: {
+        backgroundColor: '#0EA5A4',
+        height: 48,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: '100%',
+    },
+    submitBtnText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        fontWeight: '600',
+        marginTop: 4,
+        textAlign: 'center',
+    },
+    /* Log Modal Styles */
+    logModalContent: {
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        padding: 20,
+        width: '95%',
+        maxHeight: '80%',
+        alignSelf: 'center',
+        elevation: 15,
+    },
+    logLoading: {
+        padding: 40,
+        alignItems: 'center',
+    },
+    logEmpty: {
+        padding: 40,
+        alignItems: 'center',
+    },
+    logItem: {
+        padding: 12,
+        marginBottom: 12,
+        backgroundColor: '#f8fafc',
+        borderRadius: 10,
+        borderLeftWidth: 4,
+        elevation: 1,
+    },
+    logHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    logAction: {
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    logDate: {
+        fontSize: 12,
+        color: '#64748b',
+    },
+    logUser: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#334155',
+        marginBottom: 8,
+    },
+    logNoteBox: {
+        backgroundColor: '#f1f5f9',
+        padding: 8,
+        borderRadius: 6,
+    },
+    logNote: {
+        fontSize: 13,
+        fontStyle: 'italic',
+        color: '#475569',
+    },
+    closeBtn: {
+        marginTop: 15,
+        backgroundColor: '#475569',
+        height: 44,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    closeBtnText: {
+        color: '#fff',
+        fontSize: 15,
         fontWeight: '700',
     },
 });

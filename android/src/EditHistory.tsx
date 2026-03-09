@@ -21,7 +21,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from './theme/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getPatientDocumentVersions, getpagewiseoverlay } from './api/patientDocumentsApi';
+import { getPatientDocumentVersions, getpagewiseoverlay, favouritePatientDocument, archivePatientDocument, deletePatientDocument } from './api/patientDocumentsApi';
 import { getDocumentPages, getDocumentPageImage } from './api/documentsApi';
 import NativeDrawingView from './components/NativeDrawingView';
 
@@ -53,6 +53,7 @@ export type ApiVersionItem = {
   createdDt: string;
   lastUpdatedBy: string | null;
   lastUpdatedDt: string | null;
+  isFavourite: boolean;
 };
 
 type GroupedHistory = {
@@ -306,6 +307,9 @@ export default function EditorHistory() {
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<ApiVersionItem | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [showReasonError, setShowReasonError] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Filter state
   const [filterStarred, setFilterStarred] = useState(false);
@@ -334,8 +338,26 @@ export default function EditorHistory() {
     }
     try {
       setLoading(true);
+      console.log('📝 [EditHistory] Params:', { patientNo, admissionNo, documentCd });
       const res = await getPatientDocumentVersions(patientNo, admissionNo, documentCd);
-      setHistory(Array.isArray(res) ? res : []);
+      console.log('✅ [EditHistory] Versions API Data:', JSON.stringify(res, null, 2));
+      const versionItems = Array.isArray(res) ? res : [];
+      setHistory(versionItems);
+
+      // Initialize starredIds from API response
+      const apiStarred = new Set<string>();
+      versionItems.forEach((it: ApiVersionItem) => {
+        if (it.isFavourite) {
+          apiStarred.add(it.documentInstanceId);
+        }
+      });
+      if (apiStarred.size > 0) {
+        setStarredIds(prev => {
+          const combined = new Set(prev);
+          apiStarred.forEach(id => combined.add(id));
+          return combined;
+        });
+      }
 
       // Also fetch the cover image if not fetched yet
       loadCoverImage(documentCd);
@@ -395,41 +417,81 @@ export default function EditorHistory() {
     showToast(msg);
 
     try {
+      // Call API
+      const response = await favouritePatientDocument(id, !starredIds.has(id));
+
+      // Update local storage for persistence across sessions if needed, 
+      // but the source of truth should be the API response on load.
       await AsyncStorage.setItem(STARRED_KEY, JSON.stringify(Array.from(newStarred)));
+
+      if (response && response.message) {
+        // showToast(response.message); // Use API message if preferred
+      }
     } catch (e) {
       console.warn('Failed to save starred status', e);
+      // Rollback UI state on error
+      setStarredIds(starredIds);
+      showToast('Failed to update favorite status');
     }
   };
 
   const onConfirmDelete = async () => {
     if (!selectedVersion) return;
-    const id = selectedVersion.documentInstanceId;
-    const newDeleted = new Set(deletedIds);
-    newDeleted.add(id);
-    setDeletedIds(newDeleted);
-    setShowDeleteModal(false);
-    showToast(`Version ${selectedVersion.versionNo} permanently deleted`);
 
+    if (!isDeleting) {
+      setIsDeleting(true);
+      return;
+    }
+
+    if (!deleteReason.trim()) {
+      setShowReasonError(true);
+      showToast('Please provide a reason for deletion');
+      return;
+    }
+
+    const id = selectedVersion.documentInstanceId;
     try {
+      console.log('🗑️ [EditHistory] Deleting version:', selectedVersion.versionNo, 'Reason:', deleteReason);
+      await deletePatientDocument(id, deleteReason);
+
+      const newDeleted = new Set(deletedIds);
+      newDeleted.add(id);
+      setDeletedIds(newDeleted);
+
+      showToast('Version deleted successfully');
+      setShowDeleteModal(false);
+      setDeleteReason('');
+      setIsDeleting(false);
+
       await AsyncStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(newDeleted)));
+      loadHistory();
     } catch (e) {
       console.warn('Failed to delete version', e);
+      showToast('Failed to delete version');
     }
   };
 
   const onConfirmArchive = async () => {
     if (!selectedVersion) return;
     const id = selectedVersion.documentInstanceId;
-    const newArchived = new Set(archivedIds);
-    newArchived.add(id);
-    setArchivedIds(newArchived);
-    setShowDeleteModal(false);
-    showToast(`Version ${selectedVersion.versionNo} archived successfully`);
 
     try {
+      await archivePatientDocument(id, 'Archived from History');
+
+      const newArchived = new Set(archivedIds);
+      newArchived.add(id);
+      setArchivedIds(newArchived);
+
+      showToast('Version archived successfully');
+      setShowDeleteModal(false);
+      setIsDeleting(false);
+      setDeleteReason('');
+
       await AsyncStorage.setItem(ARCHIVED_KEY, JSON.stringify(Array.from(newArchived)));
+      loadHistory();
     } catch (e) {
       console.warn('Failed to archive version', e);
+      showToast('Failed to archive version');
     }
   };
 
@@ -439,8 +501,14 @@ export default function EditorHistory() {
     const groups: { [key: string]: ApiVersionItem[] } = {};
 
     history.forEach(item => {
+      // Determine effective date for sorting and grouping
+      const effectiveDt = item.lastUpdatedDt || item.createdDt;
+
+      // Log which date is being used as requested
+      console.log(`Version ${item.versionNo}: Using ${item.lastUpdatedDt ? 'lastUpdatedDt' : 'createdDt'} (${effectiveDt})`);
+
       // Create date format YYYY-MM-DD
-      const dateStr = item.createdDt ? item.createdDt.split('T')[0] : 'Unknown';
+      const dateStr = effectiveDt ? effectiveDt.split('T')[0] : 'Unknown';
       if (!groups[dateStr]) {
         groups[dateStr] = [];
       }
@@ -458,8 +526,13 @@ export default function EditorHistory() {
         else label = moment(dateStr, 'YYYY-MM-DD').format('DD MMM YYYY');
       }
 
-      // items sorted descending by versionNo inside group
-      const sortedItems = groups[dateStr].sort((a, b) => b.versionNo - a.versionNo);
+      // items sorted descending by effective date inside group
+      const sortedItems = groups[dateStr].sort((a, b) => {
+        const dateA = new Date(a.lastUpdatedDt || a.createdDt).getTime();
+        const dateB = new Date(b.lastUpdatedDt || b.createdDt).getTime();
+        if (dateB !== dateA) return dateB - dateA;
+        return b.versionNo - a.versionNo; // secondary sort by versionNo
+      });
 
       return {
         dateLabel: label,
@@ -612,11 +685,11 @@ export default function EditorHistory() {
                         <Ionicons
                           name={starredIds.has(version.documentInstanceId) ? 'star' : 'star-outline'}
                           size={24}
-                          color={starredIds.has(version.documentInstanceId) ? '#FFD700' : (isDark ? colors.textMuted : '#94a3b8')}
+                          color={starredIds.has(version.documentInstanceId) ? '#FFD700' : (isDark ? 'rgba(255,255,255,0.8)' : '#94a3b8')}
                         />
                       </TouchableOpacity>
 
-                      {/* Delete / Dustbin Icon */}
+                      {/* Delete Icon */}
                       <TouchableOpacity
                         style={styles.deleteTouch}
                         onPress={() => {
@@ -655,27 +728,63 @@ export default function EditorHistory() {
         </Animated.View>
       )}
 
-      {/* Delete / Archive Confirmation Modal */}
+      {/* Redesigned Modal with Archive and Delete */}
       <Modal
         visible={showDeleteModal}
         transparent
         animationType="fade"
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isDark && { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, isDark && { color: colors.textPrimary }]}>
-              Delete Version {selectedVersion?.versionNo}
-            </Text>
-            <Text style={[styles.modalSub, isDark && { color: colors.textMuted }]}>
-              What would you like to do with this version?
-            </Text>
+          <View style={[styles.smallModalContent, isDark && { backgroundColor: colors.surface }]}>
+            {/* Header with Cross Icon */}
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { flex: 1, marginRight: 8 }, isDark && { color: colors.textPrimary }]}>
+                You want to Delete or Archive version {selectedVersion?.versionNo}?
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowDeleteModal(false);
+                  setDeleteReason('');
+                  setShowReasonError(false);
+                  setIsDeleting(false);
+                }}
+              >
+                <Ionicons name="close" size={24} color={isDark ? colors.textMuted : '#6b7280'} />
+              </TouchableOpacity>
+            </View>
+
+            {isDeleting && (
+              <View style={[styles.reasonContainer, { marginBottom: 12 }]}>
+                <Text style={[styles.reasonLabel, isDark && { color: colors.textPrimary }]}>Reason for deletion:</Text>
+                <TextInput
+                  style={[
+                    styles.reasonInput,
+                    isDark && { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border },
+                    showReasonError && { borderColor: '#ef4444', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2' }
+                  ]}
+                  placeholder="Enter reason..."
+                  placeholderTextColor={isDark ? colors.textMuted : '#94a3b8'}
+                  value={deleteReason}
+                  onChangeText={(text) => {
+                    setDeleteReason(text);
+                    if (showReasonError && text.trim()) {
+                      setShowReasonError(false);
+                    }
+                  }}
+                  multiline
+                />
+                {showReasonError && (
+                  <Text style={styles.errorText}>Entering reason is mandatory</Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.modalRow}>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#0EA5A4' }]}
                 onPress={onConfirmArchive}
               >
-                <Ionicons name="archive-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
+                <Ionicons name="archive-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
                 <Text style={styles.modalBtnText}>Archive</Text>
               </TouchableOpacity>
 
@@ -683,17 +792,10 @@ export default function EditorHistory() {
                 style={[styles.modalBtn, { backgroundColor: '#ef4444' }]}
                 onPress={onConfirmDelete}
               >
-                <Ionicons name="trash-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
+                <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
                 <Text style={styles.modalBtnText}>Delete</Text>
               </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => setShowDeleteModal(false)}
-            >
-              <Text style={[styles.modalCancelText, isDark && { color: colors.textMuted }]}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -879,11 +981,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 10,
   },
+  smallModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    alignSelf: 'center',
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    width: '100%',
+  },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#1f2937',
-    marginBottom: 8,
   },
   modalSub: {
     fontSize: 14,
@@ -909,14 +1025,52 @@ const styles = StyleSheet.create({
   modalBtnText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  modalCancel: {
-    padding: 12,
+  errorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+    textAlign: 'center',
   },
   modalCancelText: {
     color: '#6b7280',
     fontSize: 14,
     fontWeight: '600',
+  },
+  reasonContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  reasonLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  reasonInput: {
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 12,
+    height: 80,
+    textAlignVertical: 'top',
+    fontSize: 14,
+    backgroundColor: '#f9fafb',
+  },
+  submitBtn: {
+    backgroundColor: '#0EA5A4',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  submitBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
