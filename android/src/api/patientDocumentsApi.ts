@@ -389,22 +389,19 @@ export const signDocument = async (
 };
 
 /* ---------------------------------------------
-   Favourite/Unfavourite document version
+   Favourite document version
 --------------------------------------------- */
 export const favouritePatientDocument = async (
-  documentInstanceId: string,
-  isFavourite: boolean
+  documentInstanceId: string
 ) => {
   if (!documentInstanceId) {
     throw new Error('Missing documentInstanceId for favouriting');
   }
 
-  console.log(`🚀 [favouritePatientDocument] API called for ${documentInstanceId}, isFavourite: ${isFavourite}`);
+  console.log(`🚀 [favouritePatientDocument] API called for ${documentInstanceId}`);
 
   try {
-    const res = await api.post(`/PatientDocuments/${documentInstanceId}/favourite`, {
-      isFavourite
-    });
+    const res = await api.post(`/PatientDocuments/${documentInstanceId}/favourite`);
 
     console.log('✅ [favouritePatientDocument] API response:', res.data);
     return res.data;
@@ -419,6 +416,35 @@ export const favouritePatientDocument = async (
 };
 
 /* ---------------------------------------------
+   Unfavourite document version
+--------------------------------------------- */
+export const unfavouritePatientDocument = async (
+  documentInstanceId: string
+) => {
+  if (!documentInstanceId) {
+    throw new Error('Missing documentInstanceId for unfavouriting');
+  }
+
+  console.log(`🚀 [unfavouritePatientDocument] API called for ${documentInstanceId}`);
+
+  try {
+    const res = await api.delete(`/PatientDocuments/${documentInstanceId}/favourite`);
+
+    console.log('✅ [unfavouritePatientDocument] API response:', res.data);
+    return res.data;
+  } catch (error: any) {
+    console.error('❌ [unfavouritePatientDocument] API error:', {
+      message: error?.message,
+      status: error?.response?.status,
+      data: error?.response?.data,
+    });
+    throw error;
+  }
+};
+
+
+
+/* ---------------------------------------------
    Archive document version
 --------------------------------------------- */
 export const archivePatientDocument = async (
@@ -429,13 +455,29 @@ export const archivePatientDocument = async (
     throw new Error('Missing documentInstanceId for archiving');
   }
 
+  console.log('🚀 [archivePatientDocument] API called with:', {
+    documentInstanceId,
+    note,
+    timestamp: new Date().toISOString(),
+  });
+
   try {
     const res = await api.post(`/PatientDocuments/${documentInstanceId}/archive`, {
       note
     });
+
+    console.log('✅ [archivePatientDocument] API response:', {
+      status: res.status,
+      data: res.data,
+    });
+
     return res.data;
   } catch (error: any) {
-    console.error('❌ [archivePatientDocument] API error:', error);
+    console.error('❌ [archivePatientDocument] API error:', {
+      message: error?.message,
+      status: error?.response?.status,
+      data: error?.response?.data,
+    });
     throw error;
   }
 };
@@ -494,22 +536,38 @@ export const getArchivedPatientDocuments = async (
 --------------------------------------------- */
 export const deletePatientDocument = async (
   documentInstanceId: string,
-  reason: string
+  deletionReason: string
 ) => {
   if (!documentInstanceId) {
     throw new Error('Missing documentInstanceId for deletion');
   }
-  if (!reason) {
+  if (!deletionReason) {
     throw new Error('Reason is required for permanent deletion');
   }
 
+  console.log('🚀 [deletePatientDocument] API called with:', {
+    documentInstanceId,
+    deletionReason,
+    timestamp: new Date().toISOString(),
+  });
+
   try {
     const res = await api.delete(`/PatientDocuments/${documentInstanceId}`, {
-      data: { reason }
+      data: { deletionReason }
     });
+
+    console.log('✅ [deletePatientDocument] API response:', {
+      status: res.status,
+      data: res.data,
+    });
+
     return res.data;
   } catch (error: any) {
-    console.error('❌ [deletePatientDocument] API error:', error);
+    console.error('❌ [deletePatientDocument] API error:', {
+      message: error?.message,
+      status: error?.response?.status,
+      data: error?.response?.data,
+    });
     throw error;
   }
 };

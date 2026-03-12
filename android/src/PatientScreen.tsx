@@ -116,6 +116,7 @@ export default function PatientScreen() {
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const translateYAnim = useRef(new Animated.Value(16)).current;
   const heroPulse = useRef(new Animated.Value(1)).current;
+  const activeCardScale = useRef(new Animated.Value(1)).current;
 
   // small animation for vitals card
   const vitalsScale = useRef(new Animated.Value(0.96)).current;
@@ -369,6 +370,10 @@ export default function PatientScreen() {
     translateYAnim.setValue(16);
 
     Animated.parallel([
+      Animated.spring(activeCardScale, {
+        toValue: 0.97,
+        useNativeDriver: true,
+      }),
       Animated.spring(scaleAnim, {
         toValue: 1,
         useNativeDriver: true,
@@ -394,6 +399,11 @@ export default function PatientScreen() {
   const closePatientModal = () => {
     const finish = () => {
       Animated.parallel([
+        Animated.timing(activeCardScale, {
+          toValue: 1,
+          duration: 160,
+          useNativeDriver: true,
+        }),
         Animated.timing(scaleAnim, {
           toValue: 0.96,
           duration: 160,
@@ -662,7 +672,7 @@ export default function PatientScreen() {
       <Animated.View
         style={[
           isActive && {
-            // transform: [{ scale: activeCardScale }],
+            transform: [{ scale: activeCardScale }],
             opacity: 0.93,
           },
         ]}
@@ -750,7 +760,7 @@ export default function PatientScreen() {
             </View>
 
             <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={[styles.labelText, { color: isDark ? colors.textSecondary : '#64748B' }]}>Primary concern</Text>
+              <Text style={[styles.labelText, { color: isDark ? colors.textSecondary : '#64748B' }]}>Status</Text>
               <Text
                 style={[styles.diagnosisText, { color: colors.textPrimary }]}
                 numberOfLines={2}
@@ -759,7 +769,7 @@ export default function PatientScreen() {
                 {item.diagnosis}
               </Text>
 
-              <Text style={[styles.labelText, { marginTop: 8, color: isDark ? colors.textSecondary : '#64748B' }]}>Doctor</Text>
+              <Text style={[styles.labelText, { marginTop: 8, color: isDark ? colors.textSecondary : '#64748B' }]}>Admitted Under</Text>
               <Text style={[styles.smallText, { color: colors.textPrimary }]}>{item.doctorName}</Text>
             </View>
           </View>
@@ -1214,7 +1224,7 @@ export default function PatientScreen() {
                   <View style={styles.infoGrid}>
                     <InfoTile label="Room / Location" value={selectedPatient.room} />
                     <InfoTile label="Admit Date" value={formatDate(selectedPatient.admitDate)} />
-                    <InfoTile label="Primary Concern" value={selectedPatient.diagnosis} lines={2} />
+                    <InfoTile label="Status" value={selectedPatient.diagnosis} lines={2} />
                     <InfoTile label="Doctor" value={selectedPatient.doctorName} />
                     {/* Commented out RxNotes button as requested */}
 

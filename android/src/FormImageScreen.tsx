@@ -107,9 +107,8 @@ const FormImageScreen = () => {
 
   // ✅ FIX: Use a memoized storage key that is unique per instance
   const perFormStorageKey = useMemo(() => {
-    // ✅ CRITICAL FIX: Prioritize dynamic construction IF we have a documentInstanceId (state)
-    // This ensures that clicking "New" (which updates documentInstanceId) correctly changes the key
-    // even if params.storageKey holds the old one.
+    // 🟢 CRITICAL: Always use the instance-specific key if we have an ID.
+    // This prevents different versions from sharing the same local storage slot.
     if (documentInstanceId) {
       const safePatient = (patientName || 'Unknown').replace(/\s+/g, '_');
       const safeForm = (formName || 'Document').replace(/\s+/g, '_');
@@ -118,12 +117,11 @@ const FormImageScreen = () => {
       return `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
     }
 
-    // If navigation provided a specific key (e.g. from History) and we don't have an instance yet, use it
+    // Fallback for cases without an instance context (e.g., initial entry)
     if (params.storageKey && params.storageKey !== 'DoctorApp:pagesBitmaps:v1') {
       return params.storageKey;
     }
 
-    // No instance context yet - return null to prevent loading stale global data
     return null;
   }, [params.storageKey, documentInstanceId, patientName, formName, params.admissionNo, patientId]);
 
@@ -398,21 +396,21 @@ const FormImageScreen = () => {
       // Update global states for Notes/Stickers from API (Merge by pageId)
       console.log(`[OVERLAY] Merging API data: ${allFetchedNotes.length} notes, ${allFetchedStickers.length} stickers`);
 
-      if (allFetchedNotes.length > 0) {
-        setVoiceNotes(prev => {
-          const fetchedPageIds = new Set(allFetchedNotes.map(n => n.pageId).filter(id => !!id));
-          const otherNotes = prev.filter(n => !fetchedPageIds.has(n.pageId));
-          return [...otherNotes, ...allFetchedNotes];
-        });
-      }
+      // 🟢 FIX: Always update Notes/Stickers states, clearing them if API returns nothing
+      const fetchedPageIds = new Set([...allFetchedNotes, ...allFetchedStickers].map(x => x.pageId).filter(id => !!id));
 
-      if (allFetchedStickers.length > 0) {
-        setImageStickers(prev => {
-          const fetchedPageIds = new Set(allFetchedStickers.map(s => s.pageId).filter(id => !!id));
-          const otherStickers = prev.filter(s => !fetchedPageIds.has(s.pageId));
-          return [...otherStickers, ...allFetchedStickers];
-        });
-      }
+      setVoiceNotes(prev => {
+        // If we have new data, replace overlays for those pages; otherwise preserve if they weren't fetched?
+        // Actually, for a clean sync, we should only keep local changes if we haven't saved them.
+        // But for "New" form, we want a total wipe.
+        const otherNotes = prev.filter(n => !fetchedPageIds.has(n.pageId));
+        return [...otherNotes, ...allFetchedNotes];
+      });
+
+      setImageStickers(prev => {
+        const otherStickers = prev.filter(s => !fetchedPageIds.has(s.pageId));
+        return [...otherStickers, ...allFetchedStickers];
+      });
 
       // Update all pages with overlay data
       setPages(prev =>
@@ -500,7 +498,7 @@ const FormImageScreen = () => {
       }
 
       const onBackPress = () => {
-        navigation.goBack();
+        navigation.navigate('FormType', { ...params });
         return true;
       };
 
@@ -723,8 +721,17 @@ const FormImageScreen = () => {
                 setVoiceNotes([]);
                 setImageStickers([]);
                 setPageMeta([]);
-                setEditedPages(0); // 🟢 RESET EDITED PAGES
+                setEditedPages(0);
                 overlayLoadedRef.current = false;
+
+                // ✅ FIX: Wipe navigation params to prevent hooks from sticking to old keys/data
+                navigation.setParams({
+                  storageKey: undefined,
+                  documentInstanceId: undefined,
+                  savedStrokes: undefined,
+                  voiceNotes: undefined,
+                  imageStickers: undefined
+                });
 
                 setDocumentInstanceId(response.documentInstanceId);
                 setShouldReload(true);
@@ -1088,7 +1095,7 @@ const FormImageScreen = () => {
         ]}>
           <TouchableOpacity
             style={[styles.navButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('FormType', { ...params })}
           >
             <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>

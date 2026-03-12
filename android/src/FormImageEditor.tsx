@@ -38,7 +38,7 @@ import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Slider from '@react-native-community/slider';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from './theme/ThemeContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LayoutChangeEvent } from 'react-native';
@@ -1589,44 +1589,52 @@ export default function FormImageEditor() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
 
-  // State for critical params (loaded from params or storage)
-  const [formKey, setFormKey] = useState<string | undefined>(route.params?.formKey);
-  const [apiPages, setApiPages] = useState<PageData[] | undefined>(route.params?.apiPages);
-  const [documentId, setDocumentId] = useState<string | undefined>(route.params?.documentId);
+  // ✅ FIX: Maintain state for local updates (auto-recovery), but sync with params for resets
   const [documentInstanceId, setDocumentInstanceId] = useState<string | undefined>(route.params?.documentInstanceId);
+  const apiPages = route.params?.apiPages;
 
-  // Storage keys state
-  const [storageKeyParam, setStorageKeyParam] = useState<string | undefined>(route.params?.storageKey);
-  const [uiKeyParam, setUiKeyParam] = useState<string | undefined>(route.params?.uiStorageKey);
+  // Metadata directly from params
+  const formKey = route.params?.formKey;
+  const documentId = route.params?.documentId;
+  const storageKeyParam = route.params?.storageKey;
+  const uiKeyParam = route.params?.uiStorageKey;
+  const patientAge = route.params?.patientAge;
+  const patientGender = route.params?.patientGender;
+  const doctorName = route.params?.doctorName;
+  const doctorRegNo = route.params?.doctorRegNo;
+  const doctorSpeciality = route.params?.doctorSpeciality;
+  const admissionNo = route.params?.admissionNo;
+  const patientName = route.params?.patientName;
+  const patientId = route.params?.patientId;
+  const patientRoom = route.params?.patientRoom;
+  const attendingDoctor = route.params?.attendingDoctor;
+  const admitDate = route.params?.admitDate;
+  const editedPages = route.params?.editedPages || 0;
 
-  // ✅ FIX: Better derivation of STORAGE_KEY if not provided directly
-  const getDynamicStorageKey = () => {
+  // Track the instance ID we last processed to avoid redundant resets
+  const lastProcessedInstanceIdRef = useRef<string | undefined>(undefined);
+
+  // ✅ FIX: Reactive derivation of STORAGE_KEY from params
+  const STORAGE_KEY = useMemo(() => {
+    // 🟢 CRITICAL: Prioritize dynamic key with instance ID to guarantee version uniqueness
+    if (documentInstanceId) {
+      const safePatient = (patientName || 'Unknown').replace(/\s+/g, '_');
+      const safeForm = (route.params?.formName || 'Document').replace(/\s+/g, '_');
+      const suffix = (admissionNo || patientId) ? `:${admissionNo || patientId}` : '';
+      const instSuffix = `:${documentInstanceId}`;
+      return `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
+    }
+
     if (storageKeyParam) return storageKeyParam;
 
-    // Fallback derivation similar to FormType.tsx
+    // Fallback (legacy/backup)
     const safePatient = (patientName || 'Unknown').replace(/\s+/g, '_');
     const safeForm = (route.params?.formName || 'Document').replace(/\s+/g, '_');
     const suffix = (admissionNo || patientId) ? `:${admissionNo || patientId}` : '';
-    const instSuffix = documentInstanceId ? `:${documentInstanceId}` : '';
-    return `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
-  };
+    return `DoctorApp:${safePatient}:${safeForm}${suffix}:pagesBitmaps:v1`;
+  }, [storageKeyParam, patientName, route.params?.formName, admissionNo, patientId, documentInstanceId]);
 
-  const STORAGE_KEY = getDynamicStorageKey();
   const STORAGE_UI_KEY = uiKeyParam ?? DEFAULT_UI_KEY;
-
-  // Metadata state
-  const [patientAge, setPatientAge] = useState<number | undefined>(route.params?.patientAge);
-  const [patientGender, setPatientGender] = useState<string | undefined>(route.params?.patientGender);
-  const [doctorName, setDoctorName] = useState<string | undefined>(route.params?.doctorName);
-  const [doctorRegNo, setDoctorRegNo] = useState<string | undefined>(route.params?.doctorRegNo);
-  const [doctorSpeciality, setDoctorSpeciality] = useState<string | undefined>(route.params?.doctorSpeciality);
-  const [admissionNo, setAdmissionNo] = useState<string | undefined>(route.params?.admissionNo);
-  const [patientName, setPatientName] = useState<string | undefined>(route.params?.patientName);
-  const [patientId, setPatientId] = useState<string | undefined>(route.params?.patientId);
-  const [patientRoom, setPatientRoom] = useState<string | undefined>(route.params?.patientRoom);
-  const [attendingDoctor, setAttendingDoctor] = useState<string | undefined>(route.params?.attendingDoctor);
-  const [admitDate, setAdmitDate] = useState<string | undefined>(route.params?.admitDate);
-  const [editedPages, setEditedPages] = useState<number>(route.params?.editedPages || 0);
 
   const initialStrokesFromParams = Array.isArray(route.params?.savedStrokes)
     ? route.params.savedStrokes
@@ -1728,6 +1736,55 @@ export default function FormImageEditor() {
   const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>(initialVoiceNotesFromParams);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [lastTouchPos, setLastTouchPos] = useState<{ x: number, y: number } | null>(null);
+  const [lastTouchPageIndex, setLastTouchPageIndex] = useState<number | null>(null);
+
+  // ✅ FIX: Hard reset editor state whenever focus changes and a new instance ID is detected
+  useFocusEffect(
+    useCallback(() => {
+      const currentId = route.params?.documentInstanceId;
+
+      if (currentId && currentId !== lastProcessedInstanceIdRef.current) {
+        console.log('🧼 HARD RESET: New document instance detected on focus:', currentId);
+
+        // 1. Flush memory refs
+        actionStackRef.current = {};
+        unifiedRedoStackRef.current = {};
+        dirtyPagesRef.current.clear();
+        pageSnapshotsRef.current.clear();
+        hasUnsavedChangesRef.current = false;
+        previousOverlaysLoadedRef.current = false;
+        lastProcessedInstanceIdRef.current = currentId;
+
+        // 2. Reset states to initial param values
+        setDocumentInstanceId(currentId); // Sync local state
+        const freshNotes = Array.isArray(route.params?.voiceNotes) ? route.params.voiceNotes : [];
+        setVoiceNotes(freshNotes);
+
+        const freshStickers = Array.isArray(route.params?.imageStickers) ? route.params.imageStickers : [];
+        setImageStickers(freshStickers);
+
+        const freshStrokes = Array.isArray(route.params?.savedStrokes) ? route.params.savedStrokes : null;
+        if (freshStrokes && freshStrokes.length === IMAGES.length) {
+          setSavedMeta(freshStrokes.map((m: any) => ({ bitmapPath: m?.bitmapPath ?? null })));
+        } else {
+          setSavedMeta(IMAGES.map(() => ({ bitmapPath: null })));
+        }
+
+        // 3. Clear transient UI state & overlays map
+        setPreviousOverlays(new Map()); // 🟢 CRITICAL: Clear old drawings map
+        setEditingNoteId(null);
+        setEditingStickerId(null);
+        setLastTouchPos(null);
+        setLastTouchPageIndex(null);
+        setSaveStatus('idle');
+
+        // 4. Scroll to top
+        if (IMAGES.length > 0) {
+          scrollToPage(0);
+        }
+      }
+    }, [route.params?.documentInstanceId, route.params?.voiceNotes, route.params?.imageStickers, route.params?.savedStrokes, IMAGES.length])
+  );
 
   // New Params for Stickers
   // Params now managed via state above
@@ -2242,7 +2299,7 @@ export default function FormImageEditor() {
     const trimmed = text.trim();
     if (!trimmed) return;
 
-    const pageIndex = getCurrentPageIndex();
+    const pageIndex = lastTouchPageIndex !== null ? lastTouchPageIndex : getCurrentPageIndex();
     const currentPage = IMAGES[pageIndex];
 
     // Standard width to match the "Add text" modal width (SCREEN_W * 0.8 - padding)
@@ -2255,9 +2312,10 @@ export default function FormImageEditor() {
       pageIndex,
       text: trimmed,
       color: color,
-      // Centering the box on the last touch position using the standardized width
-      x: lastTouchPos ? clamp(lastTouchPos.x - (initialWidth / 2), 5, SCREEN_W - initialWidth - 5) : SCREEN_W * 0.15,
-      y: lastTouchPos ? clamp(lastTouchPos.y - 30, 5, PAGE_HEIGHT - 65) : PAGE_HEIGHT * 0.15,
+      // Adjusted: subtract more from Y to move it up (fixing "little down" issue)
+      // And slightly more from X to make it feel more centered under the finger
+      x: lastTouchPos ? clamp(lastTouchPos.x - 20, 5, SCREEN_W - initialWidth - 5) : SCREEN_W * 0.15,
+      y: lastTouchPos ? clamp(lastTouchPos.y - 45, 5, PAGE_HEIGHT - 65) : PAGE_HEIGHT * 0.15,
       boxWidth: initialWidth,
       boxHeight: 60,
       fontSize: 14,
@@ -2276,7 +2334,7 @@ export default function FormImageEditor() {
   };
 
   const addImageSticker = (stickerType: 'patient' | 'doctor', overridePos?: { x: number, y: number }) => {
-    const pageIndex = getCurrentPageIndex();
+    const pageIndex = lastTouchPageIndex !== null ? lastTouchPageIndex : getCurrentPageIndex();
     const currentPage = IMAGES[pageIndex];
 
     let x = SCREEN_W * 0.7;
@@ -2325,10 +2383,9 @@ export default function FormImageEditor() {
       id: `${Date.now()}-${Math.random()}`,
       pageId: currentPage?.pageId,
       pageIndex,
-      // If we have a fresh touch, use it. Stickers are large (180-220px), 
-      // so centering them on touch point (T.x - width/2) feels most natural.
-      x: overridePos ? overridePos.x : (lastTouchPos ? lastTouchPos.x - (stickerType === 'patient' ? 110 : 90) : x),
-      y: overridePos ? overridePos.y : (lastTouchPos ? lastTouchPos.y - (stickerType === 'patient' ? 60 : 45) : y),
+      // Adjusted: Subtract more from X and center vertically (height/2) to fix accuracy
+      x: overridePos ? overridePos.x : (lastTouchPos ? clamp(lastTouchPos.x - 40, 5, SCREEN_W - (stickerType === 'patient' ? 220 : 180) - 5) : x),
+      y: overridePos ? overridePos.y : (lastTouchPos ? clamp(lastTouchPos.y - (stickerType === 'patient' ? 60 : 45), 5, PAGE_HEIGHT - (stickerType === 'patient' ? 120 : 90) - 5) : y),
       scale: 1,
       width: stickerType === 'patient' ? 220 : 180,
       height: stickerType === 'patient' ? 120 : 90,
@@ -2742,7 +2799,6 @@ export default function FormImageEditor() {
 
   const PALETTE = [
     '#073694ff',
-
     '#066666',
     '#B13120',
     '#CC3F5C',
@@ -2751,7 +2807,7 @@ export default function FormImageEditor() {
     '#C8A31F',
     '#4F8B45',
     '#008080',
-    '#0069A8',
+    // '#0069A8',
     '#5870C2',
     '#7A52B3',
     '#555555',
@@ -3661,7 +3717,7 @@ export default function FormImageEditor() {
         {/* Top row: Back button on left, SAVE on right */}
         <View style={styles.topRow}>
           <TouchableOpacity
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('FormImageScreen', { ...route.params })}
             style={[styles.backButtonCircular, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
             disabled={saveStatus === 'saving'}
           >
@@ -4112,9 +4168,10 @@ export default function FormImageEditor() {
                         style={[styles.canvasContainer, { opacity: pagesLoaded[pageIndex] ? 1 : 0 }]}
                         onTouchStart={(e) => {
                           const { locationX, locationY } = e.nativeEvent;
-                          // If it's a single touch (not zoom), track pos for Add Text
+                          // If it's a single touch (not zoom), track pos and page index for Add Text/Stickers
                           if (!multiTouchActive) {
                             setLastTouchPos({ x: locationX, y: locationY });
+                            setLastTouchPageIndex(pageIndex);
                           }
 
                           if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
@@ -4278,18 +4335,18 @@ export default function FormImageEditor() {
       )}
 
       {/* 🔍 Zoom +/- buttons */}
-      <View style={[styles.zoomFabContainer, { bottom: (insets.bottom ?? 0) + 24 + 72 }]}>
+      {/* <View style={[styles.zoomFabContainer, { bottom: (insets.bottom ?? 0) + 24 + 72 }]}>
         <TouchableOpacity style={styles.zoomFabButton} activeOpacity={0.8} onPress={handleZoomInPress} disabled={saveStatus === 'saving'}>
           <Ionicons name="add" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity style={[styles.zoomFabButton, { marginTop: 8 }]} activeOpacity={0.8} onPress={handleZoomOutPress} disabled={saveStatus === 'saving'}>
           <Ionicons name="remove" size={20} color="#fff" />
         </TouchableOpacity>
-      </View>
+      </View> */}
 
       {/* 🔊 floating mic FAB */}
       <TouchableOpacity
-        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 24 }, !writingEnabled && styles.toolsDisabled, isDark && { backgroundColor: '#0EA5A4' }]}
+        style={[styles.voiceFab, { bottom: (insets.bottom ?? 0) + 60 }, !writingEnabled && styles.toolsDisabled, isDark && { backgroundColor: '#0EA5A4' }]}
         activeOpacity={0.8}
         onPress={handleVoiceFabPress}
         disabled={saveStatus === 'saving' || !writingEnabled}
@@ -5358,4 +5415,3 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.5,
   },
-});

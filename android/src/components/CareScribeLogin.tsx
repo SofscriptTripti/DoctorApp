@@ -16,8 +16,10 @@ import {
   TouchableWithoutFeedback,
   Dimensions,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { login } from '../api/authApi';
 import { saveAuth, getAccessToken, getUserInfo } from '../storage/authStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -81,6 +83,15 @@ export default function CareScribeLogin({ navigation }: any) {
   const [pwdError, setPwdError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // OTP States
+  const [otpVisible, setOtpVisible] = useState(false);
+  const [otp, setOtp] = useState(['', '', '', '']);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [tempAuthData, setTempAuthData] = useState<any>(null);
+
+  const otpInputs = useRef<Array<TextInput | null>>([]);
 
   // Auto-login check
   useEffect(() => {
@@ -165,18 +176,12 @@ export default function CareScribeLogin({ navigation }: any) {
         'HOSP1'
       );
 
-      await saveAuth(response.accessToken, response.refreshToken, response.userInfo);
 
-      await saveUserContext(
-        response.userInfo.userId,
-        response.userInfo.tenantCode,
-        response.userInfo.department || 'Unavailable' // Save department
-      );
-
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'PatientScreen' }],
-      });
+      // Store response and show OTP modal instead of immediate navigation
+      setTempAuthData(response);
+      setOtpVisible(true);
+      setOtp(['', '', '', '']); // Reset OTP on open
+      setOtpError(null); // Clear previous errors
     } catch (error: any) {
       console.error('Login error', error);
       Alert.alert(
@@ -186,6 +191,63 @@ export default function CareScribeLogin({ navigation }: any) {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOtpChange = (value: string, index: number) => {
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+    if (otpError) setOtpError(null); // Clear error on typing
+
+    // Auto-focus next input
+    if (value && index < 3) {
+      otpInputs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
+      otpInputs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const otpString = otp.join('');
+    if (otpString.length === 0) {
+      setOtpError('Filling OTP is Mandatory.');
+      return;
+    }
+    if (otpString.length < 4) {
+      setOtpError('Please fill all 4 digits.');
+      return;
+    }
+
+    try {
+      setOtpLoading(true);
+      // Simulate verification delay
+      await new Promise(resolve => setTimeout(() => resolve(null), 800));
+
+      // Proceed with saving auth and navigation
+      const response = tempAuthData;
+      await saveAuth(response.accessToken, response.refreshToken, response.userInfo);
+
+      await saveUserContext(
+        response.userInfo.userId,
+        response.userInfo.fullName, // Pass fullName
+        response.userInfo.tenantCode,
+        response.userInfo.department || 'Unavailable'
+      );
+
+      setOtpVisible(false);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'PatientScreen' }],
+      });
+    } catch (error) {
+      Alert.alert('Verification Failed', 'Invalid OTP. Please try again.');
+    } finally {
+      setOtpLoading(false);
     }
   };
 
@@ -350,6 +412,67 @@ export default function CareScribeLogin({ navigation }: any) {
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        {/* OTP Verification Modal */}
+        <Modal
+          visible={otpVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOtpVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <Animated.View style={[styles.otpCard, bg.otpCard]}>
+              <TouchableOpacity
+                style={styles.otpCloseButton}
+                onPress={() => setOtpVisible(false)}
+              >
+                <Ionicons name="close" size={24} color={isDark ? '#94A3B8' : '#64748B'} />
+              </TouchableOpacity>
+              <View style={styles.otpHeader}>
+                {/* <Text style={[styles.otpTitle, bg.text]}>Verify Identity</Text> */}
+                <Text style={[styles.otpSub, bg.subText]}>
+                  Please enter the 4-digit code sent to your registered Email ID.
+                </Text>
+              </View>
+
+              <View style={styles.otpInputRow}>
+                {otp.map((digit, idx) => (
+                  <TextInput
+                    key={idx}
+                    ref={(ref) => { otpInputs.current[idx] = ref; }}
+                    style={[styles.otpBox, bg.otpBox, (digit ? styles.otpBoxActive : null)]}
+                    keyboardType="number-pad"
+                    maxLength={1}
+                    value={digit}
+                    onChangeText={(val) => handleOtpChange(val, idx)}
+                    onKeyPress={(e) => handleOtpKeyPress(e, idx)}
+                    placeholder="•"
+                    placeholderTextColor={isDark ? '#334155' : '#CBD5E1'}
+                  />
+                ))}
+              </View>
+
+              <View style={styles.otpFooter}>
+                {!!otpError && (
+                  <Text style={styles.otpErrorText}>{otpError}</Text>
+                )}
+                <TouchableOpacity
+                  style={[styles.otpButton, { backgroundColor: otpLoading ? '#94A3B8' : BRAND.primary }]}
+                  onPress={handleVerifyOtp}
+                  disabled={otpLoading}
+                >
+                  {otpLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.otpButtonText}>Confirm & Continue</Text>
+                  )}
+                </TouchableOpacity>
+
+
+              </View>
+            </Animated.View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );
@@ -606,6 +729,100 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '500',
   },
+
+  // OTP Modal Styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  otpCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 30,
+    alignItems: 'center',
+    elevation: 20,
+    shadowColor: '#0EA5A4',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+  },
+  otpCloseButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    padding: 4,
+    zIndex: 10,
+  },
+  otpHeader: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  otpTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  otpSub: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 10,
+  },
+  otpInputRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  otpBox: {
+    width: 56,
+    height: 64,
+    borderRadius: 16,
+    borderWidth: 2,
+    textAlign: 'center',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  otpBoxActive: {
+    borderColor: BRAND.primary,
+    backgroundColor: 'rgba(14, 165, 164, 0.05)',
+  },
+  otpFooter: {
+    width: '100%',
+  },
+  otpButton: {
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+    elevation: 4,
+  },
+  otpButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  otpCancel: {
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  otpCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  otpErrorText: {
+    color: BRAND.danger,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
 });
 
 // Light Theme
@@ -624,6 +841,12 @@ const stylesLight = StyleSheet.create({
   smallText: { color: '#64748B' },
   socialBtn: { borderColor: '#E2E8F0' },
   orLine: { backgroundColor: '#E2E8F0' },
+  otpCard: { backgroundColor: '#FFFFFF' },
+  otpBox: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    color: '#0F172A'
+  },
 });
 
 // Dark Theme
@@ -642,4 +865,10 @@ const stylesDark = StyleSheet.create({
   smallText: { color: '#94A3B8' },
   socialBtn: { borderColor: '#334155' },
   orLine: { backgroundColor: '#334155' },
+  otpCard: { backgroundColor: '#020617', borderColor: 'rgba(14,165,164,0.3)', borderWidth: 1 },
+  otpBox: {
+    backgroundColor: '#0F172A',
+    borderColor: '#334155',
+    color: '#F1F5F9'
+  },
 });

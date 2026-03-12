@@ -65,10 +65,6 @@ export const LightColors: ColorTheme = {
     modalBackdrop: 'rgba(15, 23, 42, 0.35)',
     shadow: '#000000',
 };
-
-/* ─────────────────────────────
-   DARK THEME (MATCHES IMAGE 🔥)
-───────────────────────────── */
 export const DarkColors: ColorTheme = {
     background: '#0B1220',          // deep navy (app bg)
     surface: '#111827',             // cards / sheets

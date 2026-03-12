@@ -21,7 +21,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from './theme/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getPatientDocumentVersions, getpagewiseoverlay, favouritePatientDocument, archivePatientDocument, deletePatientDocument } from './api/patientDocumentsApi';
+import { getPatientDocumentVersions, getpagewiseoverlay, favouritePatientDocument, unfavouritePatientDocument, archivePatientDocument, deletePatientDocument } from './api/patientDocumentsApi';
 import { getDocumentPages, getDocumentPageImage } from './api/documentsApi';
 import NativeDrawingView from './components/NativeDrawingView';
 
@@ -344,20 +344,19 @@ export default function EditorHistory() {
       const versionItems = Array.isArray(res) ? res : [];
       setHistory(versionItems);
 
-      // Initialize starredIds from API response
-      const apiStarred = new Set<string>();
-      versionItems.forEach((it: ApiVersionItem) => {
-        if (it.isFavourite) {
-          apiStarred.add(it.documentInstanceId);
-        }
-      });
-      if (apiStarred.size > 0) {
-        setStarredIds(prev => {
-          const combined = new Set(prev);
-          apiStarred.forEach(id => combined.add(id));
-          return combined;
+      // Sync starredIds exactly with API response
+      setStarredIds(prev => {
+        const newSet = new Set(prev);
+        versionItems.forEach((it: ApiVersionItem) => {
+          if (it.isFavourite) {
+            newSet.add(it.documentInstanceId);
+          } else {
+            newSet.delete(it.documentInstanceId);
+          }
         });
-      }
+        return newSet;
+      });
+      console.log('⭐ [EditHistory] Merged Starred IDs from API');
 
       // Also fetch the cover image if not fetched yet
       loadCoverImage(documentCd);
@@ -402,33 +401,37 @@ export default function EditorHistory() {
 
   const toggleStar = async (item: ApiVersionItem) => {
     const id = item.documentInstanceId;
+    const isCurrentlyStarred = starredIds.has(id);
+    const targetStatus = !isCurrentlyStarred; // Explicitly determine target status
+
+    console.log(`⭐ [EditHistory] Toggling star for ${id}: ${isCurrentlyStarred} -> ${targetStatus}`);
+
+    // Persist UI state immediately
     const newStarred = new Set(starredIds);
-    let msg = '';
-
-    if (newStarred.has(id)) {
-      newStarred.delete(id);
-      msg = `Version ${item.versionNo} form unstarred successfully`;
-    } else {
+    if (targetStatus) {
       newStarred.add(id);
-      msg = `Version ${item.versionNo} form starred successfully`;
+    } else {
+      newStarred.delete(id);
     }
-
     setStarredIds(newStarred);
+
+    const msg = targetStatus
+      ? `Version ${item.versionNo} form starred successfully`
+      : `Version ${item.versionNo} form unstarred successfully`;
     showToast(msg);
 
     try {
-      // Call API
-      const response = await favouritePatientDocument(id, !starredIds.has(id));
-
-      // Update local storage for persistence across sessions if needed, 
-      // but the source of truth should be the API response on load.
-      await AsyncStorage.setItem(STARRED_KEY, JSON.stringify(Array.from(newStarred)));
-
-      if (response && response.message) {
-        // showToast(response.message); // Use API message if preferred
+      // Call API with explicit targetStatus
+      if (targetStatus) {
+        await favouritePatientDocument(id);
+      } else {
+        await unfavouritePatientDocument(id);
       }
+
+      // Persist to local storage
+      await AsyncStorage.setItem(STARRED_KEY, JSON.stringify(Array.from(newStarred)));
     } catch (e) {
-      console.warn('Failed to save starred status', e);
+      console.warn('❌ [EditHistory] Failed to update favorite status', e);
       // Rollback UI state on error
       setStarredIds(starredIds);
       showToast('Failed to update favorite status');
@@ -452,7 +455,8 @@ export default function EditorHistory() {
     const id = selectedVersion.documentInstanceId;
     try {
       console.log('🗑️ [EditHistory] Deleting version:', selectedVersion.versionNo, 'Reason:', deleteReason);
-      await deletePatientDocument(id, deleteReason);
+      const res = await deletePatientDocument(id, deleteReason);
+      console.log('✅ [EditHistory] Delete version success:', res);
 
       const newDeleted = new Set(deletedIds);
       newDeleted.add(id);
@@ -465,8 +469,8 @@ export default function EditorHistory() {
 
       await AsyncStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(newDeleted)));
       loadHistory();
-    } catch (e) {
-      console.warn('Failed to delete version', e);
+    } catch (e: any) {
+      console.error('❌ [EditHistory] Failed to delete version:', e);
       showToast('Failed to delete version');
     }
   };
@@ -476,7 +480,9 @@ export default function EditorHistory() {
     const id = selectedVersion.documentInstanceId;
 
     try {
-      await archivePatientDocument(id, 'Archived from History');
+      console.log('📦 [EditHistory] Archiving version:', selectedVersion.versionNo);
+      const res = await archivePatientDocument(id, 'Archived from History');
+      console.log('✅ [EditHistory] Archive version success:', res);
 
       const newArchived = new Set(archivedIds);
       newArchived.add(id);
@@ -489,8 +495,8 @@ export default function EditorHistory() {
 
       await AsyncStorage.setItem(ARCHIVED_KEY, JSON.stringify(Array.from(newArchived)));
       loadHistory();
-    } catch (e) {
-      console.warn('Failed to archive version', e);
+    } catch (e: any) {
+      console.error('❌ [EditHistory] Failed to archive version:', e);
       showToast('Failed to archive version');
     }
   };
@@ -572,7 +578,7 @@ export default function EditorHistory() {
     const instSuffix = `:${item.documentInstanceId}`;
     const versionStorageKey = `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
 
-    navigation.push('FormImageScreen', {
+    navigation.navigate('FormImageScreen', {
       ...route.params,
       storageKey: versionStorageKey,
       documentInstanceId: item.documentInstanceId,
@@ -599,7 +605,7 @@ export default function EditorHistory() {
       <View style={[styles.header, isDark && { backgroundColor: colors.surface, elevation: 0 }]}>
         <TouchableOpacity
           style={[styles.backButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('FormImageScreen', { ...route.params })}
         >
           <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
         </TouchableOpacity>
