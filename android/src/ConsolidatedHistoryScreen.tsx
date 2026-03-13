@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import moment from 'moment';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from './theme/ThemeContext';
 import { getDeletedPatientDocuments, getPatientDocumentArchiveLog } from './api/patientDocumentsApi';
 
@@ -25,11 +25,8 @@ const ConsolidatedHistoryScreen = () => {
     const [archiveLogs, setArchiveLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchHistory();
-    }, []);
 
-    const fetchHistory = async () => {
+    const fetchHistory = useCallback(async () => {
         setLoading(true);
         console.log('📝 [ConsolidatedHistory] Fetching for:', { patientNo, admissionNo, documentCd });
         try {
@@ -59,7 +56,13 @@ const ConsolidatedHistoryScreen = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [patientNo, admissionNo, documentCd, archivedVersions]);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchHistory();
+        }, [fetchHistory])
+    );
 
     const renderLogItem = (item: any, type: 'deleted' | 'archive') => {
         const isDeleted = type === 'deleted';
