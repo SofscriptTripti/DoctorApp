@@ -24,8 +24,6 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getpagewiseoverlay,
-  createPatientDocument,
-  NewVersion
 } from './api/patientDocumentsApi';
 import { Buffer } from 'buffer';
 import NativeDrawingView from './components/NativeDrawingView';
@@ -35,14 +33,11 @@ const NAME_STICKER_IMAGE = require('./Images/NameStick.jpg');
 const DOCTOR_STICKER_SOURCE = require('./Images/Doctor_Sticker.jpg');
 
 /* ---------------- CONSTS ---------------- */
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const DISPLAY_PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
-
-// NEW: Fixed Logical Coordinate Space
 const FORM_WIDTH = 800;
 const FORM_HEIGHT = 1131;
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const DISPLAY_PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
 const formScale = Math.min(SCREEN_W / FORM_WIDTH, DISPLAY_PAGE_HEIGHT / FORM_HEIGHT);
-const PAGE_HEIGHT = FORM_HEIGHT; // Alias for backward compatibility in logic
 
 // AsyncStorage keys
 const STORAGE_KEYS = {
@@ -96,7 +91,7 @@ const tryParseStrokesJson = (base64?: string): string | null => {
 };
 
 /* ================= SCREEN ================= */
-const FormImageScreen = () => {
+const ReadOnlyFormView = () => {
   const { colors, isDark } = useTheme();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -150,9 +145,7 @@ const FormImageScreen = () => {
   const [shouldReload, setShouldReload] = useState(true);
   const [hasDocumentContext, setHasDocumentContext] = useState(false);
   const [hasValidImages, setHasValidImages] = useState(false);
-  const [editedPages, setEditedPages] = useState<number>(params.editedPages || 0);
   const [loadingOverlays, setLoadingOverlays] = useState(false);
-  const [isCreatingDocument, setIsCreatingDocument] = useState(false);
   const overlayLoadedRef = useRef(false);
 
   const loadedDocumentInstanceIdRef = useRef<string | null>(null);
@@ -168,61 +161,7 @@ const FormImageScreen = () => {
   }, [params.admissionNo, params.patientId, params.documentId, storedDocumentId]);
 
 
-  /* ---------- CREATE DOCUMENT INSTANCE ---------- */
-  const createNewDocumentInstance = useCallback(async (): Promise<string | null> => {
-    try {
-      setIsCreatingDocument(true);
-
-      // Get required data from AsyncStorage
-      const [[, patientNo], [, admissionNo], [, documentId], [, documentCd]] =
-        await AsyncStorage.multiGet([
-          STORAGE_KEYS.patientId,
-          STORAGE_KEYS.admissionNo,
-          STORAGE_KEYS.documentId,
-          STORAGE_KEYS.documentCd,
-        ]);
-
-      console.log('Creating document instance with:', {
-        patientNo,
-        admissionNo,
-        documentId,
-        documentCd
-      });
-
-      // Validate required data
-      if (!patientNo || !admissionNo || !documentCd) {
-        console.error('Missing required data for creating document instance');
-        Alert.alert('Error', 'Missing patient info.');
-        return null;
-      }
-
-      // Call API to create document instance
-      const response = await createPatientDocument(
-        patientNo,
-        admissionNo,
-        documentCd
-      );
-
-      console.log('Document instance created:', response);
-
-      if (response?.documentInstanceId) {
-        // Save using UNIQUE KEY
-        const uniqueKey = getInstanceStorageKey();
-        await AsyncStorage.setItem(uniqueKey, response.documentInstanceId);
-
-        console.log('Saved documentInstanceId to:', uniqueKey, '=', response.documentInstanceId);
-        return response.documentInstanceId;
-      } else {
-        console.error('No documentInstanceId in API response');
-        return null;
-      }
-    } catch (error: any) {
-      console.error('Failed to create document instance:', error);
-      return null;
-    } finally {
-      setIsCreatingDocument(false);
-    }
-  }, [navigation, getInstanceStorageKey]);
+  // --- REMOVED createNewDocumentInstance for READ ONLY view ---
 
   /* ---------- GET DOCUMENT CONTEXT FROM STORAGE ---------- */
   const getDocumentContextFromStorage = useCallback(async (): Promise<{
@@ -307,31 +246,14 @@ const FormImageScreen = () => {
         setDocumentId(context.documentId);
         setHasDocumentContext(true);
       } else {
-        console.log('No existing document instance found, creating new one...');
-
-        // Create new document instance
-        const newInstanceId = await createNewDocumentInstance();
-
-        if (newInstanceId) {
-          console.log('New document instance created:', newInstanceId);
-          setDocumentInstanceId(newInstanceId);
-          setHasDocumentContext(true);
-
-          // Load document ID from storage again
-          const storedDocId = await AsyncStorage.getItem(STORAGE_KEYS.documentId);
-          if (storedDocId) {
-            setStoredDocumentId(storedDocId);
-          }
-        } else {
-          console.error('Failed to create document instance');
-          setHasDocumentContext(false);
-        }
+        console.error('No existing document instance found for ReadOnlyView');
+        setHasDocumentContext(false);
       }
     } catch (error) {
       console.error('Error loading document context:', error);
       setHasDocumentContext(false);
     }
-  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage, createNewDocumentInstance]);
+  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage]);
 
   /* ---------- LOAD ALL OVERLAYS USING PAGE-WISE API ---------- */
   const loadAllOverlays = useCallback(async () => {
@@ -504,7 +426,7 @@ const FormImageScreen = () => {
       }
 
       const onBackPress = () => {
-        navigation.navigate('FormType', { ...params });
+        navigation.goBack();
         return true;
       };
 
@@ -693,64 +615,7 @@ const FormImageScreen = () => {
     setLoadingOverlays(false);
   }, []);
 
-  /* ---------- NEW: HANDLER FOR CREATE NEW INSTANCE ---------- */
-  const handleCreateNewPress = useCallback(() => {
-    Alert.alert(
-      "Create New Form",
-      "Do you want to start a fresh copy of this form?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Create New",
-          style: 'default',
-          onPress: async () => {
-            const [[, patientNo], [, admissionNo], [, documentCd]] =
-              await AsyncStorage.multiGet([
-                STORAGE_KEYS.patientId,
-                STORAGE_KEYS.admissionNo,
-                STORAGE_KEYS.documentCd,
-              ]);
-
-            if (!patientNo || !admissionNo || !documentCd) {
-              Alert.alert('Error', 'Missing required patient info.');
-              return;
-            }
-            try {
-              const response = await NewVersion(patientNo, admissionNo, documentCd);
-              console.log('✅ NEW API Response:', response);
-
-              if (response?.documentInstanceId) {
-                const uniqueKey = getInstanceStorageKey();
-                await AsyncStorage.setItem(uniqueKey, response.documentInstanceId);
-
-                // 🟢 CLEAR OVERLAYS FOR NEW FORM
-                setVoiceNotes([]);
-                setImageStickers([]);
-                setPageMeta([]);
-                setEditedPages(0);
-                overlayLoadedRef.current = false;
-
-                // ✅ FIX: Wipe navigation params to prevent hooks from sticking to old keys/data
-                navigation.setParams({
-                  storageKey: undefined,
-                  documentInstanceId: undefined,
-                  savedStrokes: undefined,
-                  voiceNotes: undefined,
-                  imageStickers: undefined
-                });
-
-                setDocumentInstanceId(response.documentInstanceId);
-                setShouldReload(true);
-              }
-            } catch (error) {
-              console.error('Failed to create new version:', error);
-              Alert.alert('Error', 'Failed to create new form version.');
-            }
-          }
-        }
-      ]
-    );
-  }, [getInstanceStorageKey]);
+  // --- REMOVED handleCreateNewPress for READ ONLY view ---
 
   /* ---------- HANDLER FOR HISTORY ---------- */
   const handleHistoryPress = useCallback(async () => {
@@ -793,10 +658,10 @@ const FormImageScreen = () => {
       : null;
 
     return (
-      <View style={[styles.pageCard, { width: SCREEN_W, height: DISPLAY_PAGE_HEIGHT, alignItems: 'center', justifyContent: 'center' }]}>
-        <View style={[styles.imageBox, { width: FORM_WIDTH, height: FORM_HEIGHT, transform: [{ scale: formScale }] }]}>
+      <View style={styles.pageCard}>
+        <View style={[styles.imageBox, { width: SCREEN_W, height: DISPLAY_PAGE_HEIGHT }]}>
           {page.imageData && page.hasImage ? (
-            <View style={styles.imageContainer}>
+            <View style={[styles.imageContainer, { transform: [{ scale: formScale }] }]}>
               {/* Base Image */}
               <Image
                 source={{ uri: page.imageData }}
@@ -898,10 +763,8 @@ const FormImageScreen = () => {
 
             // Calculate scale based on current width vs initial width
             const isPatient = s.stickerType === 'patient';
-            
-            // For FormImageScreen we don't apply an extra manual scale, the entire wrapper handles it.
-            // But we do need to extract their intended scale from editor sizing
             const initialWidth = isPatient ? 220 : 180;
+            // If width is undefined (legacy), assume initial width (scale 1)
             const currentWidth = s.width || initialWidth;
             const scale = currentWidth / initialWidth;
 
@@ -1023,67 +886,7 @@ const FormImageScreen = () => {
     return <PageCard page={item} index={index} />;
   }, [PageCard]);
 
-  /* ---------- OPEN EDITOR ---------- */
-  const openFullEditor = useCallback(async () => {
-    if (!documentInstanceId) {
-      console.error('Cannot open editor: documentInstanceId is undefined');
-      Alert.alert('Error', 'Document Instance ID is missing. Please try again.');
-      return;
-    }
-
-    // Use either documentId from props or storedDocumentId
-    const effectiveDocumentId = documentId || storedDocumentId;
-
-    if (!effectiveDocumentId) {
-      console.error('Cannot open editor: documentId is undefined');
-      Alert.alert('Error', 'Document ID is missing. Please try again.');
-      return;
-    }
-
-    if (!hasValidImages) {
-      console.error('Cannot open editor: No valid images found');
-      Alert.alert('Error', 'Cannot open editor because no valid images are available for this document.');
-      return;
-    }
-
-    console.log('Opening editor with', pages.length, 'pages, documentId:', effectiveDocumentId, 'documentInstanceId:', documentInstanceId);
-
-    const validPages = pages.filter(page => page.hasImage && page.imageData);
-
-    const pagesWithOverlays = validPages.map(p => ({
-      pageId: p.pageId,
-      displayOrderNo: p.displayOrderNo,
-      imageData: p.imageData,
-      overlayData: p.overlayData,
-    }));
-
-    navigation.navigate('FormImageEditor', {
-      singleImageMode: false,
-      storageKey: perFormStorageKey,
-      savedStrokes: pageMeta,
-      voiceNotes,
-      imageStickers,
-      formKey,
-      formName,
-      patientName,
-      patientId,
-      patientIP,
-      // ✅ Pass new details
-      patientAge: params.patientAge,
-      patientGender: params.patientGender,
-      patientRoom: params.patientRoom, // ✅ Added
-      attendingDoctor: params.attendingDoctor, // ✅ Added
-      admitDate: params.admitDate, // ✅ Added
-      doctorName: await AsyncStorage.getItem('fullName') || 'Unavailable',
-      doctorRegNo: params.loginUserId || await AsyncStorage.getItem('userId') || 'Unavailable',
-      doctorSpeciality: await AsyncStorage.getItem('department') || 'Unavailable', // ✅ Updated fallback
-
-      documentId: effectiveDocumentId,
-      documentInstanceId, // Pass documentInstanceId to editor
-      apiPages: pagesWithOverlays,
-      editedPages, // ✅ Pass state instead of params
-    });
-  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages, params.editedPages]);
+  // Removed openFullEditor around line 1015-1075 since it's read only
 
   // Determine which document ID to display
   const displayDocumentId = documentId || storedDocumentId || 'Not available';
@@ -1103,7 +906,7 @@ const FormImageScreen = () => {
         ]}>
           <TouchableOpacity
             style={[styles.navButton, isDark && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#0EA5A4' }]}
-            onPress={() => navigation.navigate('FormType', { ...params })}
+            onPress={() => navigation.goBack()}
           >
             <Ionicons name="arrow-back" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
           </TouchableOpacity>
@@ -1114,25 +917,18 @@ const FormImageScreen = () => {
             </Text>
           </View>
 
-          <TouchableOpacity
-            style={[
-              styles.navButton,
-              isDark && { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#0EA5A4' }
-            ]}
-            onPress={() => navigation.navigate('PatientScreen')}
-          >
-            <Ionicons name="home" size={22} color={isDark ? '#0EA5A4' : '#fff'} />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => navigation.navigate('PatientScreen')}
+            >
+              <Ionicons name="home" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
 
-      {isCreatingDocument ? (
-        <View style={[styles.fullLoading, isDark && { backgroundColor: colors.background }]}>
-          <ActivityIndicator size="large" color="#0EA5A4" />
-          <Text style={[styles.loadingText, isDark && { color: colors.textPrimary }]}>Creating document instance...</Text>
-          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Please wait</Text>
-        </View>
-      ) : !hasDocumentContext ? (
+      {!hasDocumentContext ? (
         <View style={[styles.errorContainerFull, isDark && { backgroundColor: colors.background }]}>
           <Ionicons name="alert-circle-outline" size={64} color={isDark ? colors.danger : "#dc2626"} />
           <Text style={[styles.errorTitle, isDark && { color: colors.textPrimary }]}>Document Context Missing</Text>
@@ -1190,15 +986,7 @@ const FormImageScreen = () => {
         </View>
       )}
 
-      {/* Create New FAB Button (Above History) */}
-      <TouchableOpacity
-        style={[styles.createFab, isDark && { backgroundColor: colors.surface, shadowColor: '#000' }]}
-        onPress={handleCreateNewPress}
-        activeOpacity={0.8}
-      >
-        <Text style={[styles.historyText, isDark && { color: colors.textPrimary }, { color: '#fff' }]}>New</Text>
-        <Ionicons name="add-circle-outline" size={28} color="#fff" />
-      </TouchableOpacity>
+
 
       {/* History FAB Button */}
       <TouchableOpacity
@@ -1209,32 +997,11 @@ const FormImageScreen = () => {
         <Text style={[styles.historyText, isDark && { color: colors.textPrimary }, { color: '#fff' }]}>History</Text>
         <Ionicons name="time-outline" size={28} color="#fff" />
       </TouchableOpacity>
-
-
-      {/* Open Full Editor Button */}
-      {pages.length > 0 && documentInstanceId && displayDocumentId && hasValidImages && (
-        <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
-          <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
-            <Ionicons name="create-outline" size={22} color="#fff" />
-            <Text style={styles.btnTxt}>Open Full Editor</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      )}
-
-      {/* Disabled Editor Button */}
-      {pages.length > 0 && documentInstanceId && (!displayDocumentId || !hasValidImages) && (
-        <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
-          <View style={[styles.btn, styles.btnDisabled, isDark && { backgroundColor: colors.surfaceHighlight }]}>
-            <Ionicons name="create-outline" size={22} color={isDark ? colors.textMuted : "#94a3b8"} />
-            <Text style={[styles.btnTxt, styles.btnTxtDisabled, isDark && { color: colors.textMuted }]}>Open Full Editor</Text>
-          </View>
-        </SafeAreaView>
-      )}
     </View>
   );
 };
 
-export default FormImageScreen;
+export default ReadOnlyFormView;
 
 /* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
@@ -1269,6 +1036,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
   imageContainer: {
     width: FORM_WIDTH,

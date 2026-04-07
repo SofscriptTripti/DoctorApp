@@ -66,7 +66,14 @@ try {
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
+const DISPLAY_PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
+
+// NEW: Fixed Logical Coordinate Space
+const FORM_WIDTH = 800;
+const FORM_HEIGHT = 1131;
+const formScale = Math.min(SCREEN_W / FORM_WIDTH, DISPLAY_PAGE_HEIGHT / FORM_HEIGHT);
+const PAGE_HEIGHT = FORM_HEIGHT; // Alias for backward compatibility in logic
+
 const PAGE_SPACING = 16;
 const DEFAULT_STORAGE_KEY = 'DoctorApp:pagesBitmaps:v1';
 const DEFAULT_UI_KEY = 'DoctorApp:editorUI:v1';
@@ -218,8 +225,8 @@ function DraggableVoiceText({
   const DEFAULT_HEIGHT = 60;
   const DEFAULT_FONT_SIZE = 14;
 
-  const IMAGE_WIDTH = SCREEN_W;
-  const IMAGE_HEIGHT = PAGE_HEIGHT;
+  const IMAGE_WIDTH = FORM_WIDTH;
+  const IMAGE_HEIGHT = FORM_HEIGHT;
 
   const MIN_WIDTH = 40;
   const MIN_HEIGHT = 30;
@@ -1269,8 +1276,8 @@ function DraggableImageSticker({
   const RATIO = DEFAULT_WIDTH / DEFAULT_HEIGHT;
   const MIN_WIDTH = 40;
 
-  const IMAGE_WIDTH = SCREEN_W;
-  const IMAGE_HEIGHT = PAGE_HEIGHT;
+  const IMAGE_WIDTH = FORM_WIDTH;
+  const IMAGE_HEIGHT = FORM_HEIGHT;
 
   // Calculate initial dimensions based on props
   const initWidth = sticker.width ?? (DEFAULT_WIDTH * (sticker.scale ?? 1));
@@ -2302,9 +2309,20 @@ export default function FormImageEditor() {
     const pageIndex = lastTouchPageIndex !== null ? lastTouchPageIndex : getCurrentPageIndex();
     const currentPage = IMAGES[pageIndex];
 
-    // Standard width to match the "Add text" modal width (SCREEN_W * 0.8 - padding)
-    // To preserve the line wrapping seen in the modal:
-    const initialWidth = Math.min(SCREEN_W - 40, SCREEN_W * 0.8 - 36);
+    const initialWidth = Math.min(FORM_WIDTH - 40, FORM_WIDTH * 0.8 - 36);
+
+    let startX = FORM_WIDTH * 0.15;
+    let startY = FORM_HEIGHT * 0.15;
+    let boxW = initialWidth;
+
+    if (lastTouchPos) {
+      // Offset by 13px (12px padding + 1px border) to perfectly align literal text with the touch dot
+      startX = Math.max(5, lastTouchPos.x - 13);
+      startY = Math.max(5, lastTouchPos.y - 14);
+      // Let the box take up only as much room as is left on the screen to prevent sliding left
+      const availableWidth = FORM_WIDTH - startX - 5;
+      boxW = Math.max(60, Math.min(initialWidth, availableWidth));
+    }
 
     const newNote: VoiceNote = {
       id: `${Date.now()}-${Math.random()}`,
@@ -2312,11 +2330,9 @@ export default function FormImageEditor() {
       pageIndex,
       text: trimmed,
       color: color,
-      // Adjusted: subtract more from Y to move it up (fixing "little down" issue)
-      // And slightly more from X to make it feel more centered under the finger
-      x: lastTouchPos ? clamp(lastTouchPos.x - 20, 5, SCREEN_W - initialWidth - 5) : SCREEN_W * 0.15,
-      y: lastTouchPos ? clamp(lastTouchPos.y - 45, 5, PAGE_HEIGHT - 65) : PAGE_HEIGHT * 0.15,
-      boxWidth: initialWidth,
+      x: startX,
+      y: startY,
+      boxWidth: boxW,
       boxHeight: 60,
       fontSize: 14,
       textAlign: align || (route.params?.defaultTextAlign as any) || 'left',
@@ -2337,16 +2353,16 @@ export default function FormImageEditor() {
     const pageIndex = lastTouchPageIndex !== null ? lastTouchPageIndex : getCurrentPageIndex();
     const currentPage = IMAGES[pageIndex];
 
-    let x = SCREEN_W * 0.7;
+    let x = FORM_WIDTH * 0.7;
     let y;
 
     if (overridePos) {
       x = overridePos.x;
       y = overridePos.y;
     } else if (stickerType === 'patient') {
-      y = PAGE_HEIGHT * 0.05 + 20;
+      y = FORM_HEIGHT * 0.05 + 20;
     } else {
-      y = PAGE_HEIGHT * 0.75 - 20;
+      y = FORM_HEIGHT * 0.75 - 20;
     }
 
     let textData = {};
@@ -2384,8 +2400,8 @@ export default function FormImageEditor() {
       pageId: currentPage?.pageId,
       pageIndex,
       // Adjusted: Subtract more from X and center vertically (height/2) to fix accuracy
-      x: overridePos ? overridePos.x : (lastTouchPos ? clamp(lastTouchPos.x - 40, 5, SCREEN_W - (stickerType === 'patient' ? 220 : 180) - 5) : x),
-      y: overridePos ? overridePos.y : (lastTouchPos ? clamp(lastTouchPos.y - (stickerType === 'patient' ? 60 : 45), 5, PAGE_HEIGHT - (stickerType === 'patient' ? 120 : 90) - 5) : y),
+      x: overridePos ? overridePos.x : (lastTouchPos ? clamp(lastTouchPos.x - 40, 5, FORM_WIDTH - (stickerType === 'patient' ? 220 : 180) - 5) : x),
+      y: overridePos ? overridePos.y : (lastTouchPos ? clamp(lastTouchPos.y - (stickerType === 'patient' ? 60 : 45), 5, FORM_HEIGHT - (stickerType === 'patient' ? 120 : 90) - 5) : y),
       scale: 1,
       width: stickerType === 'patient' ? 220 : 180,
       height: stickerType === 'patient' ? 120 : 90,
@@ -4122,6 +4138,8 @@ export default function FormImageEditor() {
                       style={[
                         styles.zoomGroup,
                         {
+                          alignItems: 'center',
+                          justifyContent: 'center',
                           transform: [
                             { translateX: pageTranslateXRef[pageIndex] },
                             { translateY: pageTranslateYRef[pageIndex] },
@@ -4130,6 +4148,11 @@ export default function FormImageEditor() {
                         },
                       ]}
                     >
+                      <View style={{
+                        width: FORM_WIDTH,
+                        height: FORM_HEIGHT,
+                        transform: [{ scale: formScale }],
+                      }}>
                       {/* Direct Image Display */}
                       {page.imageData ? (
                         <Image
@@ -4276,7 +4299,7 @@ export default function FormImageEditor() {
                             onChangeText={handleVoiceNoteTextChange}
                             onChangeFontSize={handleVoiceNoteFontSizeChange}
                             onChangeTextAlign={handleVoiceNoteTextAlignChange}
-                            pageScale={lastScalePerPageRef[pageIndex]}
+                            pageScale={lastScalePerPageRef[pageIndex] * formScale}
                             writingEnabled={writingEnabled}
                             onResizeStart={() => disableDrawingImmediately(true)}
                             onResizeEnd={() => disableDrawingImmediately(false)}
@@ -4297,10 +4320,11 @@ export default function FormImageEditor() {
                             onPositionChange={handleStickerPositionChange}
                             onSizeChange={handleStickerSizeChange}
                             onDelete={handleStickerDelete}
-                            pageScale={lastScalePerPageRef[pageIndex]}
+                            pageScale={lastScalePerPageRef[pageIndex] * formScale}
                             writingEnabled={writingEnabled}
                           />
                         ))}
+                      </View>
                       </View>
                     </Animated.View>
                   </View>
@@ -4829,7 +4853,7 @@ const styles = StyleSheet.create({
   },
   pageInner: {
     width: SCREEN_W,
-    height: PAGE_HEIGHT,
+    height: DISPLAY_PAGE_HEIGHT,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',

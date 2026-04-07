@@ -23,6 +23,7 @@ import HMISFormType from './android/src/HMISFromType';
 import NoOFReport from './android/src/NoOFReport';
 import PdfViewerScreen from './android/src/PdfViewerScreen';
 import EditorHistory from './android/src/EditHistory';
+import ReadOnlyFormView from './android/src/ReadOnlyFormView';
 import ImagePdfViewerScreen from './android/src/ImagePdfViewerScreen';
 import RxNotes from './android/src/RxNotes';
 import ConsolidatedHistoryScreen from './android/src/ConsolidatedHistoryScreen';
@@ -116,6 +117,10 @@ function App() {
                 <Stack.Screen
                   name="ArchivedHistory"
                   component={ArchivedHistory}
+                />
+                <Stack.Screen
+                  name="ReadOnlyFormView"
+                  component={ReadOnlyFormView}
                 />
                 <Stack.Screen
                   name="ConsolidatedHistory"

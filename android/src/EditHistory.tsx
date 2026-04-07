@@ -32,6 +32,8 @@ import moment from 'moment';
 
 const HISTORY_STORAGE_KEY = 'DoctorApp:editorHistory:v1';
 
+const FORM_WIDTH = 800;
+const FORM_HEIGHT = 1131;
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PAGE_HEIGHT = Math.round(SCREEN_H * 0.83);
 
@@ -40,8 +42,8 @@ const CARD_WIDTH = 140;
 const CARD_HEIGHT = 180;
 
 // Scaling factors for overlays
-const SCALE_X = CARD_WIDTH / SCREEN_W;
-const SCALE_Y = CARD_HEIGHT / PAGE_HEIGHT;
+const SCALE_X = CARD_WIDTH / FORM_WIDTH;
+const SCALE_Y = CARD_HEIGHT / FORM_HEIGHT;
 
 /* ---------------- TYPES ---------------- */
 
@@ -167,8 +169,8 @@ const VersionCover = React.memo(({
             style={[
               StyleSheet.absoluteFill,
               {
-                width: SCREEN_W,
-                height: PAGE_HEIGHT,
+                width: FORM_WIDTH,
+                height: FORM_HEIGHT,
                 transform: [
                   { scaleX: SCALE_X },
                   { scaleY: SCALE_Y }
@@ -180,7 +182,7 @@ const VersionCover = React.memo(({
           >
             <Image
               source={{ uri: coverImage }}
-              style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
+              style={{ width: FORM_WIDTH, height: FORM_HEIGHT }}
               resizeMode="contain"
             />
 
@@ -188,7 +190,7 @@ const VersionCover = React.memo(({
               <View style={[StyleSheet.absoluteFill, { zIndex: 5 }]} pointerEvents="none">
                 <Image
                   source={{ uri: overlayUri }}
-                  style={{ width: SCREEN_W, height: PAGE_HEIGHT }}
+                  style={{ width: FORM_WIDTH, height: FORM_HEIGHT }}
                   resizeMode="contain"
                 />
               </View>
@@ -197,43 +199,54 @@ const VersionCover = React.memo(({
             {overlayStrokes && (
               <View style={[StyleSheet.absoluteFill, { zIndex: 6 }]} pointerEvents="none">
                 <NativeDrawingView
-                  style={{ width: SCREEN_W, height: PAGE_HEIGHT, backgroundColor: 'transparent' }}
+                  style={{ width: FORM_WIDTH, height: FORM_HEIGHT, backgroundColor: 'transparent' }}
                   strokesJson={overlayStrokes}
                 />
               </View>
             )}
 
-            {vImageStickers.map((s) => (
-              <View
-                key={s.id}
-                style={{
-                  position: 'absolute',
-                  left: s.x,
-                  top: s.y,
-                  width: (s.width || 240),
-                  height: (s.height || 140),
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  transform: [{ scale: s.scale || 1 }],
-                }}
-              >
-                {s.stickerType === 'patient' ? (
-                  <View style={{ width: '100%', height: '100%', backgroundColor: '#fff', borderRadius: 4, borderWidth: 1.5, borderColor: '#000', padding: 8, justifyContent: 'space-evenly' }}>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: '#000' }} numberOfLines={1}>{s.textData?.line1 || ''}</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#000' }} numberOfLines={1}>{s.textData?.line2 || ''}</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '500', color: '#000' }} numberOfLines={1}>{s.textData?.line3 || ''}</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: '#000' }} numberOfLines={1}>{s.textData?.line4 || ''}</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '500', color: '#000' }} numberOfLines={1}>{s.textData?.line5 || ''}</Text>
-                  </View>
-                ) : (
-                  <View style={{ width: '100%', height: '100%', backgroundColor: '#fff', borderRadius: 4, borderWidth: 1.5, borderColor: '#000', padding: 8, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#000', textAlign: 'center' }}>{s.textData?.line1 || ''}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 2 }}>{s.textData?.line2 || ''}</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 2, textTransform: 'uppercase' }}>{s.textData?.line3 || ''}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
+            {vImageStickers.map((s) => {
+              const isPatient = s.stickerType === 'patient';
+              const initialWidth = isPatient ? 220 : 180;
+              const currentWidth = s.width || initialWidth;
+              const scale = currentWidth / initialWidth;
+              const sf = (size: number) => Math.max(4, size * scale);
+              return (
+                <View
+                  key={s.id}
+                  style={{
+                    position: 'absolute',
+                    left: s.x,
+                    top: s.y,
+                    width: s.width || initialWidth,
+                    height: s.height || (isPatient ? 120 : 90),
+                    backgroundColor: '#fff',
+                    borderRadius: 4 * scale,
+                    borderWidth: 1.5 * scale,
+                    borderColor: '#000',
+                    padding: 6 * scale,
+                    justifyContent: 'center',
+                    overflow: 'hidden'
+                  }}
+                >
+                  {isPatient ? (
+                    <View style={{ flex: 1, justifyContent: 'space-evenly' }}>
+                      <Text style={{ fontSize: sf(9), fontWeight: '700', color: '#000' }} numberOfLines={1}>{s.textData?.line1 || ''}</Text>
+                      <Text style={{ fontSize: sf(11), fontWeight: '800', color: '#000' }} numberOfLines={1}>{s.textData?.line2 || ''}</Text>
+                      <Text style={{ fontSize: sf(9), fontWeight: '500', color: '#000' }} numberOfLines={1}>{s.textData?.line3 || ''}</Text>
+                      <Text style={{ fontSize: sf(9), fontWeight: '700', color: '#000' }} numberOfLines={1}>{s.textData?.line4 || ''}</Text>
+                      <Text style={{ fontSize: sf(9), fontWeight: '500', color: '#000' }} numberOfLines={1}>{s.textData?.line5 || ''}</Text>
+                    </View>
+                  ) : (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                      <Text style={{ fontSize: sf(13), fontWeight: '700', color: '#000', textAlign: 'center' }}>{s.textData?.line1 || ''}</Text>
+                      <Text style={{ fontSize: sf(12), fontWeight: '600', color: '#000', textAlign: 'center', marginTop: 2 * scale }}>{s.textData?.line2 || ''}</Text>
+                      <Text style={{ fontSize: sf(11), fontWeight: '600', color: '#555', textAlign: 'center', marginTop: 2 * scale, textTransform: 'uppercase' }}>{s.textData?.line3 || ''}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
 
             {vVoiceNotes.map((n) => (
               <View

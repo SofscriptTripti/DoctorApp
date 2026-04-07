@@ -55,7 +55,7 @@ const computeBounds = (points: Point[]): Bounds => {
 };
 const inflateBounds = (b: Bounds, pad: number): Bounds => ({ xMin: b.xMin - pad, xMax: b.xMax + pad, yMin: b.yMin - pad, yMax: b.yMax + pad });
 const intersects = (a: Bounds, b: Bounds) => !(a.xMax < b.xMin || a.xMin > b.xMax || a.yMax < b.yMin || a.yMin > b.yMax);
-const distSq = (a: Point, b: Point) => { const dx = a.x - b.x; const dy = a.y - b.y; return dx*dx + dy*dy; };
+const distSq = (a: Point, b: Point) => { const dx = a.x - b.x; const dy = a.y - b.y; return dx * dx + dy * dy; };
 
 // rebuild Skia Path from points
 const buildSkPathFromPoints = (points: Point[]) => {
@@ -116,7 +116,7 @@ const SketchCanvas = forwardRef<SketchCanvasHandle, Props>((props, ref) => {
     const skPath = Skia.Path.Make();
     skPath.moveTo(start.x, start.y);
     return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       color,
       width: widthPx,
       erase: isEraser,
@@ -208,7 +208,7 @@ const SketchCanvas = forwardRef<SketchCanvasHandle, Props>((props, ref) => {
             // small optimization: reuse original id for first surviving segment if it matches shape; but safer to create new id
             const segPts = keepSegments[0];
             const rebuilt = {
-              id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               color: p.color,
               width: p.width,
               erase: false,
@@ -222,7 +222,7 @@ const SketchCanvas = forwardRef<SketchCanvasHandle, Props>((props, ref) => {
             for (const s of keepSegments) {
               if (s.length < 2) continue;
               const rebuilt = {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 color: p.color,
                 width: p.width,
                 erase: false,
