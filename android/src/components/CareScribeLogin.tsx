@@ -62,7 +62,7 @@ const saveUserContext = async (
 
 
 const BRAND = {
-  name: 'CareScribe',
+  name: 'Slate',
   primary: '#0EA5A4',
   accent: '#06B6D4',
   success: '#10B981',
@@ -299,7 +299,7 @@ export default function CareScribeLogin({ navigation }: any) {
             <View style={styles.logoContainer}>
               {/* <View style={styles.logoBadge}> */}
               <Image
-                source={require('../Images/Carescribe_logo with text-01.png')}
+                source={require('../Images/Slatelogo.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -492,15 +492,16 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: '100%',
     alignItems: 'center',
+    marginTop: -15, // Pulls the container up to reduce the top gap
     paddingTop: 0,
     paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 0, // Removed padding entirely for maximum width
   },
   logoTagline: {
     fontSize: 14,
     fontWeight: '600',
     color: '#010e0eff',       // CareScribe primary color
-    // marginTop: 8,
+    marginTop: -45,           // Pulled up further to compensate for the larger logo height
     textAlign: 'center',
     letterSpacing: 0.3,
     // bottom:75
@@ -511,13 +512,10 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-    width: Dimensions.get('window').width - 140,
-    height: Dimensions.get('window').width * 0.25, // keep aspect ratio (adjust as needed)
-    resizeMode: 'contain', // or 'contain'
-    padding: 10,
+    width: Dimensions.get('window').width * 1.4, // Massively scaled beyond screen width
+    height: Dimensions.get('window').width * 0.5, // Height increased proportionally
+    resizeMode: 'contain',
     color: "#0EA5A4",
-    // backgroundColor:"red"
-
   },
 
 

@@ -226,11 +226,11 @@ const ReadOnlyFormView = () => {
   /* ---------- LOAD OR CREATE DOCUMENT CONTEXT ---------- */
   const loadDocumentContext = useCallback(async () => {
     try {
-      // First check if we have documentInstanceId in params
+      // First check if we have documentInstanceId in params (always passed from EditorHistory)
       if (params.documentInstanceId) {
         console.log('Using documentInstanceId from params:', params.documentInstanceId);
         setDocumentInstanceId(params.documentInstanceId);
-        setDocumentId(params.documentId);
+        setDocumentId(params.documentId || storedDocumentId);
         setHasDocumentContext(true);
         return;
       }
@@ -243,17 +243,21 @@ const ReadOnlyFormView = () => {
       if (context?.documentInstanceId) {
         console.log('Found existing document context in AsyncStorage:', context);
         setDocumentInstanceId(context.documentInstanceId);
-        setDocumentId(context.documentId);
+        setDocumentId(context.documentId || params.documentId);
         setHasDocumentContext(true);
       } else {
-        console.error('No existing document instance found for ReadOnlyView');
-        setHasDocumentContext(false);
+        // ✅ Still allow base images to load even without an instance
+        console.log('No instance found. Showing base form images in read-only mode.');
+        setDocumentId(params.documentId || storedDocumentId);
+        setHasDocumentContext(true);
       }
     } catch (error) {
       console.error('Error loading document context:', error);
-      setHasDocumentContext(false);
+      // Even on error, try to show base images
+      setDocumentId(params.documentId || storedDocumentId);
+      setHasDocumentContext(true);
     }
-  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage]);
+  }, [params.documentInstanceId, params.documentId, storedDocumentId, getDocumentContextFromStorage]);
 
   /* ---------- LOAD ALL OVERLAYS USING PAGE-WISE API ---------- */
   const loadAllOverlays = useCallback(async () => {
@@ -446,8 +450,8 @@ const ReadOnlyFormView = () => {
     // Use documentId from props if available, otherwise use stored documentId
     const effectiveDocumentId = documentId || storedDocumentId;
 
-    if (!effectiveDocumentId || !documentInstanceId || isLoadingRef.current) {
-      console.log('Skipping load: effectiveDocumentId =', effectiveDocumentId, 'documentInstanceId =', documentInstanceId, 'isLoading =', isLoadingRef.current);
+    if (!effectiveDocumentId || isLoadingRef.current) {
+      console.log('Skipping load: effectiveDocumentId =', effectiveDocumentId, 'isLoading =', isLoadingRef.current);
       return;
     }
 
@@ -586,7 +590,7 @@ const ReadOnlyFormView = () => {
     // Use either documentId from props or storedDocumentId
     const effectiveDocumentId = documentId || storedDocumentId;
 
-    if (effectiveDocumentId && documentInstanceId && shouldReload) {
+    if (effectiveDocumentId && shouldReload) {
       loadAllPages();
     }
   }, [documentId, storedDocumentId, documentInstanceId, shouldReload, loadAllPages]);

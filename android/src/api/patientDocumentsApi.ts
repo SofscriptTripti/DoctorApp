@@ -25,12 +25,14 @@ export const createPatientDocument = async (
 
   try {
 
-    const res = await api.post('/PatientDocuments/open', {
-      patientNo,
-      admissionNo,
-      documentCd,
-      action: 'ContinueEditing',
-      versionNo: null,
+    const res = await api.get('/PatientDocuments/open', {
+      params: {
+        patientNo,
+        admissionNo,
+        documentCd,
+        action: 'ContinueEditing',
+        versionNo: null,
+      }
     });
 
     console.log('✅ [createPatientDocument] API response:', {
@@ -71,10 +73,12 @@ export const NewVersion = async (
   });
 
   try {
-    const res = await api.post('/PatientDocuments/new-version', {
-      patientNo,
-      admissionNo,
-      documentCd,
+    const res = await api.get('/PatientDocuments/new-version', {
+      params: {
+        patientNo,
+        admissionNo,
+        documentCd,
+      }
     });
 
     console.log('✅ [NewVersion] API response:', {
@@ -129,6 +133,28 @@ export const getPatientDocument = async (id: string) => {
 export const getPatientDocumentPages = async (id: string) => {
   const res = await api.get(`/PatientDocuments/${id}/pages`);
   return res.data;
+};
+
+/* ---------------------------------------------
+   Get document page image (Base image)
+--------------------------------------------- */
+export const getPatientDocumentPageImage = async (
+  documentInstanceId: string,
+  pageId: string
+): Promise<string> => {
+  const response = await api.get(
+    `/PatientDocuments/${documentInstanceId}/pages/${pageId}/image`,
+    {
+      responseType: 'arraybuffer',
+      headers: {
+        Accept: 'image/*',
+      },
+    }
+  );
+
+  const contentType = response.headers?.['content-type'] || 'image/jpeg';
+  const base64 = Buffer.from(response.data, 'binary').toString('base64');
+  return `data:${contentType};base64,${base64}`;
 };
 
 /* ---------------------------------------------

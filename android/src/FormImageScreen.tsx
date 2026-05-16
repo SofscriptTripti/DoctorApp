@@ -20,12 +20,14 @@ import AntDesign from 'react-native-vector-icons/AntDesign';
 import {
   getDocumentPageImage,
   getDocumentPages,
+  getDocuments,
 } from './api/documentsApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getpagewiseoverlay,
   createPatientDocument,
-  NewVersion
+  NewVersion,
+  getPatientDocumentPageImage
 } from './api/patientDocumentsApi';
 import { Buffer } from 'buffer';
 import NativeDrawingView from './components/NativeDrawingView';
@@ -50,7 +52,7 @@ const STORAGE_KEYS = {
   admissionNo: 'admissionNo',
   documentId: 'documentId',
   documentInstanceId: 'documentInstanceId',
-  documentCd: 'documentId'
+  documentCd: 'documentCd'
 };
 
 /* ---------------- TYPES ---------------- */
@@ -173,26 +175,29 @@ const FormImageScreen = () => {
     try {
       setIsCreatingDocument(true);
 
-      // Get required data from AsyncStorage
-      const [[, patientNo], [, admissionNo], [, documentId], [, documentCd]] =
+      // ✅ FIX: Prefer params directly — they are always passed from FormType.
+      // AsyncStorage fallback is used only if params are missing.
+      const [[, storedPatientNo], [, storedAdmissionNo]] =
         await AsyncStorage.multiGet([
           STORAGE_KEYS.patientId,
           STORAGE_KEYS.admissionNo,
-          STORAGE_KEYS.documentId,
-          STORAGE_KEYS.documentCd,
         ]);
+
+      const patientNo = params.patientId || storedPatientNo;
+      const admissionNo = params.admissionNo || storedAdmissionNo;
+      // documentCd = the document template ID, always in params.documentId
+      const documentCd = params.documentId || params.formKey;
 
       console.log('Creating document instance with:', {
         patientNo,
         admissionNo,
-        documentId,
         documentCd
       });
 
       // Validate required data
       if (!patientNo || !admissionNo || !documentCd) {
-        console.error('Missing required data for creating document instance');
-        Alert.alert('Error', 'Missing patient info.');
+        console.error('Missing required data for creating document instance:', { patientNo, admissionNo, documentCd });
+        Alert.alert('Error', 'Missing patient or document info. Please go back and reopen the form.');
         return null;
       }
 
@@ -209,6 +214,8 @@ const FormImageScreen = () => {
         // Save using UNIQUE KEY
         const uniqueKey = getInstanceStorageKey();
         await AsyncStorage.setItem(uniqueKey, response.documentInstanceId);
+        // Also persist documentCd so history/new-version flows can use it
+        await AsyncStorage.setItem(STORAGE_KEYS.documentCd, documentCd);
 
         console.log('Saved documentInstanceId to:', uniqueKey, '=', response.documentInstanceId);
         return response.documentInstanceId;
@@ -222,7 +229,7 @@ const FormImageScreen = () => {
     } finally {
       setIsCreatingDocument(false);
     }
-  }, [navigation, getInstanceStorageKey]);
+  }, [navigation, getInstanceStorageKey, params.patientId, params.admissionNo, params.documentId, params.formKey]);
 
   /* ---------- GET DOCUMENT CONTEXT FROM STORAGE ---------- */
   const getDocumentContextFromStorage = useCallback(async (): Promise<{
@@ -287,51 +294,58 @@ const FormImageScreen = () => {
   /* ---------- LOAD OR CREATE DOCUMENT CONTEXT ---------- */
   const loadDocumentContext = useCallback(async () => {
     try {
-      // First check if we have documentInstanceId in params
+      let currentDocId = params.documentId || storedDocumentId;
+
+      if (!currentDocId) {
+        console.log('No documentId found, attempting to fetch from getDocuments()...');
+        try {
+          const docs = await getDocuments();
+          if (Array.isArray(docs) && docs.length > 0) {
+            const matchedDoc = docs.find((d: any) => d.title === formName) || docs[0];
+            currentDocId = matchedDoc.documentId;
+            console.log('Fetched fallback documentId:', currentDocId);
+            setDocumentId(currentDocId);
+            setStoredDocumentId(currentDocId);
+            await AsyncStorage.setItem(STORAGE_KEYS.documentId, currentDocId);
+          }
+        } catch (apiErr) {
+          console.error('Failed to fetch fallback documents:', apiErr);
+        }
+      }
+
+      // First check if we have documentInstanceId in params (returning user / history open)
       if (params.documentInstanceId) {
         console.log('Using documentInstanceId from params:', params.documentInstanceId);
         setDocumentInstanceId(params.documentInstanceId);
-        setDocumentId(params.documentId);
+        setDocumentId(currentDocId || params.documentId);
         setHasDocumentContext(true);
         return;
       }
 
       console.log('documentInstanceId not in params, checking AsyncStorage...');
 
-      // Try to get existing document context
+      // Try to get existing document instance saved from a previous session
       const context = await getDocumentContextFromStorage();
 
       if (context?.documentInstanceId) {
         console.log('Found existing document context in AsyncStorage:', context);
         setDocumentInstanceId(context.documentInstanceId);
-        setDocumentId(context.documentId);
+        setDocumentId(context.documentId || currentDocId);
         setHasDocumentContext(true);
       } else {
-        console.log('No existing document instance found, creating new one...');
-
-        // Create new document instance
-        const newInstanceId = await createNewDocumentInstance();
-
-        if (newInstanceId) {
-          console.log('New document instance created:', newInstanceId);
-          setDocumentInstanceId(newInstanceId);
-          setHasDocumentContext(true);
-
-          // Load document ID from storage again
-          const storedDocId = await AsyncStorage.getItem(STORAGE_KEYS.documentId);
-          if (storedDocId) {
-            setStoredDocumentId(storedDocId);
-          }
-        } else {
-          console.error('Failed to create document instance');
-          setHasDocumentContext(false);
-        }
+        // ✅ NEW DESIGN: No instance exists yet — show base form images (read-only preview).
+        // Do NOT auto-create an instance. The user must explicitly tap "New" to create one.
+        console.log('No existing document instance. Showing base form images. User can tap New to create an instance.');
+        setDocumentId(currentDocId);
+        setHasDocumentContext(true); // ✅ Allow image loading — documentInstanceId stays undefined
       }
     } catch (error) {
       console.error('Error loading document context:', error);
-      setHasDocumentContext(false);
+      // Even on error, allow base images to show
+      setHasDocumentContext(true);
     }
-  }, [params.documentInstanceId, params.documentId, getDocumentContextFromStorage, createNewDocumentInstance]);
+  }, [params.documentInstanceId, params.documentId, storedDocumentId, formName, getDocumentContextFromStorage]);
+
 
   /* ---------- LOAD ALL OVERLAYS USING PAGE-WISE API ---------- */
   const loadAllOverlays = useCallback(async () => {
@@ -524,8 +538,8 @@ const FormImageScreen = () => {
     // Use documentId from props if available, otherwise use stored documentId
     const effectiveDocumentId = documentId || storedDocumentId;
 
-    if (!effectiveDocumentId || !documentInstanceId || isLoadingRef.current) {
-      console.log('Skipping load: effectiveDocumentId =', effectiveDocumentId, 'documentInstanceId =', documentInstanceId, 'isLoading =', isLoadingRef.current);
+    if (!effectiveDocumentId || isLoadingRef.current) {
+      console.log('Skipping load: effectiveDocumentId =', effectiveDocumentId, 'isLoading =', isLoadingRef.current);
       return;
     }
 
@@ -581,7 +595,9 @@ const FormImageScreen = () => {
           try {
             console.log(`Loading image ${index + 1}/${sortedPages.length} for page ${page.pageId}`);
 
-            const response = await getDocumentPageImage(effectiveDocumentId, page.pageId);
+            const response = documentInstanceId
+              ? await getPatientDocumentPageImage(documentInstanceId, page.pageId)
+              : await getDocumentPageImage(effectiveDocumentId, page.pageId);
 
             if (response && typeof response === 'string') {
               if (response.startsWith('data:image/') || response.length > 1000) {
@@ -641,7 +657,7 @@ const FormImageScreen = () => {
       }
 
       // Mark this document as loaded
-      loadedDocumentInstanceIdRef.current = documentInstanceId;
+      loadedDocumentInstanceIdRef.current = documentInstanceId || null;
       setShouldReload(false);
 
       console.log('All pages loaded successfully');
@@ -664,7 +680,7 @@ const FormImageScreen = () => {
     // Use either documentId from props or storedDocumentId
     const effectiveDocumentId = documentId || storedDocumentId;
 
-    if (effectiveDocumentId && documentInstanceId && shouldReload) {
+    if (effectiveDocumentId && shouldReload) {
       loadAllPages();
     }
   }, [documentId, storedDocumentId, documentInstanceId, shouldReload, loadAllPages]);
@@ -704,24 +720,40 @@ const FormImageScreen = () => {
           text: "Create New",
           style: 'default',
           onPress: async () => {
-            const [[, patientNo], [, admissionNo], [, documentCd]] =
+            // ✅ Use params directly — always available from FormType navigation
+            const [[, storedPatientNo], [, storedAdmissionNo], [, storedDocumentCd]] =
               await AsyncStorage.multiGet([
                 STORAGE_KEYS.patientId,
                 STORAGE_KEYS.admissionNo,
                 STORAGE_KEYS.documentCd,
               ]);
 
+            const patientNo = params.patientId || storedPatientNo;
+            const admissionNo = params.admissionNo || storedAdmissionNo;
+            const documentCd = params.documentId || params.formKey;
+
             if (!patientNo || !admissionNo || !documentCd) {
-              Alert.alert('Error', 'Missing required patient info.');
+              Alert.alert('Error', `Missing required info to create form.\npatientId: ${patientNo || 'missing'}\nadmissionNo: ${admissionNo || 'missing'}\ndocumentCd: ${documentCd || 'missing'}`);
               return;
             }
             try {
-              const response = await NewVersion(patientNo, admissionNo, documentCd);
-              console.log('✅ NEW API Response:', response);
+              let response: any;
+
+              if (documentInstanceId) {
+                // ✅ Existing user: create a NEW VERSION of the existing form
+                response = await NewVersion(patientNo, admissionNo, documentCd);
+                console.log('✅ NewVersion API Response:', response);
+              } else {
+                // ✅ New user: open/create the FIRST instance of this form
+                response = await createPatientDocument(patientNo, admissionNo, documentCd);
+                console.log('✅ createPatientDocument API Response:', response);
+              }
 
               if (response?.documentInstanceId) {
                 const uniqueKey = getInstanceStorageKey();
                 await AsyncStorage.setItem(uniqueKey, response.documentInstanceId);
+                // Also save documentCd for future history/new-version calls
+                await AsyncStorage.setItem('documentCd', documentCd);
 
                 // 🟢 CLEAR OVERLAYS FOR NEW FORM
                 setVoiceNotes([]);
@@ -730,7 +762,7 @@ const FormImageScreen = () => {
                 setEditedPages(0);
                 overlayLoadedRef.current = false;
 
-                // ✅ FIX: Wipe navigation params to prevent hooks from sticking to old keys/data
+                // ✅ Wipe navigation params to prevent hooks from sticking to old keys/data
                 navigation.setParams({
                   storageKey: undefined,
                   documentInstanceId: undefined,
@@ -741,25 +773,32 @@ const FormImageScreen = () => {
 
                 setDocumentInstanceId(response.documentInstanceId);
                 setShouldReload(true);
+              } else {
+                Alert.alert('Error', 'Server did not return a document instance ID.');
               }
             } catch (error) {
-              console.error('Failed to create new version:', error);
-              Alert.alert('Error', 'Failed to create new form version.');
+              console.error('Failed to create new form:', error);
+              Alert.alert('Error', 'Failed to create form. Please try again.');
             }
           }
         }
       ]
     );
-  }, [getInstanceStorageKey]);
+  }, [documentInstanceId, getInstanceStorageKey, params.patientId, params.admissionNo, params.documentId, params.formKey]);
+
 
   /* ---------- HANDLER FOR HISTORY ---------- */
   const handleHistoryPress = useCallback(async () => {
-    const [[, patientNo], [, admissionNo], [, documentCd]] =
+    const [[, storedPatientNo], [, storedAdmissionNo], [, storedDocumentCd]] =
       await AsyncStorage.multiGet([
         STORAGE_KEYS.patientId,
         STORAGE_KEYS.admissionNo,
         STORAGE_KEYS.documentCd,
       ]);
+
+    const patientNo = params.patientId || storedPatientNo;
+    const admissionNo = params.admissionNo || storedAdmissionNo;
+    const documentCd = params.documentId || params.formKey || storedDocumentCd;
 
     if (!patientNo || !admissionNo || !documentCd) {
       Alert.alert('Error', 'Missing required patient info for history.');
@@ -1211,25 +1250,32 @@ const FormImageScreen = () => {
       </TouchableOpacity>
 
 
-      {/* Open Full Editor Button */}
-      {pages.length > 0 && documentInstanceId && displayDocumentId && hasValidImages && (
+      {/* Open Full Editor Button - show when images loaded, with or without instance */}
+      {pages.length > 0 && displayDocumentId && hasValidImages && (
         <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
-          <TouchableOpacity style={styles.btn} onPress={openFullEditor}>
+          <TouchableOpacity
+            style={[styles.btn, !documentInstanceId && { backgroundColor: '#64748b' }]}
+            onPress={() => {
+              if (!documentInstanceId) {
+                // Prompt user to create an instance first
+                Alert.alert(
+                  'Create Form First',
+                  'Please tap the "New" button to create a form instance before editing.',
+                  [{ text: 'OK' }]
+                );
+              } else {
+                openFullEditor();
+              }
+            }}
+          >
             <Ionicons name="create-outline" size={22} color="#fff" />
-            <Text style={styles.btnTxt}>Open Full Editor</Text>
+            <Text style={styles.btnTxt}>
+              {documentInstanceId ? 'Open Full Editor' : 'Tap “New” to Start Editing'}
+            </Text>
           </TouchableOpacity>
         </SafeAreaView>
       )}
 
-      {/* Disabled Editor Button */}
-      {pages.length > 0 && documentInstanceId && (!displayDocumentId || !hasValidImages) && (
-        <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
-          <View style={[styles.btn, styles.btnDisabled, isDark && { backgroundColor: colors.surfaceHighlight }]}>
-            <Ionicons name="create-outline" size={22} color={isDark ? colors.textMuted : "#94a3b8"} />
-            <Text style={[styles.btnTxt, styles.btnTxtDisabled, isDark && { color: colors.textMuted }]}>Open Full Editor</Text>
-          </View>
-        </SafeAreaView>
-      )}
     </View>
   );
 };

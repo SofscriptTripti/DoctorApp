@@ -4153,178 +4153,178 @@ export default function FormImageEditor() {
                         height: FORM_HEIGHT,
                         transform: [{ scale: formScale }],
                       }}>
-                      {/* Direct Image Display */}
-                      {page.imageData ? (
-                        <Image
-                          source={{ uri: page.imageData }}
-                          style={styles.pageImage}
-                          resizeMode="contain"
-                          onLoad={() => {
-                            setPagesLoaded(prev => {
-                              const next = [...prev];
-                              next[pageIndex] = true;
-                              return next;
-                            });
-                          }}
-                        />
-                      ) : (
-                        <View style={styles.loadingContainer}>
-                          <ActivityIndicator size="large" color="#0EA5A4" />
-                          <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading Page {pageIndex + 1}...</Text>
-                        </View>
-                      )}
-
-                      {/* Previous Overlay (Legacy Only) */}
-                      {isLegacyOverlay && previousOverlayBase64 && (
-                        <View style={{ opacity: pagesLoaded[pageIndex] ? 1 : 0 }}>
+                        {/* Direct Image Display */}
+                        {page.imageData ? (
                           <Image
-                            source={{ uri: `data:image/png;base64,${previousOverlayBase64}` }}
-                            style={styles.previousOverlayImage}
+                            source={{ uri: page.imageData }}
+                            style={styles.pageImage}
                             resizeMode="contain"
+                            onLoad={() => {
+                              setPagesLoaded(prev => {
+                                const next = [...prev];
+                                next[pageIndex] = true;
+                                return next;
+                              });
+                            }}
                           />
-                        </View>
-                      )}
+                        ) : (
+                          <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="large" color="#0EA5A4" />
+                            <Text style={[styles.loadingText, isDark && { color: colors.textSecondary }]}>Loading Page {pageIndex + 1}...</Text>
+                          </View>
+                        )}
+
+                        {/* Previous Overlay (Legacy Only) */}
+                        {isLegacyOverlay && previousOverlayBase64 && (
+                          <View style={{ opacity: pagesLoaded[pageIndex] ? 1 : 0 }}>
+                            <Image
+                              source={{ uri: `data:image/png;base64,${previousOverlayBase64}` }}
+                              style={styles.previousOverlayImage}
+                              resizeMode="contain"
+                            />
+                          </View>
+                        )}
 
 
 
-                      <View
-                        style={[styles.canvasContainer, { opacity: pagesLoaded[pageIndex] ? 1 : 0 }]}
-                        onTouchStart={(e) => {
-                          const { locationX, locationY } = e.nativeEvent;
-                          // If it's a single touch (not zoom), track pos and page index for Add Text/Stickers
-                          if (!multiTouchActive) {
-                            setLastTouchPos({ x: locationX, y: locationY });
-                            setLastTouchPageIndex(pageIndex);
-                          }
-
-                          if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
-                            cursorRef.current?.setNativeProps({
-                              style: {
-                                top: locationY - eraserWidth / 2,
-                                left: locationX - eraserWidth / 2,
-                                opacity: 1,
-                              }
-                            });
-                          }
-                        }}
-                        onTouchMove={(e) => {
-                          if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
-                            const { locationX, locationY } = e.nativeEvent;
-                            cursorRef.current?.setNativeProps({
-                              style: {
-                                top: locationY - eraserWidth / 2,
-                                left: locationX - eraserWidth / 2,
-                              }
-                            });
-                          }
-                        }}
-                        onTouchEnd={() => {
-                          // Hide cursor
-                          cursorRef.current?.setNativeProps({
-                            style: { opacity: 0 }
-                          });
-
-                          const isCooldown = (Date.now() - lastZoomEndTime.current) < 500;
-                          if (
-                            writingEnabled &&
-                            !(editingNoteId || editingStickerId) &&
-                            !multiTouchActiveRef.current &&
-                            !isCooldown
-                          ) {
-                            registerStrokeAction(pageIndex);
-                          }
-                        }}
-                        pointerEvents={
-                          !pagesLoaded[pageIndex] || editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
-                            ? 'none'
-                            : 'box-none'
-                        }
-                      >
-                        <DrawingCanvas
-                          index={pageIndex}
-                          savedPath={savedPath}
-                          strokesJson={strokesJson}
-                          ref={(r) => refSetters.current[pageIndex](r)}
-                          drawingEnabled={pagesLoaded[pageIndex] && !(editingNoteId || editingStickerId) && !multiTouchActive}
-                        />
-
-                        {/* Eraser Cursor */}
                         <View
-                          ref={cursorRef}
-                          pointerEvents="none"
-                          style={{
-                            position: 'absolute',
-                            width: eraserWidth,
-                            height: eraserWidth,
-                            borderRadius: eraserWidth / 2,
-                            borderWidth: 1,
-                            borderColor: '#333',
-                            backgroundColor: 'rgba(200, 200, 200, 0.3)',
-                            zIndex: 9999,
-                            opacity: 0, // Hidden by default
-                          }}
-                        />
-                      </View>
+                          style={[styles.canvasContainer, { opacity: pagesLoaded[pageIndex] ? 1 : 0 }]}
+                          onTouchStart={(e) => {
+                            const { locationX, locationY } = e.nativeEvent;
+                            // If it's a single touch (not zoom), track pos and page index for Add Text/Stickers
+                            if (!multiTouchActive) {
+                              setLastTouchPos({ x: locationX, y: locationY });
+                              setLastTouchPageIndex(pageIndex);
+                            }
 
-                      {/* 🔹 Dismiss Edit Layer (Transparent) - MOVED HERE to be ABOVE canvas */}
-                      {/* This blocks touches to canvas when editing */}
-                      {(editingNoteId || editingStickerId) && (
-                        <Pressable
-                          style={StyleSheet.absoluteFill}
-                          onPress={() => {
-                            if (editingNoteId || editingStickerId) {
-                              setEditingNoteId(null);
-                              setEditingStickerId(null);
+                            if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
+                              cursorRef.current?.setNativeProps({
+                                style: {
+                                  top: locationY - eraserWidth / 2,
+                                  left: locationX - eraserWidth / 2,
+                                  opacity: 1,
+                                }
+                              });
                             }
                           }}
-                        />
-                      )}
+                          onTouchMove={(e) => {
+                            if (tool === 'eraser' && writingEnabled && !multiTouchActive) {
+                              const { locationX, locationY } = e.nativeEvent;
+                              cursorRef.current?.setNativeProps({
+                                style: {
+                                  top: locationY - eraserWidth / 2,
+                                  left: locationX - eraserWidth / 2,
+                                }
+                              });
+                            }
+                          }}
+                          onTouchEnd={() => {
+                            // Hide cursor
+                            cursorRef.current?.setNativeProps({
+                              style: { opacity: 0 }
+                            });
 
-                      {/* Overlays synchronized with background image load */}
-                      <View style={{ opacity: pagesLoaded[pageIndex] ? 1 : 0 }} pointerEvents="box-none">
-                        {/* Voice notes */}
-                        {notesForPage.map((note) => (
-                          <DraggableVoiceText
-                            key={note.id}
-                            note={note}
-                            isEditing={editingNoteId === note.id}
-                            onToggleEdit={(id) => {
-                              if (!writingEnabled) return;
-                              setEditingNoteId((prev) => (prev === id ? null : id));
-                              setEditingStickerId(null);
-                            }}
-                            onPositionChange={handleVoiceNotePositionChange}
-                            onBoxSizeChange={handleVoiceNoteBoxChange}
-                            onDelete={handleVoiceNoteDelete}
-                            onChangeText={handleVoiceNoteTextChange}
-                            onChangeFontSize={handleVoiceNoteFontSizeChange}
-                            onChangeTextAlign={handleVoiceNoteTextAlignChange}
-                            pageScale={lastScalePerPageRef[pageIndex] * formScale}
-                            writingEnabled={writingEnabled}
-                            onResizeStart={() => disableDrawingImmediately(true)}
-                            onResizeEnd={() => disableDrawingImmediately(false)}
+                            const isCooldown = (Date.now() - lastZoomEndTime.current) < 500;
+                            if (
+                              writingEnabled &&
+                              !(editingNoteId || editingStickerId) &&
+                              !multiTouchActiveRef.current &&
+                              !isCooldown
+                            ) {
+                              registerStrokeAction(pageIndex);
+                            }
+                          }}
+                          pointerEvents={
+                            !pagesLoaded[pageIndex] || editingNoteId || editingStickerId || !writingEnabled || multiTouchActive
+                              ? 'none'
+                              : 'box-none'
+                          }
+                        >
+                          <DrawingCanvas
+                            index={pageIndex}
+                            savedPath={savedPath}
+                            strokesJson={strokesJson}
+                            ref={(r) => refSetters.current[pageIndex](r)}
+                            drawingEnabled={pagesLoaded[pageIndex] && !(editingNoteId || editingStickerId) && !multiTouchActive}
                           />
-                        ))}
 
-                        {/* Image stickers */}
-                        {stickersForPage.map((sticker) => (
-                          <DraggableImageSticker
-                            key={sticker.id}
-                            sticker={sticker}
-                            isEditing={editingStickerId === sticker.id}
-                            onToggleEdit={(id) => {
-                              if (!writingEnabled) return;
-                              setEditingStickerId((prev) => (prev === id ? null : id));
-                              setEditingNoteId(null);
+                          {/* Eraser Cursor */}
+                          <View
+                            ref={cursorRef}
+                            pointerEvents="none"
+                            style={{
+                              position: 'absolute',
+                              width: eraserWidth,
+                              height: eraserWidth,
+                              borderRadius: eraserWidth / 2,
+                              borderWidth: 1,
+                              borderColor: '#333',
+                              backgroundColor: 'rgba(200, 200, 200, 0.3)',
+                              zIndex: 9999,
+                              opacity: 0, // Hidden by default
                             }}
-                            onPositionChange={handleStickerPositionChange}
-                            onSizeChange={handleStickerSizeChange}
-                            onDelete={handleStickerDelete}
-                            pageScale={lastScalePerPageRef[pageIndex] * formScale}
-                            writingEnabled={writingEnabled}
                           />
-                        ))}
-                      </View>
+                        </View>
+
+                        {/* 🔹 Dismiss Edit Layer (Transparent) - MOVED HERE to be ABOVE canvas */}
+                        {/* This blocks touches to canvas when editing */}
+                        {(editingNoteId || editingStickerId) && (
+                          <Pressable
+                            style={StyleSheet.absoluteFill}
+                            onPress={() => {
+                              if (editingNoteId || editingStickerId) {
+                                setEditingNoteId(null);
+                                setEditingStickerId(null);
+                              }
+                            }}
+                          />
+                        )}
+
+                        {/* Overlays synchronized with background image load */}
+                        <View style={{ opacity: pagesLoaded[pageIndex] ? 1 : 0 }} pointerEvents="box-none">
+                          {/* Voice notes */}
+                          {notesForPage.map((note) => (
+                            <DraggableVoiceText
+                              key={note.id}
+                              note={note}
+                              isEditing={editingNoteId === note.id}
+                              onToggleEdit={(id) => {
+                                if (!writingEnabled) return;
+                                setEditingNoteId((prev) => (prev === id ? null : id));
+                                setEditingStickerId(null);
+                              }}
+                              onPositionChange={handleVoiceNotePositionChange}
+                              onBoxSizeChange={handleVoiceNoteBoxChange}
+                              onDelete={handleVoiceNoteDelete}
+                              onChangeText={handleVoiceNoteTextChange}
+                              onChangeFontSize={handleVoiceNoteFontSizeChange}
+                              onChangeTextAlign={handleVoiceNoteTextAlignChange}
+                              pageScale={lastScalePerPageRef[pageIndex] * formScale}
+                              writingEnabled={writingEnabled}
+                              onResizeStart={() => disableDrawingImmediately(true)}
+                              onResizeEnd={() => disableDrawingImmediately(false)}
+                            />
+                          ))}
+
+                          {/* Image stickers */}
+                          {stickersForPage.map((sticker) => (
+                            <DraggableImageSticker
+                              key={sticker.id}
+                              sticker={sticker}
+                              isEditing={editingStickerId === sticker.id}
+                              onToggleEdit={(id) => {
+                                if (!writingEnabled) return;
+                                setEditingStickerId((prev) => (prev === id ? null : id));
+                                setEditingNoteId(null);
+                              }}
+                              onPositionChange={handleStickerPositionChange}
+                              onSizeChange={handleStickerSizeChange}
+                              onDelete={handleStickerDelete}
+                              pageScale={lastScalePerPageRef[pageIndex] * formScale}
+                              writingEnabled={writingEnabled}
+                            />
+                          ))}
+                        </View>
                       </View>
                     </Animated.View>
                   </View>
