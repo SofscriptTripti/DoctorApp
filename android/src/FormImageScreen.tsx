@@ -937,7 +937,7 @@ const FormImageScreen = () => {
 
             // Calculate scale based on current width vs initial width
             const isPatient = s.stickerType === 'patient';
-            
+
             // For FormImageScreen we don't apply an extra manual scale, the entire wrapper handles it.
             // But we do need to extract their intended scale from editor sizing
             const initialWidth = isPatient ? 220 : 180;
@@ -1195,6 +1195,14 @@ const FormImageScreen = () => {
           <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document ID: {displayDocumentId}</Text>
           <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
         </View>
+      ) : !documentInstanceId ? (
+        <View style={[styles.noPagesContainer, isDark && { backgroundColor: colors.background }]}>
+          {/* <Ionicons name="document-text-outline" size={64} color={isDark ? colors.textMuted : "#94A3B8"} style={{ marginBottom: 16 }} /> */}
+          <Text style={[styles.noPagesText, isDark && { color: colors.textPrimary }]}>
+            You don't have a document.Click the 'New' to create one.
+          </Text>
+
+        </View>
       ) : pages.length > 0 ? (
         <>
           <FlatList
@@ -1251,27 +1259,14 @@ const FormImageScreen = () => {
 
 
       {/* Open Full Editor Button - show when images loaded, with or without instance */}
-      {pages.length > 0 && displayDocumentId && hasValidImages && (
+      {pages.length > 0 && displayDocumentId && hasValidImages && documentInstanceId && (
         <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
           <TouchableOpacity
-            style={[styles.btn, !documentInstanceId && { backgroundColor: '#64748b' }]}
-            onPress={() => {
-              if (!documentInstanceId) {
-                // Prompt user to create an instance first
-                Alert.alert(
-                  'Create Form First',
-                  'Please tap the "New" button to create a form instance before editing.',
-                  [{ text: 'OK' }]
-                );
-              } else {
-                openFullEditor();
-              }
-            }}
+            style={styles.btn}
+            onPress={openFullEditor}
           >
             <Ionicons name="create-outline" size={22} color="#fff" />
-            <Text style={styles.btnTxt}>
-              {documentInstanceId ? 'Open Full Editor' : 'Tap “New” to Start Editing'}
-            </Text>
+            <Text style={styles.btnTxt}>Open Full Editor</Text>
           </TouchableOpacity>
         </SafeAreaView>
       )}
@@ -1464,7 +1459,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   noPagesText: {
-    fontSize: 16,
+    fontSize: 24,
     color: '#666',
     fontWeight: '500',
     marginBottom: 10,

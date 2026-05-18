@@ -525,6 +525,7 @@ export default function RxNotes() {
 
   // UI state
   const [editingVital, setEditingVital] = useState<keyof Vitals | null>(null);
+  const [isEditingVitals, setIsEditingVitals] = useState(false);
   const [sinceOpen, setSinceOpen] = useState(false);
   const [severityOpen, setSeverityOpen] = useState(false);
   const [diagnosisSearch, setDiagnosisSearch] = useState('');
@@ -1604,11 +1605,32 @@ export default function RxNotes() {
               onPress={() => toggleSection('vitals')}
             >
               <Text style={[styles.sectionTitle, { color: isDark ? colors.textPrimary : colors.primary }]}>Vitals</Text>
-              <Feather
-                name={expandedSections.vitals ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color="#0EA5A4"
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation && e.stopPropagation();
+                    if (isEditingVitals) {
+                      setIsEditingVitals(false);
+                      setEditingVital(null);
+                    } else {
+                      setIsEditingVitals(true);
+                      if (!expandedSections.vitals) toggleSection('vitals');
+                    }
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather
+                    name={isEditingVitals ? 'check-circle' : 'edit-2'}
+                    size={18}
+                    color={isEditingVitals ? '#10B981' : '#0EA5A4'}
+                  />
+                </TouchableOpacity>
+                <Feather
+                  name={expandedSections.vitals ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color="#0EA5A4"
+                />
+              </View>
             </TouchableOpacity>
 
             {expandedSections.vitals && (
@@ -1616,35 +1638,30 @@ export default function RxNotes() {
                 <View style={styles.grid}>
                   {vitalRows.map((row, rowIndex) => (
                     <View key={rowIndex} style={styles.vitalRow}>
-                      {row.map((vital, index) => (
-                        <View key={vital.key} style={[styles.vitalTile, { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC', borderColor: isDark ? colors.border : '#E2E8F0' }]}>
+                      {row.map((vital) => (
+                        <View
+                          key={vital.key}
+                          style={[
+                            styles.vitalTile,
+                            { backgroundColor: isDark ? colors.surfaceHighlight : '#F8FAFC', borderColor: isDark ? colors.border : '#E2E8F0' },
+                            isEditingVitals && vital.editable && { borderColor: '#0EA5A4', borderWidth: 1.5 }
+                          ]}
+                        >
                           <View style={styles.vitalHeader}>
                             <Text style={[styles.vitalLabel, { color: isDark ? colors.textSecondary : '#64748B' }]}>{vital.label}</Text>
-                            {vital.editable && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setEditingVital(editingVital === vital.key ? null : vital.key)
-                                }
-                              >
-                                <Feather
-                                  name={editingVital === vital.key ? 'check' : 'edit-2'}
-                                  size={14}
-                                  color="#0EA5A4"
-                                />
-                              </TouchableOpacity>
-                            )}
                           </View>
 
-                          {editingVital === vital.key ? (
+                          {isEditingVitals && vital.editable ? (
                             <View style={styles.vitalEditRow}>
                               <TextInput
                                 value={extractNumber(formData.vitals[vital.key])}
                                 onChangeText={v => updateVitalNumber(vital.key, v)}
                                 keyboardType="numeric"
-                                autoFocus
-                                style={styles.vitalInput}
+                                style={[styles.vitalInput, { flex: 1 }]}
+                                placeholder="--"
+                                placeholderTextColor={isDark ? colors.textMuted : '#94A3B8'}
                               />
-                              {vital.unit && <Text style={[styles.unit, { color: isDark ? colors.textSecondary : '#64748B' }]}>{vital.unit}</Text>}
+                              {vital.unit ? <Text style={[styles.unit, { color: isDark ? colors.textSecondary : '#64748B' }]}>{vital.unit}</Text> : null}
                             </View>
                           ) : (
                             <Text style={[styles.vitalValue, { color: colors.textPrimary }]}>
@@ -1661,17 +1678,20 @@ export default function RxNotes() {
                     </View>
                   ))}
                 </View>
-                <View style={styles.vitalHeader}>
-                  {/* <Text style={[styles.subTitle, { color: colors.textPrimary }]}>Doctors Note</Text> */}
-                </View>
-                {/* <TextInput
-                  placeholder="Enter note here..."
-                  placeholderTextColor={isDark ? "white" : '#94A3B8'}
-                  value={formData.doctorNote}
-                  onChangeText={text => updateField('doctorNote', text)}
-                  multiline
-                  style={[styles.prescriptionInput, { height: 80, textAlignVertical: 'top', color: colors.textPrimary, backgroundColor: isDark ? colors.surfaceSoft : '#fff', borderRadius: 8, borderWidth: 1, borderColor: isDark ? colors.border : '#CBD5F5', padding: 10, marginBottom: 16 }]}
-                /> */}
+
+                {isEditingVitals && (
+                  <TouchableOpacity
+                    style={[styles.vitalSaveBtn, { backgroundColor: '#0EA5A4' }]}
+                    onPress={() => {
+                      setIsEditingVitals(false);
+                      setEditingVital(null);
+                      setHasUnsavedChanges(true);
+                    }}
+                  >
+                    <Feather name="save" size={16} color="#fff" />
+                    <Text style={styles.vitalSaveBtnText}>Save Vitals</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
@@ -4000,4 +4020,19 @@ const styles = StyleSheet.create({
   invColRemarks: { width: '18%' },
   invColChecker: { width: '10%' },
   invColDelete: { width: '4%' },
+  vitalSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 14,
+    gap: 8,
+  },
+  vitalSaveBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
 });
