@@ -24,23 +24,45 @@ export const createPatientDocument = async (
   });
 
   try {
-
-    const res = await api.get('/PatientDocuments/open', {
-      params: {
-        patientNo,
+    try {
+      console.log('🚀 [createPatientDocument] Attempting to open with ContinueEditing...');
+      const res = await api.post('/PatientDocuments/open', {
+        action: 'ContinueEditing',
         admissionNo,
         documentCd,
-        action: 'ContinueEditing',
+        patientNo,
+        timestamp: new Date().toISOString(),
         versionNo: null,
+      }, {
+        validateStatus: (status) => status === 200 || status === 201 || status === 404
+      });
+
+      if (res.status === 404) {
+        console.log('ℹ️ [createPatientDocument] Document not found (404) on server. Attempting to create new form with action: New...');
+        const resNew = await api.post('/PatientDocuments/open', {
+          action: 'New',
+          admissionNo,
+          documentCd,
+          patientNo,
+          timestamp: new Date().toISOString(),
+          versionNo: null,
+        });
+
+        console.log('✅ [createPatientDocument] action: New succeeded:', {
+          status: resNew.status,
+          data: resNew.data,
+        });
+        return resNew.data;
       }
-    });
 
-    console.log('✅ [createPatientDocument] API response:', {
-      status: res.status,
-      data: res.data,
-    });
-
-    return res.data;
+      console.log('✅ [createPatientDocument] ContinueEditing succeeded:', {
+        status: res.status,
+        data: res.data,
+      });
+      return res.data;
+    } catch (innerError: any) {
+      throw innerError;
+    }
   } catch (error: any) {
     console.error('❌ [createPatientDocument] API error:', {
       message: error?.message,
@@ -141,7 +163,7 @@ export const getPatientDocumentPages = async (id: string) => {
 export const getPatientDocumentPageImage = async (
   documentInstanceId: string,
   pageId: string
-): Promise<string> => {
+): Promise<string | null> => {
   const response = await api.get(
     `/PatientDocuments/${documentInstanceId}/pages/${pageId}/image`,
     {
@@ -149,8 +171,14 @@ export const getPatientDocumentPageImage = async (
       headers: {
         Accept: 'image/*',
       },
+      validateStatus: (status) => status === 200 || status === 404
     }
   );
+
+  if (response.status === 404) {
+    console.log(`ℹ️ [getPatientDocumentPageImage] Base image not found (404) for page ${pageId}.`);
+    return null;
+  }
 
   const contentType = response.headers?.['content-type'] || 'image/jpeg';
   const base64 = Buffer.from(response.data, 'binary').toString('base64');

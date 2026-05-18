@@ -339,7 +339,7 @@ export default function CareScribeLogin({ navigation }: any) {
               <View style={styles.formContainer}>
                 {/* Email */}
                 <View style={styles.inputGroup}>
-                  <Text style={[styles.label, bg.label]}>Email Address</Text>
+                  <Text style={[styles.label, bg.label]}>Username</Text>
                   <TextInput
                     style={[styles.input, bg.input]}
                     placeholder="you@domain.com"

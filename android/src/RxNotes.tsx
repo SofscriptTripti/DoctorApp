@@ -1514,11 +1514,11 @@ export default function RxNotes() {
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Rx Notes</Text>
       <View style={[styles.headerRight, { flexDirection: 'row', alignItems: 'center', width: 'auto', gap: 12 }]}>
-        {hasUnsavedChanges && (
+        {/* {hasUnsavedChanges && (
           <View style={styles.draftBadge}>
             <Text style={styles.draftText}>Draft</Text>
           </View>
-        )}
+        )} */}
         <TouchableOpacity
           style={[
             styles.backButton,

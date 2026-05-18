@@ -595,9 +595,18 @@ const FormImageScreen = () => {
           try {
             console.log(`Loading image ${index + 1}/${sortedPages.length} for page ${page.pageId}`);
 
-            const response = documentInstanceId
-              ? await getPatientDocumentPageImage(documentInstanceId, page.pageId)
-              : await getDocumentPageImage(effectiveDocumentId, page.pageId);
+            let response = null;
+            if (documentInstanceId) {
+              try {
+                response = await getPatientDocumentPageImage(documentInstanceId, page.pageId);
+              } catch (e) {
+                console.log(`⚠️ [FormImageScreen] Failed to fetch patient page image for ${page.pageId}, falling back to template...`);
+              }
+            }
+
+            if (!response) {
+              response = await getDocumentPageImage(effectiveDocumentId, page.pageId);
+            }
 
             if (response && typeof response === 'string') {
               if (response.startsWith('data:image/') || response.length > 1000) {
@@ -1197,11 +1206,9 @@ const FormImageScreen = () => {
         </View>
       ) : !documentInstanceId ? (
         <View style={[styles.noPagesContainer, isDark && { backgroundColor: colors.background }]}>
-          {/* <Ionicons name="document-text-outline" size={64} color={isDark ? colors.textMuted : "#94A3B8"} style={{ marginBottom: 16 }} /> */}
           <Text style={[styles.noPagesText, isDark && { color: colors.textPrimary }]}>
-            You don't have a document.Click the 'New' to create one.
+            You don't have a document. Click 'New' to create one.
           </Text>
-
         </View>
       ) : pages.length > 0 ? (
         <>
@@ -1258,7 +1265,7 @@ const FormImageScreen = () => {
       </TouchableOpacity>
 
 
-      {/* Open Full Editor Button - show when images loaded, with or without instance */}
+      {/* Open Full Editor Button - show only when instance exists */}
       {pages.length > 0 && displayDocumentId && hasValidImages && documentInstanceId && (
         <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
           <TouchableOpacity
