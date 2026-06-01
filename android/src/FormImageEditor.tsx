@@ -3437,10 +3437,8 @@ export default function FormImageEditor() {
     if (!activeInstanceId) {
       console.warn('⚠️ No documentInstanceId found. Attempting auto-recovery...');
 
-      // Check if we have enough info to recreate it
-      // Note: We need documentCd. Usually it's 'DOC01' or similar, but ideally it should be in params/state.
-      // Assuming 'DOC01' fallback or derived from documentId if available.
-      const recoveryDocCd = 'DOC01'; // Default or derived? Ideally passed in.
+      // Derive from documentId or formKey fallback to DOC01
+      const recoveryDocCd = documentId || formKey || 'DOC01';
       // Actually, we should check if we have patientNo/admissionNo from our PERSISTED state
       const targetPatientNo = patientId;
       const targetAdmissionNo = admissionNo;

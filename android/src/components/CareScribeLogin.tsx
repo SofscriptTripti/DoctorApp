@@ -176,12 +176,20 @@ export default function CareScribeLogin({ navigation }: any) {
         'HOSP1'
       );
 
+      // Save auth and context directly, then navigate to PatientScreen
+      await saveAuth(response.accessToken, response.refreshToken, response.userInfo);
 
-      // Store response and show OTP modal instead of immediate navigation
-      setTempAuthData(response);
-      setOtpVisible(true);
-      setOtp(['', '', '', '']); // Reset OTP on open
-      setOtpError(null); // Clear previous errors
+      await saveUserContext(
+        response.userInfo.userId,
+        response.userInfo.fullName,
+        response.userInfo.tenantCode,
+        response.userInfo.department || 'Unavailable'
+      );
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'PatientScreen' }],
+      });
     } catch (error: any) {
       console.error('Login error', error);
       Alert.alert(
@@ -413,7 +421,7 @@ export default function CareScribeLogin({ navigation }: any) {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* OTP Verification Modal */}
+        {/* OTP Verification Modal Commented Out
         <Modal
           visible={otpVisible}
           transparent
@@ -429,7 +437,6 @@ export default function CareScribeLogin({ navigation }: any) {
                 <Ionicons name="close" size={24} color={isDark ? '#94A3B8' : '#64748B'} />
               </TouchableOpacity>
               <View style={styles.otpHeader}>
-                {/* <Text style={[styles.otpTitle, bg.text]}>Verify Identity</Text> */}
                 <Text style={[styles.otpSub, bg.subText]}>
                   Please enter the 4-digit code sent to your registered Email ID.
                 </Text>
@@ -473,6 +480,7 @@ export default function CareScribeLogin({ navigation }: any) {
             </Animated.View>
           </View>
         </Modal>
+        */}
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );

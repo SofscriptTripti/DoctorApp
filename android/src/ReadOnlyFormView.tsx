@@ -725,8 +725,8 @@ const ReadOnlyFormView = () => {
               {/* Overlay Loading Indicator */}
               {page.overlayLoading && (
                 <View style={styles.overlayLoadingContainer}>
-                  <ActivityIndicator size="small" color="#0EA5A4" />
-                  <Text style={[styles.overlayLoadingText, isDark && { color: colors.textSecondary }]}>Loading overlay...</Text>
+                  {/* <ActivityIndicator size="small" color="#0EA5A4" /> */}
+                  {/* <Text style={[styles.overlayLoadingText, isDark && { color: colors.textSecondary }]}>Loading overlay...</Text> */}
                 </View>
               )}
 
@@ -974,8 +974,8 @@ const ReadOnlyFormView = () => {
           {/* Show loading indicator for overlays */}
           {loadingOverlays && (
             <View style={[styles.overlayGlobalLoading, isDark && { backgroundColor: colors.surfaceHighlight, borderTopColor: colors.border }]}>
-              <ActivityIndicator size="small" color="#0EA5A4" />
-              <Text style={[styles.overlayGlobalLoadingText, isDark && { color: colors.primary }]}>Loading overlays...</Text>
+              {/* <ActivityIndicator size="small" color="#0EA5A4" /> */}
+              {/* <Text style={[styles.overlayGlobalLoadingText, isDark && { color: colors.primary }]}>Loading overlays...</Text> */}
             </View>
           )}
         </>

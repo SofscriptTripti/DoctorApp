@@ -12,7 +12,10 @@ import {
   Easing,
   ScrollView,
   StatusBar,
+  Dimensions,
 } from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -90,8 +93,9 @@ export default function PatientScreen() {
   const [searchText, setSearchText] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  // const [personTab, setPersonTab] = useState<PersonTab>('IN');
   const [personTab, setPersonTab] = useState<PersonTab>('IN');
+  const horizontalScrollRef = useRef<ScrollView>(null);
+
   // NEW: filter modal + selected filters
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterKey[]>([
@@ -150,14 +154,26 @@ export default function PatientScreen() {
         // 🔥 Disable swipe when editing vitals
         if (editingVital !== null) return false;
 
-        return Math.abs(gesture.dx) > 15 && Math.abs(gesture.dy) < 30;
+        return Math.abs(gesture.dx) > 25 && Math.abs(gesture.dy) < 15;
+      },
+
+      onMoveShouldSetPanResponderCapture: (_, gesture) => {
+        // 🔥 Intercept horizontal swipes on scrollable FlatList & Touchable cards
+        if (editingVital !== null) return false;
+
+        return Math.abs(gesture.dx) > 25 && Math.abs(gesture.dy) < 15;
       },
 
       onPanResponderRelease: (_, gesture) => {
         if (editingVital !== null) return;
 
-        if (gesture.dx < -60) setPersonTab('OUT');
-        else if (gesture.dx > 60) setPersonTab('IN');
+        if (gesture.dx < -60) {
+          setPersonTab('OUT');
+          horizontalScrollRef.current?.scrollTo({ x: SCREEN_WIDTH, animated: true });
+        } else if (gesture.dx > 60) {
+          setPersonTab('IN');
+          horizontalScrollRef.current?.scrollTo({ x: 0, animated: true });
+        }
       },
     })
   ).current;
@@ -970,18 +986,22 @@ export default function PatientScreen() {
           </TouchableOpacity>
         </View>
 
-        <View {...(!editingVital ? panResponder.panHandlers : {})}>
+        <View style={{ flex: 1 }}>
           <View style={[
             styles.personTabWrapper,
             { backgroundColor: isDark ? colors.surfaceHighlight : '#0EA5A4' },
             !isDark && { marginHorizontal: 0, borderRadius: 0, paddingHorizontal: 16, paddingBottom: 8 }
           ]}>
             <TouchableOpacity
-              onPress={() => setPersonTab('IN')}
+              onPress={() => {
+                setPersonTab('IN');
+                horizontalScrollRef.current?.scrollTo({ x: 0, animated: true });
+              }}
               style={[
                 styles.personTab,
                 personTab === 'IN' && styles.personTabActive,
-                !isDark && personTab === 'IN' && { backgroundColor: '#FFFFFF' }
+                !isDark && personTab === 'IN' && { backgroundColor: '#FFFFFF' },
+                personTab !== 'IN' && { borderColor: '#FFFFFF' } // ✅ White border for non-selected In Patient tab
               ]}
             >
               <Text
@@ -998,11 +1018,15 @@ export default function PatientScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setPersonTab('OUT')}
+              onPress={() => {
+                setPersonTab('OUT');
+                horizontalScrollRef.current?.scrollTo({ x: SCREEN_WIDTH, animated: true });
+              }}
               style={[
                 styles.personTab,
                 personTab === 'OUT' && styles.personTabActive,
-                !isDark && personTab === 'OUT' && { backgroundColor: '#FFFFFF' }
+                !isDark && personTab === 'OUT' && { backgroundColor: '#FFFFFF' },
+                personTab !== 'OUT' && { borderColor: '#FFFFFF' } // ✅ White border for non-selected Out Patient tab
               ]}
             >
               <Text
@@ -1018,62 +1042,95 @@ export default function PatientScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Content */}
-        <View style={styles.contentWrapper}>
-          <View style={[
-            styles.sectionHeader,
-            { backgroundColor: isDark ? colors.background : '#0EA5A4' },
-            !isDark && {
-              borderBottomLeftRadius: 18,
-              borderBottomRightRadius: 18,
-              paddingBottom: 14,
-              paddingTop: 0, // already has padding from header or tabs?
-            }
-          ]}>
-            <View style={styles.searchRow}>
-              {/* Search box */}
-              <View style={[
-                styles.searchWrapperContent,
-                { backgroundColor: colors.surface },
-                !isDark && { elevation: 2, shadowOpacity: 0.1, borderColor: 'transparent' },
-                isDark && { borderColor: colors.border, borderWidth: 1 }
-              ]}>
-                <Icon
-                  name="search"
-                  size={18}
-                  color={isDark ? colors.textSecondary : "#94A3B8"}
-                  style={{ marginRight: 8 }} />
-                <TextInput
-                  multiline={false}
-                  placeholder="Search by Name, Ward, Doctor or Patient No"
-                  placeholderTextColor={isDark ? colors.textSecondary : "#64748B"}
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  style={[styles.searchInputContent, { color: colors.textPrimary }]}
-                  returnKeyType="search" />
-                {searchText.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchText('')}>
-                    <Icon name="close-circle" size={18} color={isDark ? colors.textSecondary : "#94A3B8"} />
-                  </TouchableOpacity>
-                )}
+          {/* Content */}
+          <View style={styles.contentWrapper}>
+            <View style={[
+              styles.sectionHeader,
+              { backgroundColor: isDark ? colors.background : '#0EA5A4' },
+              !isDark && {
+                borderBottomLeftRadius: 18,
+                borderBottomRightRadius: 18,
+                paddingBottom: 14,
+                paddingTop: 0, // already has padding from header or tabs?
+              }
+            ]}>
+              <View style={styles.searchRow}>
+                {/* Search box */}
+                <View style={[
+                  styles.searchWrapperContent,
+                  { backgroundColor: colors.surface },
+                  !isDark && { elevation: 2, shadowOpacity: 0.1, borderColor: 'transparent' },
+                  isDark && { borderColor: colors.border, borderWidth: 1 }
+                ]}>
+                  <Icon
+                    name="search"
+                    size={18}
+                    color={isDark ? colors.textSecondary : "#94A3B8"}
+                    style={{ marginRight: 8 }} />
+                  <TextInput
+                    multiline={false}
+                    placeholder="Search by Name, Ward, Doctor or Patient No"
+                    placeholderTextColor={isDark ? colors.textSecondary : "#64748B"}
+                    value={searchText}
+                    onChangeText={setSearchText}
+                    style={[styles.searchInputContent, { color: colors.textPrimary }]}
+                    returnKeyType="search" />
+                  {searchText.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchText('')}>
+                      <Icon name="close-circle" size={18} color={isDark ? colors.textSecondary : "#94A3B8"} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
-          </View>
 
-          {loadingPatients ? (
-            <View style={{ padding: 24, alignItems: 'center' }}>
-              <Text style={{ color: colors.textPrimary }}>Loading patients...</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredPatients}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent} />
-          )}
+            {loadingPatients ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <Text style={{ color: colors.textPrimary }}>Loading patients...</Text>
+              </View>
+            ) : (
+              <ScrollView
+                ref={horizontalScrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                onScroll={(event) => {
+                  const offsetX = event.nativeEvent.contentOffset.x;
+                  const pageIndex = Math.round(offsetX / SCREEN_WIDTH);
+                  if (pageIndex === 0 && personTab !== 'IN') {
+                    setPersonTab('IN');
+                  } else if (pageIndex === 1 && personTab !== 'OUT') {
+                    setPersonTab('OUT');
+                  }
+                }}
+                style={{ flex: 1 }}
+              >
+                {/* In Patient Page */}
+                <View style={{ width: SCREEN_WIDTH }}>
+                  <FlatList
+                    data={filteredPatients}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderItem}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.listContent}
+                  />
+                </View>
+
+                {/* Out Patient Page */}
+                <View style={{ width: SCREEN_WIDTH }}>
+                  <FlatList
+                    data={filteredPatients}
+                    keyExtractor={(item) => `out-${item.id}`}
+                    renderItem={renderItem}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.listContent}
+                  />
+                </View>
+              </ScrollView>
+            )}
+          </View>
         </View>
 
         {/* Modal: Patient Details */}
@@ -1228,12 +1285,14 @@ export default function PatientScreen() {
                     <InfoTile label="Doctor" value={selectedPatient.doctorName} />
                     {/* Commented out RxNotes button as requested */}
 
+                    {/* Commented out RxNotes button as requested */}
                     <View style={[styles.infoTile, styles.rxNotesButtonContainer, isDark && { backgroundColor: 'transparent', borderColor: '#0EA5A4' }]}>
                       <TouchableOpacity style={styles.rxNotesButton} activeOpacity={0.8} onPress={goToRxNotes}>
                         <Icon name="document-text-outline" size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
                         <Text style={styles.rxNotesText}>RxNotes</Text>
                       </TouchableOpacity>
                     </View>
+                   
 
                   </View>
                 </ScrollView>
@@ -1843,6 +1902,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     padding: 4,
     marginHorizontal: 16,
+    gap: 10,
   },
 
 
@@ -1851,6 +1911,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 16,
     alignItems: 'center',
+    borderWidth: 1.2,
+    borderColor: 'transparent',
   },
 
   // ───────── Vitals card styles ─────────

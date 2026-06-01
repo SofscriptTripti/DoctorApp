@@ -70,6 +70,7 @@ const saveDocumentContext = async (documentId: string, pageData?: any[]) => {
 
 type ApiForm = {
   documentId: string;
+  documentInstanceId?: string; // ✅ Added
   title: string;
   description?: string;
   categoryCode?: string;
@@ -251,6 +252,7 @@ export default function FormTypeScreen() {
 
             return {
               documentId: doc.documentId,
+              documentInstanceId: doc.documentInstanceId, // ✅ Map documentInstanceId from API
               title: doc.title || 'Untitled Form',
               description: doc.description || '',
               categoryCode: doc.categoryCode,
@@ -415,8 +417,12 @@ export default function FormTypeScreen() {
       let pageData: any[] = [];
 
       try {
-        console.log('📥 Loading pages for document:', form.documentId);
+        console.log('--------------------------------------------------');
+        console.log('🌐 [API CALL] Endpoint: GET /Documents/' + form.documentId + '/pages');
+        console.log('📥 [API PARAM]:', { documentId: form.documentId });
         const pages = await getDocumentPages(form.documentId);
+        console.log('📤 [API RESPONSE]:', pages);
+        console.log('--------------------------------------------------');
 
         totalPages = Array.isArray(pages) ? pages.length : 0;
 
@@ -698,6 +704,7 @@ export default function FormTypeScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* HMIS Report button commented out as requested */}
             <TouchableOpacity
               style={[
                 styles.hmisButton,
@@ -717,6 +724,7 @@ export default function FormTypeScreen() {
             >
               <Text style={[styles.hmisButtonText, isDark && { color: '#0EA5A4' }]}>HMIS Report</Text>
             </TouchableOpacity>
+           
 
             <TouchableOpacity
               style={{

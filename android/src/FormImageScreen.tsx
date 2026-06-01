@@ -150,7 +150,7 @@ const FormImageScreen = () => {
   }, [params.voiceNotes, params.imageStickers, params.admissionNo, params.documentId]);
   const [reloadToken, setReloadToken] = useState(0);
   const [shouldReload, setShouldReload] = useState(true);
-  const [hasDocumentContext, setHasDocumentContext] = useState(false);
+  const [hasDocumentContext, setHasDocumentContext] = useState(true);
   const [hasValidImages, setHasValidImages] = useState(false);
   const [editedPages, setEditedPages] = useState<number>(params.editedPages || 0);
   const [loadingOverlays, setLoadingOverlays] = useState(false);
@@ -307,9 +307,12 @@ const FormImageScreen = () => {
             setDocumentId(currentDocId);
             setStoredDocumentId(currentDocId);
             await AsyncStorage.setItem(STORAGE_KEYS.documentId, currentDocId);
+          } else {
+            setHasDocumentContext(false);
           }
         } catch (apiErr) {
           console.error('Failed to fetch fallback documents:', apiErr);
+          setHasDocumentContext(false);
         }
       }
 
@@ -333,18 +336,22 @@ const FormImageScreen = () => {
         setDocumentId(context.documentId || currentDocId);
         setHasDocumentContext(true);
       } else {
-        // ✅ NEW DESIGN: No instance exists yet — show base form images (read-only preview).
-        // Do NOT auto-create an instance. The user must explicitly tap "New" to create one.
-        console.log('No existing document instance. Showing base form images. User can tap New to create an instance.');
+        console.log('No existing document instance. Auto-creating a new document instance...');
         setDocumentId(currentDocId);
-        setHasDocumentContext(true); // ✅ Allow image loading — documentInstanceId stays undefined
+        setHasDocumentContext(true);
+        // Auto-create document instance
+        const newInstanceId = await createNewDocumentInstance();
+        if (newInstanceId) {
+          setDocumentInstanceId(newInstanceId);
+          setShouldReload(true);
+        }
       }
     } catch (error) {
       console.error('Error loading document context:', error);
       // Even on error, allow base images to show
       setHasDocumentContext(true);
     }
-  }, [params.documentInstanceId, params.documentId, storedDocumentId, formName, getDocumentContextFromStorage]);
+  }, [params.documentInstanceId, params.documentId, storedDocumentId, formName, getDocumentContextFromStorage, createNewDocumentInstance]);
 
 
   /* ---------- LOAD ALL OVERLAYS USING PAGE-WISE API ---------- */
@@ -673,9 +680,9 @@ const FormImageScreen = () => {
 
     } catch (error) {
       console.error('Failed to load document pages:', error);
-      loadedDocumentInstanceIdRef.current = null;
+      loadedDocumentInstanceIdRef.current = documentInstanceId || null;
       setHasValidImages(false);
-      setShouldReload(true);
+      setShouldReload(false);
     } finally {
       setLoading(false);
       isLoadingRef.current = false;
@@ -904,8 +911,8 @@ const FormImageScreen = () => {
               {/* Overlay Loading Indicator */}
               {page.overlayLoading && (
                 <View style={styles.overlayLoadingContainer}>
-                  <ActivityIndicator size="small" color="#0EA5A4" />
-                  <Text style={[styles.overlayLoadingText, isDark && { color: colors.textSecondary }]}>Loading overlay...</Text>
+                  {/* <ActivityIndicator size="small" color="#0EA5A4" /> */}
+                  {/* <Text style={[styles.overlayLoadingText, isDark && { color: colors.textSecondary }]}>Loading overlay...</Text> */}
                 </View>
               )}
 
@@ -1073,10 +1080,16 @@ const FormImageScreen = () => {
 
   /* ---------- OPEN EDITOR ---------- */
   const openFullEditor = useCallback(async () => {
-    if (!documentInstanceId) {
-      console.error('Cannot open editor: documentInstanceId is undefined');
-      Alert.alert('Error', 'Document Instance ID is missing. Please try again.');
-      return;
+    let activeInstanceId = documentInstanceId;
+
+    if (!activeInstanceId) {
+      console.log('No documentInstanceId found. Creating document instance automatically...');
+      activeInstanceId = await createNewDocumentInstance();
+      if (!activeInstanceId) {
+        Alert.alert('Error', 'Failed to initialize document. Please try again.');
+        return;
+      }
+      setDocumentInstanceId(activeInstanceId);
     }
 
     // Use either documentId from props or storedDocumentId
@@ -1094,7 +1107,7 @@ const FormImageScreen = () => {
       return;
     }
 
-    console.log('Opening editor with', pages.length, 'pages, documentId:', effectiveDocumentId, 'documentInstanceId:', documentInstanceId);
+    console.log('Opening editor with', pages.length, 'pages, documentId:', effectiveDocumentId, 'documentInstanceId:', activeInstanceId);
 
     const validPages = pages.filter(page => page.hasImage && page.imageData);
 
@@ -1105,9 +1118,19 @@ const FormImageScreen = () => {
       overlayData: p.overlayData,
     }));
 
+    // Build the dynamic storage key immediately for the new instance
+    let activeStorageKey = perFormStorageKey;
+    if (!documentInstanceId) {
+      const safePatient = (patientName || 'Unknown').replace(/\s+/g, '_');
+      const safeForm = (formName || 'Document').replace(/\s+/g, '_');
+      const suffix = (params.admissionNo || patientId) ? `:${params.admissionNo || patientId}` : '';
+      const instSuffix = `:${activeInstanceId}`;
+      activeStorageKey = `DoctorApp:${safePatient}:${safeForm}${suffix}${instSuffix}:pagesBitmaps:v1`;
+    }
+
     navigation.navigate('FormImageEditor', {
       singleImageMode: false,
-      storageKey: perFormStorageKey,
+      storageKey: activeStorageKey,
       savedStrokes: pageMeta,
       voiceNotes,
       imageStickers,
@@ -1127,11 +1150,11 @@ const FormImageScreen = () => {
       doctorSpeciality: await AsyncStorage.getItem('department') || 'Unavailable', // ✅ Updated fallback
 
       documentId: effectiveDocumentId,
-      documentInstanceId, // Pass documentInstanceId to editor
+      documentInstanceId: activeInstanceId, // Pass activeInstanceId to editor
       apiPages: pagesWithOverlays,
       editedPages, // ✅ Pass state instead of params
     });
-  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages, params.editedPages]);
+  }, [navigation, perFormStorageKey, pageMeta, voiceNotes, imageStickers, formKey, formName, patientName, patientId, patientIP, documentId, storedDocumentId, documentInstanceId, pages, hasValidImages, params.editedPages, createNewDocumentInstance, params.admissionNo]);
 
   // Determine which document ID to display
   const displayDocumentId = documentId || storedDocumentId || 'Not available';
@@ -1197,18 +1220,12 @@ const FormImageScreen = () => {
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : loading && pages.length === 0 ? (
+      ) : loading ? (
         <View style={[styles.fullLoading, isDark && { backgroundColor: colors.background }]}>
           <ActivityIndicator size="large" color="#0EA5A4" />
-          <Text style={[styles.loadingText, isDark && { color: colors.textPrimary }]}>Loading document pages...</Text>
-          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document ID: {displayDocumentId}</Text>
-          <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document Instance ID: {documentInstanceId || 'Not available'}</Text>
-        </View>
-      ) : !documentInstanceId ? (
-        <View style={[styles.noPagesContainer, isDark && { backgroundColor: colors.background }]}>
-          <Text style={[styles.noPagesText, isDark && { color: colors.textPrimary }]}>
-            You don't have a document. Click 'New' to create one.
-          </Text>
+          <Text style={[styles.loadingText, isDark && { color: colors.textPrimary }]}>Loading Document Pages...</Text>
+          {/* <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document ID: {displayDocumentId}</Text> */}
+          {/* <Text style={[styles.documentIdText, isDark && { color: colors.textSecondary }]}>Document Instance ID: {documentInstanceId || 'Not available'}</Text> */}
         </View>
       ) : pages.length > 0 ? (
         <>
@@ -1228,11 +1245,17 @@ const FormImageScreen = () => {
           {/* Show loading indicator for overlays */}
           {loadingOverlays && (
             <View style={[styles.overlayGlobalLoading, isDark && { backgroundColor: colors.surfaceHighlight, borderTopColor: colors.border }]}>
-              <ActivityIndicator size="small" color="#0EA5A4" />
-              <Text style={[styles.overlayGlobalLoadingText, isDark && { color: colors.primary }]}>Loading overlays...</Text>
+              {/* <ActivityIndicator size="small" color="#0EA5A4" /> */}
+              {/* <Text style={[styles.overlayGlobalLoadingText, isDark && { color: colors.primary }]}>Loading overlays...</Text> */}
             </View>
           )}
         </>
+      ) : !documentInstanceId ? (
+        <View style={[styles.noPagesContainer, isDark && { backgroundColor: colors.background }]}>
+          <Text style={[styles.noPagesText, isDark && { color: colors.textPrimary }]}>
+            You don't have a document. Click 'New' to create one.
+          </Text>
+        </View>
       ) : (
         <View style={[styles.noPagesContainer, isDark && { backgroundColor: colors.background }]}>
           <Text style={[styles.noPagesText, isDark && { color: colors.textPrimary }]}>No pages found for this document</Text>
@@ -1265,8 +1288,8 @@ const FormImageScreen = () => {
       </TouchableOpacity>
 
 
-      {/* Open Full Editor Button - show only when instance exists */}
-      {pages.length > 0 && displayDocumentId && hasValidImages && documentInstanceId && (
+      {/* Open Full Editor Button - show when pages exist */}
+      {pages.length > 0 && displayDocumentId && hasValidImages && (
         <SafeAreaView edges={['bottom']} style={[styles.bottomSafe, isDark && { backgroundColor: colors.background }]}>
           <TouchableOpacity
             style={styles.btn}

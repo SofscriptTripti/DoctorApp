@@ -28,11 +28,17 @@ export const createPatientDocument = async (
       console.log('🚀 [createPatientDocument] Attempting to open with ContinueEditing...');
       const res = await api.post('/PatientDocuments/open', {
         action: 'ContinueEditing',
+        Action: 'ContinueEditing',
         admissionNo,
+        AdmissionNo: admissionNo,
         documentCd,
+        DocumentCd: documentCd,
         patientNo,
+        PatientNo: patientNo,
         timestamp: new Date().toISOString(),
+        Timestamp: new Date().toISOString(),
         versionNo: null,
+        VersionNo: null,
       }, {
         validateStatus: (status) => status === 200 || status === 201 || status === 404
       });
@@ -41,11 +47,17 @@ export const createPatientDocument = async (
         console.log('ℹ️ [createPatientDocument] Document not found (404) on server. Attempting to create new form with action: New...');
         const resNew = await api.post('/PatientDocuments/open', {
           action: 'New',
+          Action: 'New',
           admissionNo,
+          AdmissionNo: admissionNo,
           documentCd,
+          DocumentCd: documentCd,
           patientNo,
+          PatientNo: patientNo,
           timestamp: new Date().toISOString(),
+          Timestamp: new Date().toISOString(),
           versionNo: null,
+          VersionNo: null,
         });
 
         console.log('✅ [createPatientDocument] action: New succeeded:', {
@@ -95,12 +107,13 @@ export const NewVersion = async (
   });
 
   try {
-    const res = await api.get('/PatientDocuments/new-version', {
-      params: {
-        patientNo,
-        admissionNo,
-        documentCd,
-      }
+    const res = await api.post('/PatientDocuments/new-version', {
+      patientNo,
+      PatientNo: patientNo,
+      admissionNo,
+      AdmissionNo: admissionNo,
+      documentCd,
+      DocumentCd: documentCd,
     });
 
     console.log('✅ [NewVersion] API response:', {
