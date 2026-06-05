@@ -1285,13 +1285,14 @@ export default function PatientScreen() {
                     <InfoTile label="Doctor" value={selectedPatient.doctorName} />
                     {/* Commented out RxNotes button as requested */}
 
-                    {/* Commented out RxNotes button as requested */}
+                    {/* Commented out RxNotes button as requested
                     <View style={[styles.infoTile, styles.rxNotesButtonContainer, isDark && { backgroundColor: 'transparent', borderColor: '#0EA5A4' }]}>
                       <TouchableOpacity style={styles.rxNotesButton} activeOpacity={0.8} onPress={goToRxNotes}>
                         <Icon name="document-text-outline" size={14} color="#0EA5A4" style={{ marginRight: 4 }} />
                         <Text style={styles.rxNotesText}>RxNotes</Text>
                       </TouchableOpacity>
                     </View>
+                    */}
                    
 
                   </View>

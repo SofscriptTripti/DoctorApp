@@ -5,8 +5,8 @@ import { refreshTokenAPI } from './authApi';
 
 const api = axios.create({
   // baseURL: 'http://123.108.45.16:8650/CareScribeApiTest/api/v1',
-  baseURL: 'https://cw.sofscript.com:8654/CareScribeApiTest/api/v1',  
-  // baseURL: 'http://localhost/CareScribeApiTest/api/v1/',
+  // baseURL: 'https://cw.sofscript.com:8654/CareScribeApiTest/api/v1',  
+  baseURL:'http://192.168.1.18/CareScribeApiTest/api/v1/',
 
   headers: {
 

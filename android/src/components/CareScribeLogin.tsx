@@ -192,10 +192,17 @@ export default function CareScribeLogin({ navigation }: any) {
       });
     } catch (error: any) {
       console.error('Login error', error);
+      
+      let errorMessage = error?.response?.data?.message || error?.message || 'Unable to login';
+      if (error?.response?.status) {
+        errorMessage = `[Status ${error.response.status}] ${errorMessage}`;
+      } else if (error?.code) {
+        errorMessage = `[${error.code}] ${errorMessage}`;
+      }
+
       Alert.alert(
         'Login Failed',
-        error?.response?.data?.message ||
-        'Unable to login. Please try again.'
+        errorMessage
       );
     } finally {
       setLoading(false);

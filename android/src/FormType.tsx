@@ -704,7 +704,7 @@ export default function FormTypeScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {/* HMIS Report button commented out as requested */}
+            {/* HMIS Report button commented out as requested
             <TouchableOpacity
               style={[
                 styles.hmisButton,
@@ -724,6 +724,7 @@ export default function FormTypeScreen() {
             >
               <Text style={[styles.hmisButtonText, isDark && { color: '#0EA5A4' }]}>HMIS Report</Text>
             </TouchableOpacity>
+            */}
            
 
             <TouchableOpacity
